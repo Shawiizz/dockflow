@@ -41,10 +41,9 @@ export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> 
 }
 
 /**
- * Record the project's public ports on every node, where dockflow-public-ports lets the internet
- * reach only those among the published ports (Swarm: every node answers on a published port).
- * A node set up before the filter existed is reported; one set up with --no-port-filter is left
- * as it is.
+ * Records the project's public ports on every node: dockflow-public-ports lets the internet reach
+ * only those among the published ports, and every node answers on a published port in Swarm. A node
+ * set up before the filter existed is reported; one set up with --no-port-filter is left as it is.
  */
 export async function applyPublicPorts(ctx: DeployContext): Promise<void> {
   if (ctx.config.no_services) return;

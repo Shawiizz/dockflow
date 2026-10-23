@@ -27,30 +27,26 @@ export function resolveFileDestPath(dest: string, srcBasename: string): string {
 }
 
 /**
- * Directory the deploy user must own for an upload to succeed.
- *
- * Files are written with `cat > path`, which needs write access on the containing
- * directory rather than on the file itself. A directory upload owns its destination
- * outright; a file upload owns the directory holding it.
+ * The directory the deploy user must own for an upload to succeed: files are written with
+ * `cat > path`, which needs write access on the containing directory, not on the file. A directory
+ * upload owns its destination outright; a file upload owns the directory holding it.
  */
 export function uploadOwnedDir(dest: string, isDirUpload: boolean): string {
   const clean = dest.replace(/\/$/, '');
   return isDirUpload || dest.endsWith('/') ? clean : dirname(clean);
 }
 
-/** Backup location of a single file inside the per-deploy backup dir. */
 export function fileBackupPath(backupBaseDir: string, destPath: string): string {
   return `${backupBaseDir}/${destPath.replace(/^\//, '')}`;
 }
 
-/** Backup archive location for a directory upload. */
 export function dirBackupPath(backupBaseDir: string, destBase: string): string {
   return `${backupBaseDir}/${destBase.replace(/^\//, '')}.tar.gz`;
 }
 
 /**
- * Keep only the uploads relevant to a partial deploy (--only): uploads without
- * a service always apply; others apply when one of their services is targeted.
+ * The uploads that apply to a partial deploy (--only): those without a service always do, the
+ * others when one of their services is targeted.
  */
 export function filterUploads(uploads: UploadItem[] | undefined, only?: string): UploadItem[] {
   if (!uploads || uploads.length === 0) return [];

@@ -14,9 +14,6 @@ import { createDeployUser, } from './user';
 import { ensureSetupDependencies, completeSetup } from './flow';
 import type { SetupOptions, HostConfig } from './types';
 
-/**
- * Run non-interactive setup
- */
 export async function runNonInteractiveSetup(options: SetupOptions): Promise<void> {
   printIntro('Machine Setup (Non-Interactive)');
   printBlank();

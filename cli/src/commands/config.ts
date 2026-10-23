@@ -26,7 +26,7 @@ import {
   type ValidationIssue
 } from '../schemas';
 
-/** Format unknown-key findings as warning strings (typos are silently ignored by Zod). */
+/** Warnings for keys the schema does not declare: Zod ignores them silently, so a typo goes unnoticed. */
 function unknownKeyWarnings(fileName: string, unknownKeys: UnknownKey[]): string[] {
   return unknownKeys.map(({ path, suggestion }) =>
     `${fileName}: unknown key "${path}" is ignored${suggestion ? ` — did you mean "${suggestion}"?` : ''}`,
@@ -43,9 +43,6 @@ interface ValidationResult {
   };
 }
 
-/**
- * Validate configuration files using Zod schemas
- */
 function validateConfigFiles(): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -138,7 +135,6 @@ export function registerConfigCommand(program: Command): void {
     .description('Display and validate project configuration')
     .helpGroup('Other');
 
-  // config show (default)
   configCmd
     .command('show', { isDefault: true })
     .description('Display current configuration')
@@ -159,7 +155,6 @@ export function registerConfigCommand(program: Command): void {
 
       printBlank();
       
-      // Project info
       if (config) {
         printSection('Project Configuration');
         printBlank();
@@ -202,7 +197,6 @@ export function registerConfigCommand(program: Command): void {
         return;
       }
 
-      // Environments
       printBlank();
       printSection('Environments');
       printBlank();
@@ -217,7 +211,6 @@ export function registerConfigCommand(program: Command): void {
         }
       }
 
-      // Files
       printBlank();
       printSection('Configuration Files');
       printBlank();
@@ -244,7 +237,6 @@ export function registerConfigCommand(program: Command): void {
       printBlank();
     }));
 
-  // config validate
   configCmd
     .command('validate')
     .alias('check')
@@ -273,7 +265,6 @@ export function registerConfigCommand(program: Command): void {
 
       const { type: layoutType } = getLayout();
 
-      // Show schema errors in detail
       if (result.schemaErrors?.config && result.schemaErrors.config.length > 0) {
         printError(`  ${layoutType === 'flat' ? 'dockflow.yml' : 'config.yml'} schema errors:`);
         printBlank();
@@ -302,7 +293,6 @@ export function registerConfigCommand(program: Command): void {
         printBlank();
       }
 
-      // Show general errors (file not found, etc.)
       const generalErrors = result.errors.filter(e => 
         !e.includes('validation error(s)')
       );
@@ -322,7 +312,6 @@ export function registerConfigCommand(program: Command): void {
         printBlank();
       }
 
-      // Summary
       printSeparator(50);
       printBlank();
 
@@ -345,7 +334,6 @@ export function registerConfigCommand(program: Command): void {
       }
     }));
 
-  // config path
   configCmd
     .command('path')
     .description('Show configuration directory path')

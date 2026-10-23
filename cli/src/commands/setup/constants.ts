@@ -4,7 +4,6 @@
 
 import type { Dependency } from './types';
 
-// Re-export from centralized constants
 export { DOCKFLOW_RELEASE_URL } from '../../constants';
 
 export const REQUIRED_DEPENDENCIES: Dependency[] = [

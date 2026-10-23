@@ -62,7 +62,7 @@ export class DeployRun {
 
     await loginManagerToRegistry(ctx);
 
-    // The whole stack, even under --only: a rollback restores every service.
+    // the whole stack, even under --only: a rollback restores every service
     const renderedStack = ctx.swarm.render({
       stackName: ctx.stackName, env: ctx.env, compose, proxy: ctx.config.proxy,
     });
@@ -71,10 +71,10 @@ export class DeployRun {
     const storedReleases = await ctx.releases.listReleases(ctx.stackName);
     const accessoriesDigest = ctx.deployApp ? await releaseAccessoriesDigest(ctx) : undefined;
 
-    // Settled, not Promise.all: when accessories fail first, the release write
-    // must still hand back the symlink to restore, or cleanup deletes `current`.
-    // `deploy --accessories` leaves the app and its release history alone
+    // settled, not Promise.all: when accessories fail first, the release write must still hand
+    // back the symlink to restore, or cleanup deletes `current`
     const [releaseOutcome, accessoriesOutcome] = await Promise.allSettled([
+      // `deploy --accessories` leaves the app and its release history alone
       !ctx.deployApp ? Promise.resolve({ previousSymlink: null }) : ctx.releases.createRelease(ctx.stackName, ctx.deployVersion, Compose.serialize(compose), renderedStack, {
         project_name: ctx.config.project_name, version: ctx.deployVersion, env: ctx.env,
         timestamp: now.toISOString(), epoch: releaseEpoch(now, storedReleases),
@@ -152,8 +152,8 @@ export class DeployRun {
       await cleanupFailedImages(this.buildResult, [ctx.cluster.manager, ...ctx.cluster.otherManagers, ...ctx.cluster.workers]).catch(() => {});
     }
 
-    // Runs last so it observes the settled state. runHook never lets an
-    // on-failure entry abort, and the original error stays on top.
+    // runs last so it observes the settled state; runHook never lets an on-failure entry abort,
+    // and the original error stays on top
     await runDeployHook(ctx, 'on-failure', {
       DOCKFLOW_ERROR: messageOf(err),
       DOCKFLOW_ROLLED_BACK_TO: rolledBackTo ?? '',

@@ -22,7 +22,7 @@ export async function rollbackUploads(plan: UploadRollbackPlan): Promise<void> {
       await sshExec(conn, `rm -f '${destPath}'`);
     }
     for (const { dest, backup } of backedUpDirs) {
-      // Extract to a temp dir first — if extraction fails, the original dest is untouched.
+      // extract to a temp dir first: if extraction fails, the original dest is untouched
       const tmp = `${dest}.dockflow-restore-${Date.now()}`;
       const r = await sshExec(conn, `mkdir -p '${tmp}' && tar xzf '${backup}' -C '${tmp}'`);
       if (r.exitCode !== 0) {
@@ -32,8 +32,8 @@ export async function rollbackUploads(plan: UploadRollbackPlan): Promise<void> {
           ErrorCode.DEPLOY_FAILED,
         );
       }
-      // The swap is the destructive step of the restore — if it fails the
-      // destination may be gone, so it must never fail silently.
+      // the swap is the destructive step of the restore: if it fails the destination may be
+      // gone, so it must never fail silently
       const swap = await sshExec(conn, `rm -rf '${dest}' && mv '${tmp}' '${dest}'`);
       if (swap.exitCode !== 0) {
         throw new DeployError(

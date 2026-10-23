@@ -77,3 +77,5 @@ export function completeSetup(config: HostConfig): void {
   const privateKey = fs.readFileSync(config.privateKeyPath, 'utf-8');
   displayConnectionInfo(config, privateKey);
 }
+
+/** Provisions the host, finalizes the deploy user's service access and shows the connection info: the tail of both flows. */

@@ -29,7 +29,7 @@ function accessoriesToDeploy(ctx: DeployContext): { compose: ParsedCompose; rout
   // a file left with comments only declares no accessory
   if (!Compose.hasServices(compose)) return null;
   Compose.injectAccessoriesDefaults(compose);
-  // Accessories answer only through proxy.routes, and their stack joins Traefik's network.
+  // accessories answer only through proxy.routes, and their stack joins Traefik's network
   const proxy = ctx.config.proxy;
   const routed = !!proxy && Compose.injectTraefikLabels(compose, proxy, ctx.stackName, ctx.env, { defaultRoute: false });
   return { compose, routed };

@@ -1,12 +1,6 @@
 /**
- * Build command
- *
- * Builds Docker images locally without deploying to a Swarm cluster.
- * Uses the Build and Hook modules directly.
- *
- * Template rendering is entirely in-memory. Docker build contexts are
- * assembled as tar archives and piped to `docker build -` via stdin.
- * No temporary files are written to disk.
+ * The `build` command: builds the images locally without deploying. Build contexts are assembled
+ * in memory as tar archives and piped to `docker build -`, so no temporary file is written.
  */
 
 
@@ -36,9 +30,7 @@ interface BuildOptions {
   branch?: string;
 }
 
-/**
- * Run build — can be called directly or via CLI command
- */
+/** Fails fast, before secrets or templates, when the config or servers file is missing or invalid. */
 function quickValidateConfig(): void {
   const layout = getLayout();
 
@@ -77,7 +69,6 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
 
   quickValidateConfig();
 
-  // Auto-detect env from CI environment when not provided
   let ciVersion: string | undefined;
   if (!env) {
     const ci = detectCIEnvironment();
@@ -102,7 +93,6 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
   printIntro(`Building Docker images for ${env}`);
   printBlank();
 
-  // Load config
   let config = loadConfig();
   if (!config) {
     throw new ConfigError(
@@ -120,7 +110,6 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
 
   const branchName = options.branch || getCurrentBranch();
 
-  // Display build info
   printInfo(`Project: ${config.project_name || 'app'}`);
   printInfo(`Environment: ${env}`);
   printInfo(`Branch: ${branchName}`);
@@ -128,7 +117,6 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
   if (options.skipHooks) printInfo(`Hooks: Skipped`);
   printBlank();
 
-  // Render templates and resolve compose content
   const managers = getManagersForEnvironment(env);
   if (managers.length === 0) {
     printWarning(`Environment "${env}" not found in servers.yml — {{ current.env.* }} variables will be empty.`);
@@ -147,23 +135,20 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
     templateContext,
   );
 
-  // Re-parse config from rendered templates (resolves {{ current.env.xxx }}), then expand
-  // plugins so their build hooks run here exactly as they do on deploy.
+  // re-parse the config from the rendered templates (resolves {{ current.env.xxx }}), then expand
+  // plugins so their build hooks run here exactly as they do on deploy
   ({ config } = await Plugin.loadConfigWithPlugins({ rendered, fallback: config, projectRoot, projectContext: renderContext }));
 
-  // Pre-build hook
   if (!options.skipHooks) {
     await Hook.runHook('pre-build', projectRoot, config, rendered);
   }
 
-  // Build images (targets resolved from rendered compose via stdin)
   const targets = Build.getBuildTargets(composeContent, composeDirPath, options.only);
   if (targets.length === 0) {
     printWarning('No build targets found in docker-compose.yml');
     return;
   }
 
-  // Attach rendered overrides to each target
   for (const target of targets) {
     target.renderedOverrides = Build.getOverridesForTarget(rendered, target, projectRoot);
     target.engine = config.container_engine;
@@ -171,12 +156,10 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
 
   const result = await Build.buildAll(targets);
 
-  // Post-build hook
   if (!options.skipHooks) {
     await Hook.runHook('post-build', projectRoot, config, rendered);
   }
 
-  // Push to registry if requested
   if (options.push && config.registry && Compose.usesRegistry(config)) {
     printDim('Pushing images to registry...');
     await Distribution.registryLoginLocal({
@@ -196,9 +179,6 @@ export async function runBuild(env: string | undefined, options: Partial<BuildOp
   printSuccess(`Build completed! ${result.images.length} image(s) built in ${(result.durationMs / 1000).toFixed(1)}s`);
 }
 
-/**
- * Register build command
- */
 export function registerBuildCommand(program: Command): void {
   program
     .command('build [env]')

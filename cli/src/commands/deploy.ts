@@ -1,12 +1,9 @@
 /**
- * Deploy command
- *
- * Deploys the application to a cluster using direct SSH.
- * Setup resolution, phase execution, and types are split into:
- *   deploy-context.ts  — DeployContext interface
- *   deploy-run.ts      — one run: its steps, the undo on failure or Ctrl+C, the record
- *   deploy-phases/     — the phases: build, uploads, accessories, app, health checks, history
- *   deploy-dry-run.ts  — dry-run display
+ * The `deploy` command: resolves the deployment here and hands it to the rest of the deploy:
+ *   deploy-context.ts  the DeployContext interface
+ *   deploy-run.ts      one run: its steps, the undo on failure or Ctrl+C, the record
+ *   deploy-phases/     the phases: build, uploads, accessories, app, health checks, history
+ *   deploy-dry-run.ts  the dry-run display
  */
 
 import type { Command } from 'commander';
@@ -61,10 +58,6 @@ import { onInterrupt } from '../utils/interrupt';
 import type { DeployOptions, DeployContext } from './deploy-context';
 import { DeployRun } from './deploy-run';
 import { accessoriesKey } from './deploy-phases';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function getDeploymentTargets(options: DeployOptions) {
   if (options.skipAccessories) return { deployApp: true, forceAccessories: false, skipAccessories: true };
@@ -208,10 +201,6 @@ function checkRenderedCompose(config: DeployContext['config'], env: string, stac
   }
 }
 
-// ---------------------------------------------------------------------------
-// Setup — resolve env, config, connections, version, render templates
-// ---------------------------------------------------------------------------
-
 async function resolveSetup(rawEnv: string | undefined, rawVersion: string | undefined, options: Partial<DeployOptions>) {
   let { env, version } = targetFromArgsOrCI(rawEnv, rawVersion);
 
@@ -232,7 +221,6 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   printIntro(`Deploying ${targetDesc} to ${env}`);
   printBlank();
 
-  // Resolve deployment servers
   const deployment = resolveDeploymentForEnvironment(env);
   if (!deployment) {
     const availableEnvs = getAvailableEnvironments();
@@ -254,7 +242,6 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   assertReleaseName(deployVersion, 'version');
   const projectRoot = getProjectRoot();
 
-  // Display info
   printInfo(`Version: ${deployVersion}`);
   printInfo(`Environment: ${env}`);
   printInfo(`Manager: ${isVerbose() ? `${manager.name} (${manager.host})` : manager.name}`);
@@ -264,7 +251,6 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   if (options.only) printInfo(`Only: ${options.only}`);
   printBlank();
 
-  // Render templates
   const templateContext = buildTemplateContext(env, manager.name);
   const { rendered, composeContent, composeDirPath, renderContext } = Compose.renderAndResolveCompose(
     { env, version: deployVersion, branch: branchName, project_name: config.project_name, config },
@@ -276,7 +262,6 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
 
   checkRenderedCompose(config, env, stackName, rendered, composeContent, options.only);
 
-  // Build context
   const managerConn = cluster.manager.connection;
   const ctx: DeployContext = {
     env, config, stackName, branchName, deployVersion, projectRoot,
@@ -291,8 +276,8 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     metrics: new Metrics(managerConn),
   };
 
-  // Dry-run exit — after rendering and plugin expansion, so the summary lists the
-  // uploads and hook entries a deploy would actually run.
+  // dry-run exit, after rendering and plugin expansion, so the summary lists the uploads and
+  // hook entries a deploy would actually run
   if (options.dryRun) {
     if (options.render) {
       await displayRenderedStack(ctx);
@@ -309,10 +294,6 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
 
   return { ctx };
 }
-
-// ---------------------------------------------------------------------------
-// Execute — lock, run, undo on failure, record, unlock
-// ---------------------------------------------------------------------------
 
 async function execute(ctx: DeployContext): Promise<void> {
   const lockResult = await ctx.lock.acquire({ version: ctx.deployVersion, force: ctx.options.force, message: `Deploy ${ctx.deployVersion}` });
@@ -344,10 +325,6 @@ async function execute(ctx: DeployContext): Promise<void> {
     ? `Deployment completed! Cluster: ${managerCount} manager(s) + ${workerCount} worker(s)`
     : 'Deployment completed!');
 }
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 export async function runDeploy(env: string | undefined, version: string | undefined, options: Partial<DeployOptions>): Promise<void> {
   if (options.debug) setVerbose(true);

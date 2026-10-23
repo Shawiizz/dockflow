@@ -17,8 +17,8 @@ export async function runHTTPHealthChecks(ctx: DeployContext): Promise<void> {
 }
 
 /**
- * Run health checks after a rollback. Always best-effort — failures are
- * printed as warnings, never thrown, because there is nothing left to roll back to.
+ * Best-effort: failures are printed as warnings, never thrown, because there is nothing left to
+ * roll back to.
  */
 export async function runPostRollbackHealthChecks(
   connection: SSHKeyConnection,
@@ -38,7 +38,7 @@ export async function runPostRollbackHealthChecks(
   }
 
   if (healthConfig?.endpoints?.length) {
-    // Force on_failure to 'notify' — rolling back a rollback is not an option.
+    // rolling back a rollback is not an option
     await health.checkHTTPEndpoints({ ...healthConfig, on_failure: 'notify' });
   }
 }

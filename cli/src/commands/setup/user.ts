@@ -1,9 +1,7 @@
 /**
- * User management utilities
- *
- * Note: These functions expect to run as root (the remote setup binary
- * is launched with `sudo`), so no individual `sudo` calls are needed.
- * Commands go by argv, never through a shell.
+ * The deploy user and its access: account, authorized_keys, groups, sudoers. Runs as root (the
+ * remote setup binary is launched with `sudo`), so no command uses sudo; all go by argv, never
+ * through a shell.
  */
 
 import { closeSync, constants, fchmodSync, fchownSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeSync } from 'fs';
@@ -19,7 +17,7 @@ export const SUDOERS_FILE_MODE = 0o440;
 /** First line of `/etc/sudoers.d/<user>` when Dockflow wrote it. */
 export const USER_SUDOERS_HEADER = '# Managed by Dockflow (dockflow setup). Changes are overwritten.';
 const DOCKFLOW_HEADER_PREFIX = '# Managed by Dockflow';
-// Rules older versions wrote there without a header: the file is still Dockflow's if it holds nothing else
+// rules older versions wrote there without a header: the file is still Dockflow's if it holds nothing else
 const DOCKFLOW_RULE_SHAPES: readonly RegExp[] = [
   /^\S+ ALL=\(ALL\) NOPASSWD: \S*nginx -t, \S*nginx -s reload$/,
   /^\S+ ALL=\(ALL\) NOPASSWD: \/usr\/local\/sbin\/dockflow-public-ports$/,
@@ -53,10 +51,6 @@ function detailOf(result: { exitCode: number; stderr: string; stdout: string; ti
   const firstLine = (text: string): string => text.split(/\r?\n/).find((line) => line.trim() !== '')?.trim() ?? '';
   return firstLine(result.stderr) || firstLine(result.stdout) || `exit ${result.exitCode}`;
 }
-
-// ---------------------------------------------------------------------------
-// Sudoers files
-// ---------------------------------------------------------------------------
 
 /** `.name.tmp` in the same directory: sudo never reads a name containing `.` */
 export function sudoersTempPath(path: string): string {
@@ -171,11 +165,9 @@ export function nginxUserFrom(configDump: string): string | null {
 }
 
 /**
- * Configure nginx group access and deploy-time sudoers for a deploy user.
- *
- * Safe to call multiple times — writes are idempotent.
- * Must be called AFTER nginx and the filter of published ports are installed, so call it again
- * post-provisioning if they were installed during setup.
+ * Gives a deploy user the docker and nginx group access and the sudoers rules deploys need.
+ * Idempotent, and run again after provisioning, since nginx and the filter of published ports may
+ * only be installed by then.
  *
  * A group or permission change that fails throws, naming the command: a deploy user without the
  * access it was set up for fails later and far from the cause.
@@ -195,9 +187,8 @@ export function configureServiceAccess(username: string, overrides: Partial<Host
     }
   };
 
-  // docker: group membership for socket access. The group only exists once
-  // Docker is installed, which happens AFTER user creation — this re-run
-  // post-provisioning is what actually grants the access.
+  // docker: group membership for socket access. The group only exists once Docker is installed,
+  // which happens after user creation: the run after provisioning is what grants the access.
   if (host.run(['getent', 'group', 'docker'], { quiet: true }).ok) {
     mustRun('docker group membership', ['usermod', '-aG', 'docker', username]);
   }
@@ -227,10 +218,6 @@ export function configureServiceAccess(username: string, overrides: Partial<Host
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Deploy user
-// ---------------------------------------------------------------------------
 
 export interface HostUser {
   name: string;
@@ -372,9 +359,7 @@ export function ensureDeployUser(
   return { user, created, keyAdded: authorizeKey(user, publicKey) };
 }
 
-/**
- * Create deployment user with docker group access and service permissions.
- */
+/** Creates the deploy user and its service access; false, after failing the spinner, when that fails. */
 export function createDeployUser(username: string, password: string, publicKey: string): boolean {
   const spinner = createSpinner();
   spinner.start(`Creating user ${username}...`);
@@ -423,7 +408,7 @@ export function checkUserPassword(
 }
 
 /**
- * Prompt for user password with validation
+ * Asks for the user's password, three attempts. A host that cannot check it takes it as typed.
  */
 export async function promptAndValidateUserPassword(username: string): Promise<string> {
   let attempts = 0;

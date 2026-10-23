@@ -1,8 +1,6 @@
 /**
- * UI command - Launch the Dockflow WebUI
- *
- * Starts a local Bun HTTP server that serves the Angular frontend
- * and exposes API endpoints to interact with the Dockflow CLI.
+ * The `ui` command: starts a local Bun HTTP server that serves the Angular frontend and the API
+ * endpoints that talk to the Dockflow CLI.
  */
 
 import type { Command } from 'commander';
@@ -18,9 +16,6 @@ interface UIOptions {
   open: boolean;
 }
 
-/**
- * Open URL in default browser (cross-platform)
- */
 async function openBrowser(url: string): Promise<void> {
   const platform = process.platform;
   
@@ -46,9 +41,6 @@ async function openBrowser(url: string): Promise<void> {
   await proc.exited;
 }
 
-/**
- * Check if a port is available
- */
 async function isPortAvailable(port: number): Promise<boolean> {
   try {
     const server = Bun.serve({
@@ -65,9 +57,6 @@ async function isPortAvailable(port: number): Promise<boolean> {
   }
 }
 
-/**
- * Find an available port starting from the given port
- */
 async function findAvailablePort(startPort: number): Promise<number> {
   let port = startPort;
   while (!(await isPortAvailable(port)) && port < startPort + 100) {
@@ -76,9 +65,6 @@ async function findAvailablePort(startPort: number): Promise<number> {
   return port;
 }
 
-/**
- * Register the UI command
- */
 export function registerUICommand(program: Command): void {
   program
     .command('ui')
@@ -92,10 +78,9 @@ export function registerUICommand(program: Command): void {
       printIntro('Dockflow WebUI');
       printBlank();
       
-      // Load secrets from .env.dockflow or CI environment
       loadSecrets();
       
-      // Check for .dockflow directory (optional, UI can work without it)
+      // the project is optional: the UI can open one later
       const projectRoot = getProjectRoot();
       const dockflowDir = join(projectRoot, '.dockflow');
       
@@ -111,13 +96,11 @@ export function registerUICommand(program: Command): void {
 
       printBlank();
 
-      // Find available port
       const port = await findAvailablePort(requestedPort);
       if (port !== requestedPort) {
         printWarning(`Port ${requestedPort} is in use, using ${port} instead`);
       }
       
-      // Start the server
       const { startWebServer } = await import('../api/server');
       await startWebServer(port);
       
@@ -130,12 +113,11 @@ export function registerUICommand(program: Command): void {
       printInfo('Press Ctrl+C to stop the server');
       printBlank();
       
-      // Open browser
       if (options.open) {
         await openBrowser(url);
       }
       
-      // Keep the process running
+      // keep the process alive
       await new Promise(() => {});
     }));
 }

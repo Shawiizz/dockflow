@@ -1,6 +1,5 @@
 /**
- * Shared firewall helper for opening ports on remote hosts.
- * Used by the swarm.ts setup command.
+ * Opens ports on remote hosts with whichever firewall tool they have; used by setup swarm.
  */
 
 import { createSpinner, printDim } from '../../utils/output';

@@ -10,9 +10,6 @@ import {
   multilinePrompt as centralMultilinePrompt,
 } from '../../utils/prompts';
 
-/**
- * Prompt for input with default value
- */
 export async function prompt(question: string, defaultValue?: string): Promise<string> {
   return textPrompt({
     message: question,
@@ -20,18 +17,12 @@ export async function prompt(question: string, defaultValue?: string): Promise<s
   });
 }
 
-/**
- * Prompt for password (hidden input)
- */
 export async function promptPassword(question: string): Promise<string> {
   return passwordPrompt({
     message: question,
   });
 }
 
-/**
- * Prompt for yes/no confirmation
- */
 export async function confirm(question: string, defaultYes = true): Promise<boolean> {
   return confirmPrompt({
     message: question,
@@ -39,10 +30,6 @@ export async function confirm(question: string, defaultYes = true): Promise<bool
   });
 }
 
-/**
- * Interactive menu selection with arrow keys
- * Returns the selected index (0-based)
- */
 export async function selectMenu(title: string, options: string[]): Promise<number> {
   return selectPrompt<number>({
     message: title,
@@ -51,9 +38,6 @@ export async function selectMenu(title: string, options: string[]): Promise<numb
   });
 }
 
-/**
- * Prompt for multiline input (for SSH key pasting)
- */
 export async function promptMultiline(): Promise<string> {
   return centralMultilinePrompt({
     message: 'Paste your content below:',

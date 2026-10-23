@@ -1,12 +1,6 @@
 /**
- * Setup commands - Configure host machines for deployment
- * 
- * This module provides commands to:
- * - Setup a local Linux host for deployment
- * - Setup a remote Linux host via SSH
- * - Setup Docker Swarm cluster (manager + workers)
- * - Check dependencies
- * - Generate connection strings
+ * The `setup` commands: provision a local or remote Linux host (via SSH), set up a Docker Swarm
+ * cluster, check dependencies and show connection strings.
  */
 
 import type { Command } from 'commander';
@@ -27,29 +21,22 @@ import { acquireSetupLock } from './lock';
 import { CLIError, ConfigError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import type { SetupOptions, ConnectionOptions, RemoteSetupOptions } from './types';
 
-/** Parse a `user@host[:port]` target string */
 function parseTarget(target: string): { user: string; host: string; port: number } | null {
   const match = target.match(/^([^@]+)@([^:]+)(?::(\d+))?$/);
   if (!match) return null;
   return { user: match[1], host: match[2], port: match[3] ? parseInt(match[3], 10) : 22 };
 }
 
-/**
- * Register setup commands
- */
 export function registerSetupCommand(program: Command): void {
   const setup = program
     .command('setup [target]')
     .description('Setup host machine for deployment (use user@host for remote setup)')
     .helpGroup('Setup')
-    // Remote options
     .option('-k, --key <path>', 'Path to SSH private key (remote)')
     .option('--connection <string>', 'Dockflow connection string (remote)')
     .option('--host-key <fingerprint>', 'Host key fingerprint (SHA256:...) the server must present (remote), or to pin in the connection string instead of the one sshd presents (local)')
-    // Shared options
     .option('--password <password>', 'SSH password (remote) or password of the new deploy user (local)')
     .option('--password-file <path>', 'Read the password of the new deploy user (local) from a file instead of the command line')
-    // Local non-interactive options
     .option('--host <host>', 'Public IP/hostname for connection string (local)')
     .option('--port <port>', 'SSH port (local)', '22')
     .option('--user <user>', 'Deployment username (local, creates new user if different from current)')
@@ -73,7 +60,6 @@ export function registerSetupCommand(program: Command): void {
       }
 
       if (options.connection) {
-        // Connection string mode
         const conn = parseConnectionString(options.connection);
         if (!conn) throw new ConfigError('Invalid connection string');
         remoteOpts = {
@@ -86,7 +72,6 @@ export function registerSetupCommand(program: Command): void {
           dev: options.dev,
         };
       } else if (target) {
-        // user@host[:port] mode
         const parsed = parseTarget(target);
         if (!parsed) {
           throw new CLIError(
@@ -115,9 +100,7 @@ export function registerSetupCommand(program: Command): void {
         };
       }
 
-      // Remote setup
       if (remoteOpts) {
-        // If no auth method provided, fall back to interactive prompt
         if (!remoteOpts.privateKey && !remoteOpts.password) {
           remoteOpts = await promptRemoteConnection(remoteOpts);
           if (!remoteOpts) return;
@@ -138,7 +121,6 @@ export function registerSetupCommand(program: Command): void {
         return;
       }
 
-      // Local setup (no target)
       if (!isLinux()) {
         throw new CLIError(
           'This command must be run directly on a Linux host.',
@@ -147,8 +129,7 @@ export function registerSetupCommand(program: Command): void {
         );
       }
 
-      // Provisioning needs root: useradd, package installs, get.docker.com.
-      // (Deploys never need root — only setup does.)
+      // provisioning needs root (useradd, package installs, get.docker.com); deploys never do
       if (typeof process.getuid === 'function' && process.getuid() !== 0) {
         throw new CLIError(
           'dockflow setup must run as root on the local machine.',
@@ -159,8 +140,8 @@ export function registerSetupCommand(program: Command): void {
 
       if (options.passwordFile) options.password = readPasswordFile(options.passwordFile);
 
-      // Detect non-interactive mode: connection/identity flags provided
-      // Config flags (--skip-docker-install, --nginx) don't trigger non-interactive mode
+      // connection or identity flags select the non-interactive flow; config flags such as
+      // --skip-docker-install and --nginx do not
       const hasLocalFlags = options.host || options.user || options.sshKey || options.generateKey || options.yes;
 
       const lock = await acquireSetupLock();
@@ -175,7 +156,6 @@ export function registerSetupCommand(program: Command): void {
       }
     }));
 
-  // Swarm cluster setup
   setup
     .command('swarm <env>')
     .description('Initialize Docker Swarm cluster for an environment')
@@ -183,7 +163,6 @@ export function registerSetupCommand(program: Command): void {
       await runSetupSwarm(env);
     }));
 
-  // Check dependencies
   setup
     .command('check')
     .description('Check if all dependencies are installed')
@@ -207,7 +186,6 @@ export function registerSetupCommand(program: Command): void {
       }
     }));
 
-  // Show connection string for existing setup
   setup
     .command('connection')
     .description('Display connection string for existing deployment user')
@@ -263,5 +241,4 @@ export function registerSetupCommand(program: Command): void {
     }));
 }
 
-// Re-export types for convenience
 export * from './types';

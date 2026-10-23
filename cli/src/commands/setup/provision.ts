@@ -1,12 +1,7 @@
 /**
- * Host provisioning — pure TypeScript replacement for the former Ansible
- * playbook: Docker install, /var/lib/dockflow, the filter of published ports, nginx.
- *
- * Runs locally on the target Linux host (local setup mode — the remote setup
- * flow ships the binary and re-executes it on the server). Setup enforces
- * root before provisioning starts, so commands run directly (no sudo binary
- * required). Every step is idempotent: it checks the current state before
- * changing anything.
+ * Host provisioning: Docker, /var/lib/dockflow, the filter of published ports, nginx. Runs locally
+ * on the target Linux host (the remote setup ships the binary and runs it there), as root, so
+ * commands run directly. Every step checks the current state first, so setup can run again.
  */
 
 import { spawnSync } from 'child_process';
@@ -19,18 +14,10 @@ import type { HostConfig } from './types';
 
 export const DOCKFLOW_BASE_DIR = '/var/lib/dockflow';
 
-// ---------------------------------------------------------------------------
-// Pure helpers
-// ---------------------------------------------------------------------------
-
 /** Package name for nginx per package manager (same everywhere today). */
 export function nginxPackageFor(_pm: string): string {
   return 'nginx';
 }
-
-// ---------------------------------------------------------------------------
-// Command execution helpers
-// ---------------------------------------------------------------------------
 
 export interface RunOptions {
   /** capture the output instead of streaming it to the console */
@@ -59,10 +46,8 @@ const TIMEOUT_EXIT = 124;
 const NOT_FOUND_EXIT = 127;
 
 /**
- * Run a privileged command by argv (no shell), streaming output to the console unless quiet.
- * Setup enforces root before provisioning starts (see setup/index.ts), so no
- * sudo prefix is needed — which also keeps minimal systems without a sudo
- * binary working.
+ * Runs a command by argv (no shell), streaming its output unless quiet. There is no sudo prefix:
+ * setup enforces root (see setup/index.ts), which also keeps hosts without a sudo binary working.
  */
 export function run(args: readonly string[], opts: RunOptions = {}): RunResult {
   const captured = opts.quiet || opts.input !== undefined;
@@ -90,11 +75,7 @@ export function run(args: readonly string[], opts: RunOptions = {}): RunResult {
   return { ok: exitCode === 0 && !timedOut, exitCode, stdout: result.stdout ?? '', stderr, timedOut };
 }
 
-// ---------------------------------------------------------------------------
-// Provisioning steps
-// ---------------------------------------------------------------------------
-
-/** Create /var/lib/dockflow owned by the deploy user (mode 0750). Argv only: the user name never reaches a shell. */
+/** Owned by the deploy user, mode 0750. Argv only: the user name never reaches a shell. */
 export function ensureDockflowDir(deployUser: string, runCommand: CommandRunner = run): void {
   const steps = [
     ['mkdir', '-p', '--', DOCKFLOW_BASE_DIR],
@@ -113,10 +94,7 @@ export function ensureDockflowDir(deployUser: string, runCommand: CommandRunner 
   printSuccess(`${DOCKFLOW_BASE_DIR} ready (owner: ${deployUser})`);
 }
 
-/**
- * Install Docker via Docker's official multi-distro convenience script.
- * Idempotent: skipped when docker is already present.
- */
+/** Installs Docker with the official convenience script; skipped when docker is already present. */
 function installDocker(): void {
   if (commandExists('docker')) {
     printSuccess('Docker already installed — skipping');
@@ -161,7 +139,6 @@ function installDocker(): void {
   printSuccess('Docker installed');
 }
 
-/** Install and enable nginx. */
 function installNginx(): void {
   if (!commandExists('nginx')) {
     const pm = detectPackageManager();
@@ -194,7 +171,6 @@ function installNginx(): void {
     run(['rm', '-f', '/etc/nginx/sites-enabled/default'], { quiet: true });
   }
 
-  // Validate config before (re)starting
   const test = run(['nginx', '-t'], { quiet: true });
   if (!test.ok) {
     throw new CLIError(
@@ -214,14 +190,7 @@ function installNginx(): void {
   printSuccess('nginx configured');
 }
 
-// ---------------------------------------------------------------------------
-// Orchestration
-// ---------------------------------------------------------------------------
-
-/**
- * Provision the host: Docker, /var/lib/dockflow, optional nginx.
- * Throws CLIError on the first failing step.
- */
+/** Throws CLIError on the first failing step. */
 export function provisionHost(config: HostConfig): void {
   printSection('Provisioning host');
   printBlank();

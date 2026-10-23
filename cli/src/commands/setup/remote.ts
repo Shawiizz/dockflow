@@ -1,5 +1,5 @@
 /**
- * Remote setup functionality (Windows/macOS -> Linux)
+ * Remote setup: runs `dockflow setup` on a Linux server over SSH, from another machine.
  */
 
 import * as fs from 'fs';
@@ -48,9 +48,7 @@ export function connectionFailureMessage(message: string, target: { host: string
   return `SSH error: ${message}`;
 }
 
-/**
- * Detect remote server architecture; a machine Dockflow publishes no binary for is refused.
- */
+/** Throws for a machine Dockflow publishes no binary for. */
 export async function detectRemoteArch(conn: ConnectionInfo, exec: Exec = sshExec): Promise<RemoteArch> {
   const result = await exec(conn, 'uname -m');
   const machine = result.stdout.trim();
@@ -107,10 +105,6 @@ export async function cleanupTempDir(conn: ConnectionInfo, dir: string, exec: Ex
   }
 }
 
-/**
- * Build the CLI binary locally for the target architecture.
- * Returns the path to the built binary.
- */
 async function buildLocalBinary(arch: 'x64' | 'arm64'): Promise<string> {
   const cliDir = resolve(join(import.meta.dir, '..', '..', '..'));
   const target = `bun-linux-${arch}`;
@@ -131,10 +125,7 @@ async function buildLocalBinary(arch: 'x64' | 'arm64'): Promise<string> {
   return outfile;
 }
 
-/**
- * Upload a local file to a remote host via SFTP (binary stream, no base64 overhead).
- * Creates a dedicated SSH connection for the transfer.
- */
+/** Uploads over SFTP on a connection of its own, as a binary stream. */
 async function uploadFile(
   conn: ConnectionInfo,
   localPath: string,
@@ -201,9 +192,8 @@ async function uploadFile(
 }
 
 /**
- * Prompt for remote connection info.
- * If `prefilled` is provided (e.g. from user@host parsing), only the auth method is prompted.
- * Otherwise, full interactive prompts are shown.
+ * Asks for the missing connection details; with `prefilled` (host and user from the target) only
+ * the auth method is asked. Null when the operator cancels or gives an unusable answer.
  */
 export async function promptRemoteConnection(prefilled?: RemoteSetupOptions): Promise<RemoteSetupOptions | null> {
   printSection('Remote Connection');
@@ -215,7 +205,7 @@ export async function promptRemoteConnection(prefilled?: RemoteSetupOptions): Pr
   const devMode = prefilled?.dev;
 
   if (prefilled) {
-    // Already have host/user from CLI target — just need auth
+    // host and user came from the target: only the auth method is missing
     host = prefilled.host;
     port = prefilled.port;
     user = prefilled.user;
@@ -300,9 +290,6 @@ export async function promptRemoteConnection(prefilled?: RemoteSetupOptions): Pr
   return { host, port, user, password, privateKey, privateKeyPath, dev: devMode };
 }
 
-/**
- * Run remote setup via SSH
- */
 export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   printIntro('Remote Setup');
   printBlank();
@@ -362,7 +349,6 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
   let exitCode: number;
   try {
     if (opts.dev) {
-      // Dev mode: build locally and upload
       const buildSpinner = createSpinner();
       buildSpinner.start(`Building CLI binary (linux-${arch})...`);
       try {
@@ -388,10 +374,8 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
         throw new CLIError(`Build or upload failed: ${err instanceof Error ? err.message : String(err)}`, ErrorCode.COMMAND_FAILED);
       }
     } else {
-      // Release mode: download from GitHub
-      // Pinned to this CLI's version so the binary provisioning the server is
-      // the same one the operator runs (dev builds fall back to latest), and
-      // checked against the SHA-256 its release publishes.
+      // pinned to this CLI's version (dev builds fall back to the latest release) and checked
+      // against the SHA-256 its release publishes
       const binaryName = `dockflow-linux-${arch}`;
 
       const downloadSpinner = createSpinner();
@@ -427,8 +411,8 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
     printDim('─'.repeat(60));
     printBlank();
 
-    // root runs the binary directly (sudo may not even exist on minimal
-    // systems); other users escalate through sudo.
+    // root runs the binary directly (sudo may not exist on minimal systems); other users go
+    // through sudo
     const flags = [...(opts.forwardFlags ?? [])];
     if (conn.hostKey) flags.push('--host-key', shellQuote(conn.hostKey));
     if (opts.deployPassword) {

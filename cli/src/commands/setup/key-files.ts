@@ -16,9 +16,6 @@ export function keygenArgs(keyPath: string, comment: string): string[] {
   return ['-q', '-t', 'ed25519', '-f', keyPath, '-N', '', '-C', comment];
 }
 
-/**
- * Generate new SSH key pair
- */
 export function generateSSHKey(keyPath: string, comment: string = 'dockflow'): SSHKeyResult {
   const dir = path.dirname(keyPath);
 
@@ -63,9 +60,6 @@ export function authorizeKeyForUser(pubKeyPath: string, username: string, runCom
   return true;
 }
 
-/**
- * List available SSH keys for a user
- */
 export function listSSHKeys(username?: string, runCommand: CommandRunner = run): string[] {
   const sshDir = path.join(username ? requireUser(username, runCommand).home : os.homedir(), '.ssh');
 
@@ -87,7 +81,7 @@ export function listSSHKeys(username?: string, runCommand: CommandRunner = run):
           keys.push(filePath);
         }
       } catch {
-        // Ignore read errors
+        // unreadable: not a key to offer
       }
     }
   }

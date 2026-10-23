@@ -11,9 +11,6 @@ import type { HostConfig } from './types';
 import type { SSHKeyConnection } from '../../types';
 import { localHostKey } from '../../utils/host-key';
 
-/**
- * Generate connection string (base64 encoded JSON)
- */
 export function generateConnectionString(config: {
   host: string;
   port: number;
@@ -25,17 +22,12 @@ export function generateConnectionString(config: {
   return generateConnString(config as SSHKeyConnection);
 }
 
-/**
- * Parse connection string to ConnectionInfo
- */
+/** Null when the string does not parse. */
 export function parseConnectionString(connectionString: string): SSHKeyConnection | null {
   const result = parseConnString(connectionString);
   return result.success ? result.data : null;
 }
 
-/**
- * Display connection information
- */
 export function displayConnectionInfo(config: HostConfig, privateKey: string): void {
   printBlank();
   printSection('Connection Information');

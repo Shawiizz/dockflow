@@ -5,9 +5,7 @@
 import { spawnSync } from 'child_process';
 import * as os from 'os';
 
-/**
- * Detect public IP address (IPv4 preferred)
- */
+/** The public IPv4 address as the internet sees it, else the first local address, else 127.0.0.1. */
 export function detectPublicIP(): string {
   const methods = [
     "curl -4 -s --max-time 5 ifconfig.me 2>/dev/null",
@@ -31,9 +29,7 @@ export function detectPublicIP(): string {
   return '127.0.0.1';
 }
 
-/**
- * Detect SSH port
- */
+/** The port sshd listens on; 22 when it cannot be found. */
 export function detectSSHPort(): number {
   const result = spawnSync('sh', ['-c', "ss -tlnp 2>/dev/null | grep sshd | awk '{print $4}' | grep -oE '[0-9]+$' | head -1"], {
     encoding: 'utf-8',
@@ -50,9 +46,6 @@ export function detectSSHPort(): number {
   return 22;
 }
 
-/**
- * Get current username
- */
 export function getCurrentUser(): string {
   return os.userInfo().username;
 }

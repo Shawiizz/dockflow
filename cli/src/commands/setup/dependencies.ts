@@ -11,9 +11,6 @@ import type { Dependency, DependencyCheckResult } from './types';
 
 type PackageManager = 'apt' | 'yum' | 'dnf' | 'pacman' | 'zypper' | 'apk';
 
-/**
- * Check if a command exists on the system
- */
 export function commandExists(command: string): boolean {
   const result = spawnSync('sh', ['-c', `command -v ${command}`], {
     encoding: 'utf-8',
@@ -22,16 +19,10 @@ export function commandExists(command: string): boolean {
   return result.status === 0;
 }
 
-/**
- * Check if running on Linux
- */
 export function isLinux(): boolean {
   return os.platform() === 'linux';
 }
 
-/**
- * Detect the package manager available on the system
- */
 export function detectPackageManager(): PackageManager | null {
   if (commandExists('apt-get')) return 'apt';
   if (commandExists('dnf')) return 'dnf';
@@ -42,9 +33,6 @@ export function detectPackageManager(): PackageManager | null {
   return null;
 }
 
-/**
- * Get the distribution name
- */
 export function getDistroName(): string {
   try {
     if (fs.existsSync('/etc/os-release')) {
@@ -53,14 +41,11 @@ export function getDistroName(): string {
       if (match) return match[1];
     }
   } catch {
-    // Ignore errors
+    // unreadable os-release: the generic name will do
   }
   return 'Linux';
 }
 
-/**
- * Get the install command for a package manager
- */
 function getInstallCommand(pm: PackageManager): { update: string; install: string } {
   switch (pm) {
     case 'apt':
@@ -78,9 +63,6 @@ function getInstallCommand(pm: PackageManager): { update: string; install: strin
   }
 }
 
-/**
- * Collect unique packages to install for missing dependencies
- */
 function collectPackagesToInstall(deps: Dependency[], pm: PackageManager): string[] {
   const packages = new Set<string>();
   for (const dep of deps) {
@@ -92,9 +74,6 @@ function collectPackagesToInstall(deps: Dependency[], pm: PackageManager): strin
   return Array.from(packages);
 }
 
-/**
- * Install missing dependencies
- */
 export function installDependencies(deps: Dependency[]): boolean {
   const pm = detectPackageManager();
   if (!pm) {
@@ -128,7 +107,6 @@ export function installDependencies(deps: Dependency[]): boolean {
     printWarning('Package cache update failed, continuing anyway...');
   }
 
-  // Install packages
   printInfo('Installing packages...');
   const installParts = cmds.install.split(' ');
   const installResult = spawnSync(installParts[0], [...installParts.slice(1), ...packages], {
@@ -145,9 +123,6 @@ export function installDependencies(deps: Dependency[]): boolean {
   return true;
 }
 
-/**
- * Check all required dependencies
- */
 export function checkDependencies(options?: { display?: boolean }): DependencyCheckResult {
   const missing: string[] = [];
   const missingDeps: Dependency[] = [];
@@ -186,9 +161,6 @@ export function checkDependencies(options?: { display?: boolean }): DependencyCh
   };
 }
 
-/**
- * Display dependency check results (convenience wrapper)
- */
 export function displayDependencyStatus(): DependencyCheckResult {
   return checkDependencies({ display: true });
 }

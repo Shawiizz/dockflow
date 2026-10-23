@@ -38,9 +38,9 @@ export function failureOutcome(app: AppProgress, onFailure: HealthCheckConfig['o
 }
 
 /**
- * Remove images from all cluster nodes after a failed deployment.
- * Skipped when a registry was used — images live in the registry, not just on nodes.
- * Best-effort: the failed tasks' stopped containers go first; a running container keeps its image.
+ * Removes the images a failed deploy built from the nodes. Skipped when a registry was used: the
+ * images live there. Best-effort: the failed tasks' stopped containers go first; a running
+ * container keeps its image.
  */
 export async function cleanupFailedImages(
   buildResult: BuildResult,

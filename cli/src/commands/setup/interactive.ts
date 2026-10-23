@@ -18,9 +18,6 @@ import { displayConnectionInfo } from './connection';
 import { ensureSetupDependencies, completeSetup } from './flow';
 import type { HostConfig } from './types';
 
-/**
- * Run interactive setup wizard
- */
 export async function runInteractiveSetup(options?: { skipDockerInstall?: boolean; portFilter?: boolean }): Promise<void> {
   printIntro('Machine Setup Wizard');
   printBlank();
@@ -188,7 +185,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
       portFilter: true,
     }, privateKey);
     
-    return;  // Early return for display-only option
+    return;
   }
 
   printBlank();
@@ -219,7 +216,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
 
   if (!await confirm('Proceed with this configuration?', true)) {
     printWarning('Setup cancelled');
-    return;  // User cancelled
+    return;
   }
 
   if (needsUserSetup && deployPassword) {

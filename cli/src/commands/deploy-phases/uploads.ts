@@ -23,7 +23,7 @@ import type { UploadRollbackPlan } from './upload-paths';
 
 const UPLOAD_CONCURRENCY = 8;
 
-/** Work-stealing concurrency pool — N workers drain a shared task queue. */
+/** Work-stealing concurrency pool: N workers drain a shared task queue. */
 export async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: number): Promise<void> {
   let i = 0;
   const worker = async () => {
@@ -33,7 +33,6 @@ export async function runWithConcurrency(tasks: Array<() => Promise<void>>, limi
   await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
 }
 
-/** Stream a packDirToTarGz stream into an SSH channel. */
 async function streamDirToHost(
   srcDir: string,
   excludePatterns: string[],
@@ -62,10 +61,8 @@ function filterUploadsByService(ctx: DeployContext): UploadItem[] {
 }
 
 /**
- * Pre-flight permission check for upload destinations.
- * Runs before the build so permission errors surface immediately.
- * Verifies in a single SSH call per node that every destination
- * (or its nearest existing parent directory) is writable by the deploy user.
+ * Pre-flight check, run before the build so permission errors surface early: one SSH call per node
+ * verifies that every destination (or its nearest existing parent) is writable by the deploy user.
  */
 export async function checkUploadPermissions(ctx: DeployContext): Promise<void> {
   const filtered = filterUploadsByService(ctx);
@@ -143,7 +140,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
 
     const srcAbs = resolve(ctx.projectRoot, upload.src);
     const srcRel = relative(ctx.projectRoot, srcAbs).replace(/\\/g, '/');
-    // A plugin's rendered file exists only in memory, never on disk.
+    // a plugin's rendered file exists only in memory, never on disk
     const inMemory = ctx.rendered.has(srcRel);
     if (!inMemory && !existsSync(srcAbs)) {
       printWarning(`upload: source not found, skipping: ${uploadName(upload)}`);
@@ -153,12 +150,8 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
     const destBase = upload.dest.replace(/\/$/, '');
 
     if (!inMemory && statSync(srcAbs).isDirectory()) {
-      // -----------------------------------------------------------------------
-      // Directory upload
-      // -----------------------------------------------------------------------
       const excludePatterns = upload.exclude ?? [];
 
-      // Step 1: backup existing remote dir + ensure dest exists (all hosts in parallel)
       await Promise.all(plan.hosts.map(async hostState => {
         const { name, conn } = hostState;
         const backupPath = dirBackupPath(backupBaseDir, destBase);
@@ -185,12 +178,11 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         }
       }));
 
-      // Step 2: transfer
       const compress = upload.compress !== false;
       const compressFlag = compress ? '' : ' [no compression]';
 
       if (plan.hosts.length === 1) {
-        // Single host: stream directly into SSH — no RAM buffer
+        // single host: stream directly into SSH, no RAM buffer
         const { name, conn } = plan.hosts[0];
         const isExcluded = buildExcludeFilter(excludePatterns);
         const totalBytes = walkDir(srcAbs)
@@ -214,7 +206,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         if (upload.permissions) await sshExec(conn, `chmod -R ${upload.permissions} '${destBase}'`);
         if (upload.owner) await sshExec(conn, `chown -R ${upload.owner} '${destBase}'`);
       } else {
-        // Multiple hosts: stream independently to each host in parallel — no RAM buffer
+        // multiple hosts: stream independently to each host in parallel, no RAM buffer
         printDim(`upload: ${uploadName(upload)}/ -> ${destBase}/${compressFlag} [${plan.hosts.length} hosts]`);
         await Promise.all(plan.hosts.map(async ({ name, conn }) => {
           await streamDirToHost(srcAbs, excludePatterns, name, conn, destBase, compress);
@@ -224,15 +216,11 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         }));
       }
     } else {
-      // -----------------------------------------------------------------------
-      // Single file: parallel across hosts, batched mkdir
-      // -----------------------------------------------------------------------
       const destPath = resolveFileDestPath(upload.dest, basename(srcAbs));
       const backupPath = fileBackupPath(backupBaseDir, destPath);
       const renderedText = ctx.rendered.get(srcRel);
       const fileContent = renderedText !== undefined ? Buffer.from(renderedText) : readFileSync(srcAbs);
 
-      // Ensure destination and backup dirs exist on all hosts in one call each
       await Promise.all(plan.hosts.map(async ({ name, conn }) => {
         const r = await sshExec(conn, `mkdir -p '${dirname(destPath)}' '${dirname(backupPath)}'`);
         if (r.exitCode !== 0) throw new DeployError(

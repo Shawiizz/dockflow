@@ -1,15 +1,7 @@
 /**
- * Validate command
- *
- * Validates all .dockflow configuration files without connecting to any server.
- * Checks:
- *   - config.yml   schema + Zod validation
- *   - servers.yml  schema + Zod validation
- *   - docker-compose file existence
- *
- * Exit codes:
- *   0 — all checks passed
- *   60 — one or more validation errors (VALIDATION_FAILED)
+ * The `validate` command: checks the configuration files, the plugins and the compose files
+ * without connecting to any server. Exits 0 when everything passes, 60 (VALIDATION_FAILED) on any
+ * validation error.
  */
 
 import type { Command } from 'commander';
@@ -50,10 +42,7 @@ import {
   type UnknownKey,
 } from '../schemas';
 
-/**
- * Warn about keys the schema does not declare (Zod strips them silently, so a
- * typo means the setting is ignored without any error).
- */
+/** Warns about keys the schema does not declare: Zod strips them silently, so a typo is ignored without any error. */
 function warnUnknownKeys(filePath: string, finder: (data: unknown) => UnknownKey[]): void {
   let raw: unknown;
   try {
@@ -98,9 +87,7 @@ export function resolveValidateEnv(positional: string | undefined, flag: string 
   return positional ?? flag;
 }
 
-/**
- * Run all validation checks and return whether everything passed.
- */
+/** Runs every check, then throws a ValidationError if any failed. */
 async function runValidate(options: ValidateOptions): Promise<void> {
   loadSecrets();
 
@@ -112,8 +99,6 @@ async function runValidate(options: ValidateOptions): Promise<void> {
   printBlank();
 
   let hasErrors = false;
-
-  // ── 1. Project directory ────────────────────────────────────────────────────
 
   if (!flat && !existsSync(join(projectRoot, '.dockflow'))) {
     printError('No dockflow.yml or .dockflow/ directory found');
@@ -127,8 +112,6 @@ async function runValidate(options: ValidateOptions): Promise<void> {
 
   printInfo(`Project root: ${projectRoot} (${flat ? 'flat layout' : 'standard layout'})`);
   printBlank();
-
-  // ── 2. config / dockflow.yml ────────────────────────────────────────────────
 
   printSection(flat ? 'dockflow.yml' : 'config.yml');
 
@@ -157,9 +140,9 @@ async function runValidate(options: ValidateOptions): Promise<void> {
       const unusedRegistry = registryWithoutCredentials(config);
       if (unusedRegistry) printWarning(unusedRegistry);
 
-      // Expanded against the unrendered config: `with:` values that are templates
-      // pass through verbatim, which is enough to catch an unknown plugin, a
-      // missing input, a bad manifest or two uploads writing one path.
+      // expanded against the unrendered config: `with:` values that are templates pass through
+      // verbatim, which is enough to catch an unknown plugin, a missing input, a bad manifest or
+      // two uploads writing one path
       if (config.plugins?.length) {
         try {
           const expansion = await Plugin.expandPlugins(config.plugins, {
@@ -179,8 +162,6 @@ async function runValidate(options: ValidateOptions): Promise<void> {
 
   printBlank();
 
-  // ── 3. servers ──────────────────────────────────────────────────────────────
-
   printSection(flat ? 'servers (from dockflow.yml)' : 'servers.yml');
 
   if (!flat && !existsSync(serversPath)) {
@@ -192,7 +173,7 @@ async function runValidate(options: ValidateOptions): Promise<void> {
       // loadServersConfig already printed the validation errors
       hasErrors = true;
     } else {
-      // Derive environments from server tags
+      // environments are the tags of the servers
       const tagMap: Record<string, { managers: number; workers: number }> = {};
       for (const server of Object.values(servers.servers)) {
         for (const tag of server.tags) {
@@ -206,12 +187,11 @@ async function runValidate(options: ValidateOptions): Promise<void> {
       }
       const envNames = Object.keys(tagMap);
       printSuccess(`${flat ? 'dockflow.yml' : 'servers.yml'} — OK (${envNames.length} environment(s): ${envNames.join(', ')})`);
-      // Flat layout: dockflow.yml was already checked above (root schema covers servers)
+      // flat layout: dockflow.yml was already checked above (the root schema covers servers)
       if (!flat) {
         warnUnknownKeys(serversPath, findUnknownServersKeys);
       }
 
-      // If --env specified, check that env exists
       if (options.env) {
         if (!tagMap[options.env]) {
           printError(`Environment "${options.env}" not found in servers.yml`);
@@ -227,8 +207,6 @@ async function runValidate(options: ValidateOptions): Promise<void> {
 
   printBlank();
 
-  // ── 4. Docker Compose file ──────────────────────────────────────────────────
-
   printSection('docker-compose');
 
   const composePath = getComposePath();
@@ -239,8 +217,8 @@ async function runValidate(options: ValidateOptions): Promise<void> {
     printSuccess(`docker-compose found: ${composePath.replace(projectRoot, '.')}`);
   }
 
-  // Shell-style placeholders resolve to an empty string at deploy time, which is silent
-  // in production — so validate treats them as an error rather than a warning.
+  // shell-style placeholders resolve to an empty string at deploy time, which is silent in
+  // production: validate treats them as an error rather than a warning
   const declaredKeys = collectDeclaredEnvKeys();
   for (const stackFile of [composePath, getAccessoriesPath()]) {
     if (!stackFile) continue;
@@ -259,8 +237,6 @@ async function runValidate(options: ValidateOptions): Promise<void> {
   }
 
   printBlank();
-
-  // ── 5. Result ───────────────────────────────────────────────────────────────
 
   if (hasErrors) {
     throw new ValidationError(

@@ -15,8 +15,6 @@ import type { Command } from 'commander';
 import { printBlank, printInfo, printRaw } from '../utils/output';
 import { withErrorHandler } from '../utils/errors';
 
-// ─── Dynamic command tree discovery ───────────────────────────────────────────
-
 interface CommandTree {
   /** All top-level command names */
   topLevel: string[];
@@ -30,7 +28,7 @@ function discoverCommands(program: Command): CommandTree {
 
   for (const cmd of program.commands) {
     const name = cmd.name();
-    // Skip the auto-generated help command — it's always available via --help
+    // the auto-generated help command is always available
     if (name === 'help') continue;
     topLevel.push(name);
 
@@ -43,8 +41,6 @@ function discoverCommands(program: Command): CommandTree {
 
   return { topLevel, subcommands };
 }
-
-// ─── Shell script generators ───────────────────────────────────────────────────
 
 function bashScript(tree: CommandTree): string {
   const topJoined = tree.topLevel.join(' ');
@@ -153,8 +149,6 @@ ${subCompletions}
 `;
 }
 
-// ─── Command registration ──────────────────────────────────────────────────────
-
 export function registerCompletionCommand(program: Command): void {
   program
     .command('completion [shell]')
@@ -162,7 +156,7 @@ export function registerCompletionCommand(program: Command): void {
     .helpGroup('Other')
     .action(
       withErrorHandler(async (shell?: string) => {
-        // Discover at action time — all commands are registered by then
+        // discover at action time: all commands are registered by then
         const tree = discoverCommands(program);
         const target = (shell ?? '').toLowerCase();
 

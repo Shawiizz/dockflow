@@ -1,13 +1,6 @@
 /**
- * Setup Swarm Command
- * 
- * Initializes a Docker Swarm cluster:
- * - Initializes Swarm on the manager node
- * - Opens firewall ports for Swarm communication
- * - Joins worker nodes to the cluster
- * 
- * This command should be run once before the first deployment
- * to set up the cluster topology.
+ * `setup swarm`: initializes Swarm on the manager, opens the firewall ports and joins the workers.
+ * Run once before the first deploy.
  */
 
 import { printIntro, printOutro, printNote, printError, printInfo, printWarning, printBlank, printRaw, createSpinner } from '../../utils/output';
@@ -23,9 +16,6 @@ import { loadSecrets } from '../../utils/secrets';
 import { openPorts } from './firewall';
 import type { SSHKeyConnection, ResolvedServer } from '../../types';
 
-/**
- * Swarm ports that need to be open
- */
 const SWARM_PORTS = [
   { port: 2377, protocol: 'tcp', description: 'Cluster management' },
   { port: 7946, protocol: 'tcp', description: 'Node communication' },
@@ -33,9 +23,6 @@ const SWARM_PORTS = [
   { port: 4789, protocol: 'udp', description: 'Overlay network' },
 ];
 
-/**
- * Build SSH connection from resolved server
- */
 function buildConnection(env: string, server: ResolvedServer): SSHKeyConnection | null {
   const privateKey = getServerPrivateKey(env, server.name);
   if (!privateKey) {
@@ -78,15 +65,13 @@ async function warnIfAdvertisedElsewhere(connection: SSHKeyConnection, server: R
   }
 }
 
-/**
- * Open firewall ports for Swarm (delegates to shared helper)
- */
 async function openSwarmPorts(connection: SSHKeyConnection, serverName: string): Promise<boolean> {
   return openPorts(connection, serverName, SWARM_PORTS);
 }
 
 /**
- * Initialize Swarm on manager and return join token + internal IP for workers to join
+ * Initializes Swarm on the manager, or reuses the one running. Returns the worker join token and
+ * the address workers join through; null, after failing the spinner, when that cannot be done.
  */
 export async function initializeSwarm(
   connection: SSHKeyConnection, 
@@ -98,22 +83,19 @@ export async function initializeSwarm(
   spinner.start(`Initializing Docker Swarm on ${managerName}...`);
   
   try {
-    // Determine the IP for workers to join
     let internalIp: string;
     
     if (managerHost !== 'localhost' && managerHost !== '127.0.0.1') {
-      // Production: use the configured host (real IP or hostname)
       internalIp = managerHost;
     } else {
-      // Dev/E2E mode with localhost: detect internal IP
-      // In Docker-in-Docker, we need to find the IP on the shared network
-      // Exclude 172.17.x.x (default Docker bridge) and take the last remaining IP
+      // dev and E2E run against localhost; in Docker-in-Docker the nodes meet on the shared network,
+      // so take the last address that is not on the default bridge (172.17.x.x)
       const ipResult = await sshExec(connection, 
         "hostname -I | tr ' ' '\\n' | grep -v '^172\\.17\\.' | grep -v '^$' | tail -1"
       );
       internalIp = ipResult.stdout.trim();
       
-      // Fallback: if no IP found after filtering, try the simple approach
+      // nothing left after the filter: take the last address
       if (!internalIp) {
         const fallbackResult = await sshExec(connection, "hostname -I | awk '{print $NF}'");
         internalIp = fallbackResult.stdout.trim();
@@ -125,12 +107,10 @@ export async function initializeSwarm(
       }
     }
 
-    // Check current swarm state
     const stateResult = await sshExec(connection, "docker info --format '{{.Swarm.LocalNodeState}}'");
     const state = stateResult.stdout.trim();
     
     if (state === 'active') {
-      // Already in a swarm, get the join token
       const tokenResult = await sshExec(connection, 'docker swarm join-token worker -q');
       const token = tokenResult.stdout.trim();
       spinner.succeed(`Docker Swarm already active on ${managerName}`);
@@ -138,7 +118,6 @@ export async function initializeSwarm(
       return { token, internalIp };
     }
     
-    // Initialize new swarm
     const initResult = await sshExec(connection, 
       `docker swarm init --advertise-addr ${shellQuote(internalIp)} 2>&1`
     );
@@ -148,7 +127,6 @@ export async function initializeSwarm(
       return null;
     }
     
-    // Get join token
     const tokenResult = await sshExec(connection, 'docker swarm join-token worker -q');
     const token = tokenResult.stdout.trim();
     
@@ -160,9 +138,6 @@ export async function initializeSwarm(
   }
 }
 
-/**
- * Join a worker to the swarm
- */
 async function joinWorkerToSwarm(
   connection: SSHKeyConnection,
   worker: ResolvedServer,
@@ -174,7 +149,6 @@ async function joinWorkerToSwarm(
   spinner.start(`Joining ${workerName} to Swarm cluster...`);
   
   try {
-    // Check if already in swarm
     const stateResult = await sshExec(connection, "docker info --format '{{.Swarm.LocalNodeState}}'");
     const state = stateResult.stdout.trim();
     
@@ -189,7 +163,6 @@ async function joinWorkerToSwarm(
       await sshExec(connection, 'docker swarm leave --force 2>/dev/null || true');
     }
     
-    // Join the swarm
     const joinResult = await sshExec(connection, swarmJoinCommand(joinToken, managerHost, worker.privateHost));
     
     if (joinResult.exitCode !== 0) {
@@ -264,9 +237,6 @@ async function waitForReadyNodes(connection: SSHKeyConnection, expected: number)
   return `${last.ready} of ${expected} node(s) Ready after 60s${last.notReady.length > 0 ? `; not ready: ${last.notReady.join(', ')}` : ''}`;
 }
 
-/**
- * Display cluster status
- */
 async function displayClusterStatus(connection: SSHKeyConnection): Promise<void> {
   printBlank();
   printInfo('Cluster Status:');
@@ -279,17 +249,12 @@ async function displayClusterStatus(connection: SSHKeyConnection): Promise<void>
   }
 }
 
-/**
- * Run the setup swarm command
- */
 export async function runSetupSwarm(env: string): Promise<void> {
-  // Load secrets from .env.dockflow or CI environment
   loadSecrets();
 
   printIntro(`Setting up Docker Swarm cluster for ${env}`);
   printBlank();
 
-  // Check servers.yml exists
   if (!hasServersConfig()) {
     throw new CLIError(
       'No servers configuration found. Create dockflow.yml or .dockflow/servers.yml to define your cluster.',
@@ -297,7 +262,6 @@ export async function runSetupSwarm(env: string): Promise<void> {
     );
   }
 
-  // Resolve deployment
   const deployment = resolveDeploymentForEnvironment(env);
   if (!deployment) {
     const availableEnvs = getAvailableEnvironments();
@@ -321,7 +285,6 @@ export async function runSetupSwarm(env: string): Promise<void> {
   }
   printBlank();
 
-  // Build manager connection
   const managerConnection = buildConnection(env, manager);
   if (!managerConnection) {
     throw new ConnectionError(
@@ -330,7 +293,7 @@ export async function runSetupSwarm(env: string): Promise<void> {
     );
   }
 
-  // Step 1: Open ports on all nodes, which no other node uses on a single-node cluster
+  // a single-node cluster has no other node to reach it: no port to open
   if (workers.length === 0) {
     printInfo('Step 1/3: No firewall port to open (single-node cluster: no other node connects to it)');
   } else {
@@ -346,7 +309,6 @@ export async function runSetupSwarm(env: string): Promise<void> {
   }
   printBlank();
 
-  // Step 2: Initialize Swarm on manager
   printInfo('Step 2/3: Initializing Swarm on manager...');
   const swarmInit = await initializeSwarm(managerConnection, manager);
   if (!swarmInit) {
@@ -358,11 +320,10 @@ export async function runSetupSwarm(env: string): Promise<void> {
   const { token: joinToken, internalIp: managerInternalIp } = swarmInit;
   printBlank();
 
-  // Step 3: Join workers
   let failedWorkers: WorkerFailure[] = [];
   if (workers.length > 0) {
     printInfo('Step 3/3: Joining workers to cluster...');
-    // Use the manager's internal IP for swarm join (not the external SSH host)
+    // workers join through the manager's internal address, not the SSH host
     failedWorkers = await joinWorkers(workers, (worker) => buildConnection(env, worker), managerInternalIp, joinToken);
   } else {
     printInfo('Step 3/3: No workers to join (single-node cluster)');
@@ -372,7 +333,6 @@ export async function runSetupSwarm(env: string): Promise<void> {
   const expected = 1 + workers.length - failedWorkers.length;
   const notReady = expected > 1 ? await waitForReadyNodes(managerConnection, expected) : null;
 
-  // Display final status
   await displayClusterStatus(managerConnection);
 
   requireAllJoined(env, failedWorkers);

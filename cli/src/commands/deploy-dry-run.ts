@@ -1,6 +1,5 @@
 /**
- * Dry-run display for deploy command
- * Shows what would be deployed without executing
+ * The dry-run display of `deploy`: what would be deployed, without executing anything.
  */
 
 import { colors, printWarning, printDim, printBlank, printRaw, printInfo } from '../utils/output';
@@ -30,9 +29,6 @@ interface DeployDryRunOptions {
   pluginSummary: string[];
 }
 
-/**
- * Display dry-run summary for deploy command
- */
 export function displayDeployDryRun(options: DeployDryRunOptions): void {
   const {
     env,
@@ -56,7 +52,6 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
   printWarning('═'.repeat(60));
   printBlank();
 
-  // Deployment Summary
   printRaw(colors.info(colors.bold('Deployment Summary:')));
   printDim('─'.repeat(40));
   printRaw(`  ${colors.bold('Environment:')}     ${env}`);
@@ -65,7 +60,6 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
   printRaw(`  ${colors.bold('Project Root:')}    ${projectRoot}`);
   printBlank();
 
-  // Target Servers
   printRaw(colors.info(colors.bold('Target Servers:')));
   printDim('─'.repeat(40));
   printRaw(`  ${colors.bold('Manager:')}         ${manager.name} (${manager.host}:${manager.port})`);
@@ -80,7 +74,6 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
   }
   printBlank();
 
-  // Deployment Options
   printRaw(colors.info(colors.bold('Deployment Options:')));
   printDim('─'.repeat(40));
   printRaw(`  ${colors.bold('Deploy App:')}      ${deployApp}`);
@@ -92,7 +85,6 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
   }
   printBlank();
 
-  // Plugins, uploads and hooks — what the deploy would transfer and run
   if (pluginSummary.length > 0) {
     printRaw(colors.info(colors.bold('Plugins:')));
     printDim('─'.repeat(40));
@@ -120,7 +112,6 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
     printBlank();
   }
 
-  // Environment Variables
   printRaw(colors.info(colors.bold('Environment Variables:')));
   printDim('─'.repeat(40));
   const envVars = Object.entries(manager.env);
@@ -134,7 +125,6 @@ export function displayDeployDryRun(options: DeployDryRunOptions): void {
   }
   printBlank();
 
-  // Footer
   printWarning('═'.repeat(60));
   printWarning('  To execute this deployment, remove the --dry-run flag');
   printWarning('═'.repeat(60));

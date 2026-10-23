@@ -1,7 +1,6 @@
 /**
- * Pure helpers for the remote setup flow: building the flag list forwarded to
- * the remote `dockflow setup` invocation, and resolving and verifying the
- * binary download. Unit-tested in __tests__/setup-forward.test.ts.
+ * Pure helpers for the remote setup flow: the flags forwarded to the remote `dockflow setup`, and
+ * the binary download and its verification. Unit-tested in __tests__/setup-forward.test.ts.
  */
 
 import { readFileSync } from 'fs';
@@ -10,11 +9,8 @@ import { CLIError, ErrorCode } from '../../utils/errors';
 import type { SetupOptions } from './types';
 
 /**
- * Build the flags forwarded to the remote `dockflow setup` command.
- *
- * Identity flags (--user, --host, --port) are forwarded so a dedicated deploy
- * user can be created non-interactively over SSH; --host defaults to the host
- * being provisioned. Values are single-quoted. The deploy user's password is not a flag: it would
+ * The flags forwarded to the remote `dockflow setup`. --user, --host and --port go along so a
+ * dedicated deploy user can be created over SSH. The deploy user's password is not a flag: it would
  * show in the server's process list, so it goes through a file (`--password-file`).
  */
 export function buildForwardFlags(
@@ -33,8 +29,7 @@ export function buildForwardFlags(
     flags.push('--generate-key');
   }
 
-  // The public host/port of the connection string default to what we are
-  // connected to — overridable with explicit --host/--port.
+  // the public host and port of the connection string default to the host being provisioned
   flags.push('--host', quote(options.host || remote.host));
   flags.push('--port', quote(options.port || String(remote.port)));
 
@@ -49,9 +44,8 @@ export function isDevVersion(version: string): boolean {
 }
 
 /**
- * Resolve the download URL for the server-side binary.
- * Pinned to this CLI's version so the binary that provisions the server is
- * the same one the operator runs; dev builds fall back to the latest release.
+ * The download URL of the server-side binary, pinned to this CLI's version so the binary that
+ * provisions the server is the one the operator runs; dev builds fall back to the latest release.
  */
 export function buildBinaryDownloadUrl(
   releaseLatestUrl: string,
