@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { sshExec, shellQuote } from '../../utils/ssh';
+import { sshExec, sh } from '../../utils/ssh';
 import type { SSHKeyConnection } from '../../types/connection';
 import { createEnvLock, type Lock } from '../../services/lock';
 import { stopIfInterrupted, withDeployLock } from '../with-lock';
@@ -39,7 +39,7 @@ interface NodeVolumes {
 /** A local volume lives on the node that ran its task: every node is asked. */
 async function listStackVolumes(nodes: readonly NodeRef[], stackName: string): Promise<NodeVolumes[]> {
   const listed = await onEveryNode(nodes, async (node) => {
-    const result = await sshExec(node.connection, `docker volume ls --filter ${shellQuote(`label=com.docker.stack.namespace=${stackName}`)} --format '{{.Name}}'`);
+    const result = await sshExec(node.connection, sh`docker volume ls --filter ${`label=com.docker.stack.namespace=${stackName}`} --format '{{.Name}}'`);
     if (result.exitCode !== 0) throw new DockerError(result.stderr.trim() || `exit ${result.exitCode}`);
     return result.stdout.trim().split('\n').filter(Boolean);
   });
@@ -76,7 +76,7 @@ export async function removeAccessories(
   if (services.length > 0) {
     printWarning('The following services will be removed:');
     const servicesResult = await sshExec(connection,
-      `docker stack services ${stackName} --format "{{.Name}}\t{{.Replicas}}"`
+      sh`docker stack services ${stackName} --format "{{.Name}}\t{{.Replicas}}"`
     );
     for (const line of servicesResult.stdout.trim().split('\n')) {
       const [name, replicas] = line.split('\t');
@@ -133,7 +133,7 @@ export async function removeAccessories(
     }
 
     // The next deploy compares against this hash: without it, it redeploys the accessories.
-    await sshExec(connection, `rm -rf ${shellQuote(`${DOCKFLOW_ACCESSORIES_DIR}/${appStackName}`)}`);
+    await sshExec(connection, sh`rm -rf ${`${DOCKFLOW_ACCESSORIES_DIR}/${appStackName}`}`);
 
     if (options.volumes) {
       if (signal) stopIfInterrupted(signal, 'deleting the volumes');
@@ -158,7 +158,7 @@ async function removeStack(connection: SSHKeyConnection, stackName: string): Pro
   const spinner = createSpinner();
   spinner.start('Removing accessories stack...');
 
-  const result = await sshExec(connection, `docker stack rm ${shellQuote(stackName)}`);
+  const result = await sshExec(connection, sh`docker stack rm ${stackName}`);
   if (result.exitCode !== 0) {
     spinner.fail('Remove failed');
     throw new DockerError(result.stderr || 'Failed to remove stack');
@@ -167,7 +167,7 @@ async function removeStack(connection: SSHKeyConnection, stackName: string): Pro
   spinner.text = 'Waiting for stack removal...';
   for (let attempts = 0; attempts < STACK_REMOVAL_MAX_ATTEMPTS; attempts++) {
     const checkResult = await sshExec(connection,
-      `docker stack ps ${shellQuote(stackName)} 2>&1 | grep -v "Nothing found" | wc -l`
+      sh`docker stack ps ${stackName} 2>&1 | grep -v "Nothing found" | wc -l`
     );
     if (parseInt(checkResult.stdout.trim(), 10) <= 1) {
       spinner.succeed('Accessories stack removed');
@@ -184,8 +184,8 @@ async function removeStack(connection: SSHKeyConnection, stackName: string): Pro
 
 /** Waits up to a minute for the stack's containers to leave the node: until then they hold their volumes. */
 export function containersGoneCommand(stackName: string): string {
-  const filter = shellQuote(`label=com.docker.stack.namespace=${stackName}`);
-  return `for i in $(seq 1 30); do [ -z "$(docker ps -aq --filter ${filter})" ] && exit 0; sleep 2; done; exit 1`;
+  const filter = `label=com.docker.stack.namespace=${stackName}`;
+  return sh`for i in $(seq 1 30); do [ -z "$(docker ps -aq --filter ${filter})" ] && exit 0; sleep 2; done; exit 1`;
 }
 
 async function removeVolumes(env: string, stackName: string, found: NodeVolumes[]): Promise<void> {
@@ -199,7 +199,7 @@ async function removeVolumes(env: string, stackName: string, found: NodeVolumes[
   for (const { node, volumes } of found) {
     await sshExec(node.connection, containersGoneCommand(stackName));
     for (const vol of volumes) {
-      const rmResult = await sshExec(node.connection, `docker volume rm ${shellQuote(vol)}`);
+      const rmResult = await sshExec(node.connection, sh`docker volume rm ${vol}`);
       if (rmResult.exitCode !== 0) {
         failed.push(`${vol} on ${node.name}: ${rmResult.stderr.trim() || `exit ${rmResult.exitCode}`}`);
       }

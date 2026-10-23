@@ -2,7 +2,7 @@
 
 import type { SSHKeyConnection } from '../../types/connection';
 import { getAccessoriesStackName } from '../../utils/config';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { runDockerQuery } from '../../services/swarm/docker';
 import { DockerError, ErrorCode } from '../../utils/errors';
 
@@ -27,7 +27,7 @@ export async function validateAccessoriesStack(
     return { exists: false, stackName, services: [] };
   }
 
-  const services = (await runDockerQuery(connection, `docker stack services ${shellQuote(stackName)} --format '{{.Name}}'`, 'docker stack services') ?? '')
+  const services = (await runDockerQuery(connection, sh`docker stack services ${stackName} --format '{{.Name}}'`, 'docker stack services') ?? '')
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
@@ -61,7 +61,7 @@ export async function validateAccessoryService(
   const fullServiceName = `${stackName}_${service}`;
 
   const checkResult = await sshExec(connection,
-    `docker service ls --filter "name=${fullServiceName}" --format "{{.Name}}"`
+    sh`docker service ls --filter ${`name=${fullServiceName}`} --format "{{.Name}}"`
   );
 
   return checkResult.stdout.trim() !== '';
@@ -77,7 +77,7 @@ export async function requireAccessoryService(
 
   if (!exists) {
     const servicesResult = await sshExec(connection,
-      `docker stack services ${stackName} --format "{{.Name}}" | sed 's/${stackName}_//'`
+      sh`docker stack services ${stackName} --format "{{.Name}}" | sed ${`s/${stackName}_//`}`
     );
 
     const available = servicesResult.stdout.trim()

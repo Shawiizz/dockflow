@@ -1,7 +1,7 @@
 /** `dockflow details`: the stack's services, the cluster nodes and the resource usage of its containers on every node. */
 
 import type { Command } from 'commander';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { printSection, printIntro, printNote, printDebug, printRaw, printWarning, colors } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { CLIError, DockerError, withServicesRequired } from '../../utils/errors';
@@ -23,7 +23,7 @@ export function registerDetailsCommand(program: Command): void {
         printSection('Services');
         const servicesResult = await sshExec(
           connection,
-          `docker stack services ${shellQuote(stackName)} --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"`
+          sh`docker stack services ${stackName} --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"`
         );
         printRaw(servicesResult.stdout);
 
@@ -37,7 +37,7 @@ export function registerDetailsCommand(program: Command): void {
           // without ids docker stats would list every container of the node
           const result = await sshExec(
             node.connection,
-            `ids=$(docker ps -q --filter ${shellQuote(`label=com.docker.stack.namespace=${stackName}`)}); ` +
+            sh`ids=$(docker ps -q --filter ${`label=com.docker.stack.namespace=${stackName}`}); ` +
               `[ -z "$ids" ] || docker stats --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}" $ids`,
           );
           if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `exit ${result.exitCode}`);

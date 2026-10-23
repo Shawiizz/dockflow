@@ -3,6 +3,7 @@
  */
 
 import { jsonResponse, errorResponse } from '../server';
+import { sh } from '../../utils/ssh';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { printDebug } from '../../utils/output';
 import { getManagerConnection, getAllNodeConnections, resolveEnvironment, parseIntParam } from './_helpers';
@@ -50,7 +51,7 @@ async function getDeployHistory(url: URL): Promise<Response> {
   try {
     // read a margin over the limit (malformed lines are skipped when parsing); any node can
     // answer, the history is replicated between them
-    const cmd = `tail -n ${limit * 2} "${metricsPath}" 2>/dev/null || echo ""`;
+    const cmd = sh`tail -n ${limit * 2} ${metricsPath} 2>/dev/null || echo ""`;
     const nodeConnections = getAllNodeConnections(env);
     const connections = nodeConnections.length > 0 ? nodeConnections : [conn];
     const result = await sshExecWithFallback(connections, cmd);

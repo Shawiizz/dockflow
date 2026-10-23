@@ -87,6 +87,12 @@ describe('removeAccessories', () => {
   });
 });
 
+describe('containersGoneCommand', () => {
+  it('quotes the stack name as the value of the label filter', () => {
+    expect(containersGoneCommand('a b; c')).toContain(`--filter 'label=com.docker.stack.namespace=a b; c')`);
+  });
+});
+
 describe.if(process.platform !== 'win32')('containersGoneCommand in a real shell', () => {
   it('returns once docker lists no container of the stack any more', async () => {
     const { mkdtempSync, writeFileSync, rmSync } = await import('fs');

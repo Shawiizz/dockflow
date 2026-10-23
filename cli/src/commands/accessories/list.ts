@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import { getLayout } from '../../utils/config';
-import { sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { printInfo, printIntro, printSection, printBlank, printJSON, printDim, printRaw, colors } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { validateAccessoriesStack } from './utils';
@@ -82,7 +82,7 @@ export function registerAccessoriesListCommand(program: Command): void {
         const { stackName } = validation;
 
         const format = '{{.Name}}\t{{.Mode}}\t{{.Replicas}}\t{{.Image}}\t{{.Ports}}';
-        const listCmd = `docker stack services ${stackName} --format "${format}"`;
+        const listCmd = sh`docker stack services ${stackName} --format ${format}`;
 
         const result = await sshExec(connection, listCmd);
 
@@ -122,7 +122,7 @@ export function registerAccessoriesListCommand(program: Command): void {
         printBlank();
 
         const volumesResult = await sshExec(connection,
-          `docker volume ls --filter "label=com.docker.stack.namespace=${stackName}" --format "{{.Name}}"`
+          sh`docker volume ls --filter ${`label=com.docker.stack.namespace=${stackName}`} --format "{{.Name}}"`
         );
 
         if (volumesResult.stdout.trim()) {

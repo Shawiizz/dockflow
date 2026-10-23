@@ -14,7 +14,7 @@ type PruneTarget = 'containers' | 'images' | 'volumes' | 'networks';
 
 const PRUNE_COMMANDS: Record<PruneTarget, (all: boolean) => string> = {
   containers: () => 'docker container prune -f',
-  images: (all) => `docker image prune -f${all ? ' -a' : ''}`,
+  images: (all) => (all ? 'docker image prune -f -a' : 'docker image prune -f'),
   volumes: () => 'docker volume prune -f',
   networks: () => 'docker network prune -f',
 };

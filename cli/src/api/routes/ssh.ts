@@ -15,7 +15,7 @@ import {
 import { normalizePrivateKey } from '../../utils/ssh-keys';
 import { DEFAULT_SSH_PORT, SSH_READY_TIMEOUT_MS, SSH_KEEPALIVE_INTERVAL_MS } from '../../constants';
 import { getStackName, getAccessoriesStackName } from '../../utils/config';
-import { shellQuote } from '../../utils/ssh';
+import { sh } from '../../utils/ssh';
 import { hostKeyCheck, type HostKeyCheck } from '../../utils/host-key';
 import { findSwarmContainer } from '../../services/swarm/docker';
 import type { SSHKeyConnection } from '../../types';
@@ -205,7 +205,7 @@ export const sshWebSocketHandlers = {
 
           client.on('ready', () => {
             client.exec(
-              `docker exec -it ${shellQuote(target.containerId)} /bin/sh`,
+              sh`docker exec -it ${target.containerId} /bin/sh`,
               { pty: { term: 'xterm-256color', rows: 24, cols: 80 } },
               (execErr, execStream) => {
                 if (execErr) {

@@ -6,7 +6,7 @@
 import type { SSHKeyConnection } from '../../types';
 import { SwarmStack } from '../../services/swarm/stack';
 import { getAccessoriesStackName } from '../../utils/config';
-import { sshExec, shellQuote } from '../../utils/ssh';
+import { sshExec, sh } from '../../utils/ssh';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import { qualifyServiceName } from '../../services/swarm/docker';
 
@@ -57,7 +57,7 @@ export async function requireAppService(
   const accessories = getAccessoriesStackName(env);
   let isAccessory = false;
   if (accessories) {
-    const listed = await sshExec(connection, `docker stack services ${shellQuote(accessories)} --format '{{.Name}}' 2>/dev/null`);
+    const listed = await sshExec(connection, sh`docker stack services ${accessories} --format '{{.Name}}' 2>/dev/null`);
     isAccessory = listed.stdout.split('\n').map((line) => line.trim()).includes(`${accessories}_${service}`);
   }
   throw unknownServiceError(env, stackName, service, services, isAccessory, command);
@@ -69,7 +69,7 @@ export type ServiceMode = 'replicated' | 'global' | 'replicated-job' | 'global-j
 export async function serviceMode(connection: SSHKeyConnection, stackName: string, service: string): Promise<ServiceMode> {
   const result = await sshExec(
     connection,
-    `docker service inspect ${shellQuote(qualifyServiceName(stackName, service))} --format '{{if .Spec.Mode.Global}}global{{else if .Spec.Mode.GlobalJob}}global-job{{else if .Spec.Mode.ReplicatedJob}}replicated-job{{else}}replicated{{end}}'`,
+    sh`docker service inspect ${qualifyServiceName(stackName, service)} --format '{{if .Spec.Mode.Global}}global{{else if .Spec.Mode.GlobalJob}}global-job{{else if .Spec.Mode.ReplicatedJob}}replicated-job{{else}}replicated{{end}}'`,
   );
   const mode = result.stdout.trim();
   return mode === 'global' || mode === 'global-job' || mode === 'replicated-job' ? mode : 'replicated';

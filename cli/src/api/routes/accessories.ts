@@ -3,7 +3,7 @@
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, getAccessoriesStackName, getLayout } from '../../utils/config';
 import { getManagerConnection, resolveEnvironment, isValidDockerName, parseIntParam } from './_helpers';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { readServiceLogs, resolvePartialStates, stateFromReplicas } from './services';
 import * as Compose from '../../services/compose';
 import type { AccessoryInfo, AccessoriesResponse, ServiceInfo } from '../types';
@@ -140,7 +140,7 @@ async function getAccessoriesStatus(url: URL): Promise<Response> {
   }));
 
   try {
-    const command = `docker service ls --filter ${shellQuote(`label=com.docker.stack.namespace=${accStackName}`)} --format '{{.Name}}|{{.Replicas}}|{{.Mode}}'`;
+    const command = sh`docker service ls --filter ${`label=com.docker.stack.namespace=${accStackName}`} --format '{{.Name}}|{{.Replicas}}|{{.Mode}}'`;
     const result = await sshExec(conn, command);
 
     if (result.exitCode === 0 && result.stdout.trim()) {
@@ -194,7 +194,7 @@ async function restartAccessory(name: string, url: URL): Promise<Response> {
   if (!accStackName) return errorResponse('Cannot determine accessories stack name', 500);
 
   try {
-    const result = await sshExec(conn, `docker service update --force --detach ${accStackName}_${name}`);
+    const result = await sshExec(conn, sh`docker service update --force --detach ${`${accStackName}_${name}`}`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,
@@ -223,7 +223,7 @@ async function stopAccessory(name: string, url: URL): Promise<Response> {
   if (!accStackName) return errorResponse('Cannot determine accessories stack name', 500);
 
   try {
-    const result = await sshExec(conn, `docker service scale --detach ${accStackName}_${name}=0`);
+    const result = await sshExec(conn, sh`docker service scale --detach ${`${accStackName}_${name}`}=0`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,

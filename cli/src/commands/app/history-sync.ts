@@ -5,7 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { sshShell, type RemoteShell } from '../../utils/remote-shell';
 import { printSuccess, printInfo, printBlank, printWarning, printDebug, createSpinner } from '../../utils/output';
 import { validateEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
@@ -28,8 +28,8 @@ async function readNodeHistory(
     const metricsFile = `${DOCKFLOW_METRICS_DIR}/${stackName}/deployments.json`;
 
     const [auditResult, metricsResult] = await Promise.all([
-      sshExec(conn, `cat "${auditFile}" 2>/dev/null || echo ""`),
-      sshExec(conn, `cat "${metricsFile}" 2>/dev/null || echo ""`),
+      sshExec(conn, sh`cat ${auditFile} 2>/dev/null || echo ""`),
+      sshExec(conn, sh`cat ${metricsFile} 2>/dev/null || echo ""`),
     ]);
 
     return {
@@ -55,7 +55,7 @@ export async function writeNodeHistory(
 
     // the content goes on stdin: a history is no command-line argument (size limit, process list)
     const write = async (dir: string, file: string, content: string): Promise<boolean> =>
-      (await shell.run(`mkdir -p ${shellQuote(dir)} && cat > ${shellQuote(file)}`, `${content}\n`)).exitCode === 0;
+      (await shell.run(sh`mkdir -p ${dir} && cat > ${file}`, `${content}\n`)).exitCode === 0;
     if (auditContent && !(await write(DOCKFLOW_AUDIT_DIR, auditFile, auditContent))) return false;
     if (metricsContent && !(await write(metricsDir, metricsFile, metricsContent))) return false;
     return true;

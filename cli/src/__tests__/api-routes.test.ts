@@ -171,6 +171,13 @@ describe('prune targets', () => {
 
 describe('statsCommand', () => {
   const stacks = ['shop-production', 'shop-production-accessories'];
+
+  it('quotes the stack names as values, and leaves the shell syntax of the command live', () => {
+    const command = statsCommand(["a'; rm -rf /; '", 'b']);
+    expect(command).toContain(`--filter 'label=com.docker.stack.namespace=a'\\''; rm -rf /; '\\'''`);
+    expect(command).toContain(`printf '%s\n' "$c0" "$c1" | grep '^C|'`);
+  });
+
   const fakeDocker = (body: string) => `docker() {\n${body}\n}\n`;
 
   const workingDocker = fakeDocker(`

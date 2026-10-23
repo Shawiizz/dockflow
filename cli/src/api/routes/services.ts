@@ -3,7 +3,7 @@
 import { jsonResponse, errorResponse } from '../server';
 import { getAccessoriesStackName, getStackName, loadConfig } from '../../utils/config';
 import { getAvailableEnvironments } from '../../utils/servers';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { arrangeLogLines, parseDockerLogLines } from '../../utils/docker-logs';
 import type { SSHExecResult } from '../../types';
 import { createEnvLock, type Lock } from '../../services/lock';
@@ -143,7 +143,7 @@ export async function resolvePartialStates(
     partial.map(async (service) => {
       const result = await exec(
         conn,
-        `docker service ps ${shellQuote(service.name)} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
+        sh`docker service ps ${service.name} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
       );
       const taskStates = result.stdout.trim().split('\n').filter(Boolean);
       const hasFailure = taskStates.some((state) => classifyTaskState(state) === 'failed');
@@ -157,7 +157,7 @@ export async function resolvePartialStates(
  * where `--filter name=` is a prefix match that also lists other environments and the accessories.
  */
 export function serviceListCommand(stackName: string): string {
-  return `docker service ls --filter ${shellQuote(`label=com.docker.stack.namespace=${stackName}`)} --format "table {{.ID}}  {{.Name}}  {{.Mode}}  {{.Replicas}}  {{.Image}}  {{.Ports}}"`;
+  return sh`docker service ls --filter ${`label=com.docker.stack.namespace=${stackName}`} --format "table {{.ID}}  {{.Name}}  {{.Mode}}  {{.Replicas}}  {{.Image}}  {{.Ports}}"`;
 }
 
 async function listServices(url: URL): Promise<Response> {
@@ -219,7 +219,7 @@ async function restartService(serviceName: string, url: URL): Promise<Response> 
   try {
     const target = await resolveRequestedService(conn, env, serviceName);
     if (!target) return errorResponse(`Service ${serviceName} not found`, 404);
-    const result = await sshExec(conn, `docker service update --force --detach ${shellQuote(target.name)}`);
+    const result = await sshExec(conn, sh`docker service update --force --detach ${target.name}`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,
@@ -242,7 +242,7 @@ async function stopService(serviceName: string, url: URL): Promise<Response> {
   try {
     const target = await resolveRequestedService(conn, env, serviceName);
     if (!target) return errorResponse(`Service ${serviceName} not found`, 404);
-    const result = await sshExec(conn, `docker service scale --detach ${shellQuote(target.name)}=0`);
+    const result = await sshExec(conn, sh`docker service scale --detach ${target.name}=0`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,
@@ -276,7 +276,7 @@ async function scaleService(serviceName: string, url: URL, req: Request): Promis
   try {
     const target = await resolveRequestedService(conn, env, serviceName);
     if (!target) return errorResponse(`Service ${serviceName} not found`, 404);
-    const result = await sshExec(conn, `docker service scale --detach ${shellQuote(target.name)}=${replicas}`);
+    const result = await sshExec(conn, sh`docker service scale --detach ${target.name}=${replicas}`);
     const success = result.exitCode === 0;
     return jsonResponse({
       success,
@@ -293,7 +293,7 @@ async function resolveRequestedService(conn: ManagerConnection, env: string, raw
   const stacks = getApiStacks(env);
   if (!stacks) return null;
   return resolveApiService(raw, stacks, async (name) => {
-    const result = await sshExec(conn, `docker service inspect ${shellQuote(name)} --format '{{.ID}}'`);
+    const result = await sshExec(conn, sh`docker service inspect ${name} --format '{{.ID}}'`);
     return result.exitCode === 0;
   });
 }
@@ -338,7 +338,7 @@ async function rollbackService(serviceName: string, url: URL): Promise<Response>
     const staleThreshold = loadConfig({ silent: true })?.lock?.stale_threshold_minutes;
     const lock = await createEnvLock(env, conn.stackName, staleThreshold);
     return await withDeployLock(lock, `Rolling back ${target.service} via WebUI`, async () => {
-      const result = await sshExec(conn, `docker service rollback --detach ${shellQuote(target.name)}`);
+      const result = await sshExec(conn, sh`docker service rollback --detach ${target.name}`);
       const success = result.exitCode === 0;
       return jsonResponse({
         success,
@@ -353,7 +353,7 @@ async function rollbackService(serviceName: string, url: URL): Promise<Response>
 
 export function serviceLogsCommand(nativeName: string, lines: number): string {
   // stderr of the containers reaches docker's own stderr: merged, so a docker failure is told by the exit status
-  return `docker service logs --tail ${lines} --timestamps --no-trunc ${shellQuote(nativeName)} 2>&1`;
+  return sh`docker service logs --tail ${lines} --timestamps --no-trunc ${nativeName} 2>&1`;
 }
 
 /** Log entries of a Swarm service, or the failure to answer with. */

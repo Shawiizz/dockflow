@@ -1,7 +1,7 @@
 /** Routes for container resource stats and the deploy audit log. */
 
 import { jsonResponse, errorResponse } from '../server';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { raw, sh, sshExec } from '../../utils/ssh';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { getAccessoriesStackName, getStackName } from '../../utils/config';
 import { getManagerConnection, getAllNodeConnections, resolveEnvironment, parseIntParam } from './_helpers';
@@ -64,14 +64,14 @@ export function parseDockerStatsLine(line: string): ParsedStatsLine | null {
  * resource usage (`S|...` lines). Fails when Docker does not answer.
  */
 export function statsCommand(stacks: string[]): string {
+  const psFormat = `C|{{.ID}}|{{.Label "${SERVICE_LABEL}"}}|{{.Label "${STACK_LABEL}"}}`;
   const lines = stacks.map(
-    (stack, i) =>
-      `c${i}=$(docker ps --filter ${shellQuote(`label=${STACK_LABEL}=${stack}`)} --format 'C|{{.ID}}|{{.Label "${SERVICE_LABEL}"}}|{{.Label "${STACK_LABEL}"}}') || exit 1`,
+    (stack, i) => sh`c${i}=$(docker ps --filter ${`label=${STACK_LABEL}=${stack}`} --format ${psFormat}) || exit 1`,
   );
   const all = stacks.map((_, i) => `"$c${i}"`).join(' ');
   return [
     ...lines,
-    `containers=$(printf '%s\n' ${all} | grep '^C|')`,
+    sh`containers=$(printf '%s\n' ${raw(all)} | grep '^C|')`,
     '[ -n "$containers" ] || exit 0',
     `printf '%s\n' "$containers"`,
     `docker stats --no-stream --format 'S|{{.ID}}|{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}' $(printf '%s\n' "$containers" | cut -d'|' -f2)`,
@@ -174,7 +174,7 @@ async function getAuditLog(url: URL): Promise<Response> {
   const auditFile = auditFilePath(conn.stackName);
 
   try {
-    const command = `tail -n ${lines} ${shellQuote(auditFile)} 2>/dev/null || echo ""`;
+    const command = sh`tail -n ${lines} ${auditFile} 2>/dev/null || echo ""`;
     // any node can answer: the audit log is replicated between them
     const nodeConnections = getAllNodeConnections(env);
     const connections = nodeConnections.length > 0 ? nodeConnections : [conn];

@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { printSection, printNote, printDebug, colors, printBlank, printWarning, printDim, printJSON, printRaw } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { nodesOf, readFromFirstNode } from './nodes';
@@ -65,7 +65,7 @@ export function registerHistoryCommand(program: Command): void {
       try {
         const found = await readFromFirstNode(
           nodes,
-          async (node) => (await sshExec(node.connection, `tail -n ${lines} ${shellQuote(auditFile)} 2>/dev/null`)).stdout.trim(),
+          async (node) => (await sshExec(node.connection, sh`tail -n ${lines} ${auditFile} 2>/dev/null`)).stdout.trim(),
           (output) => output === '',
         );
         const output = found?.value ?? '';

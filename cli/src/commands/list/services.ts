@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { printSection, printNote, printJSON, printBlank, printDim, printRaw, colors } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { SwarmStack } from '../../services/swarm/stack';
@@ -78,7 +78,7 @@ export function registerListServicesCommand(parent: Command): void {
 
           if (options.tasks) {
             const fullName = qualifyServiceName(stackName, svc.name);
-            const tasksCmd = `docker service ps ${fullName} --format '{{.ID}}|{{.Name}}|{{.Node}}|{{.CurrentState}}|{{.Error}}' --no-trunc 2>/dev/null | head -10`;
+            const tasksCmd = sh`docker service ps ${fullName} --format '{{.ID}}|{{.Name}}|{{.Node}}|{{.CurrentState}}|{{.Error}}' --no-trunc 2>/dev/null | head -10`;
             const tasksResult = await sshExec(connection, tasksCmd);
             const taskLines = tasksResult.stdout.trim().split('\n').filter(Boolean);
 
