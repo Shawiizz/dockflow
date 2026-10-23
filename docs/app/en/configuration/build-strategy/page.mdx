@@ -23,7 +23,7 @@ Images are built in your CI/CD pipeline and transferred to the server via SSH. N
    ```
    docker save IMAGE | gzip -1 | ssh user@host "gunzip | docker load"
    ```
-   A node that already holds the same image (same image ID, for example a service that did not change since the last version) is not sent it again: Dockflow only tags it with the new version.
+   A node that already holds the same image (same layers and container config, for example a service that did not change since the last version) is not sent it again: Dockflow only tags it with the new version.
 
 This is the simplest strategy and works for both single-node deployments and multi-node clusters. For larger clusters with many nodes or heavy images, consider using a [registry](/en/configuration/registry) instead.
 
