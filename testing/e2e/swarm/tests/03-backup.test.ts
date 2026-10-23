@@ -136,10 +136,11 @@ describe("backup & restore", () => {
   describe("redis with appendonly", () => {
     const APPENDONLY_SERVICE = "journal";
 
+    // each command gets a timeout well under the test's: a hang then shows which one and its output
     async function journalCli(args: string[]): Promise<string> {
       const result = await runCLI(
         ["accessories", "exec", TEST_ENV, APPENDONLY_SERVICE, "--", "redis-cli", ...args],
-        { cwd: sharedAppDir() },
+        { cwd: sharedAppDir(), timeoutMs: 20_000 },
       );
       if (result.exitCode !== 0) {
         throw new Error(`redis-cli ${args.join(" ")} failed: ${result.stderr.slice(-500)}`);
@@ -153,16 +154,18 @@ describe("backup & restore", () => {
       await journalCli(["SET", TEST_KEY, "before"]);
       const created = await runCLI(
         ["backup", "create", TEST_ENV, APPENDONLY_SERVICE, "--json"],
-        { cwd: sharedAppDir() },
+        { cwd: sharedAppDir(), timeoutMs: 50_000 },
       );
+      if (created.exitCode !== 0) console.error("[appendonly] create:", created.stdout.slice(-2000), created.stderr.slice(-2000));
       expect(created.exitCode).toBe(0);
       const { id }: { id: string } = JSON.parse(created.stdout);
 
       await journalCli(["SET", TEST_KEY, "after"]);
       const restore = await runCLI(
         ["backup", "restore", TEST_ENV, APPENDONLY_SERVICE, "--from", id, "--yes"],
-        { cwd: sharedAppDir() },
+        { cwd: sharedAppDir(), timeoutMs: 50_000 },
       );
+      if (restore.exitCode !== 72) console.error("[appendonly] restore:", restore.stdout.slice(-2000), restore.stderr.slice(-2000));
 
       expect(restore.exitCode).toBe(72); // RESTORE_FAILED
       const output = restore.stdout + restore.stderr;
@@ -171,6 +174,6 @@ describe("backup & restore", () => {
       );
       expect(output).not.toContain("DOCKFLOW_REFUSED");
       expect(await journalCli(["GET", TEST_KEY])).toBe("after");
-    }, 120_000);
+    }, 200_000);
   });
 });
