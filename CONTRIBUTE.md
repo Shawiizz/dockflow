@@ -38,19 +38,22 @@ graph TB
 
 ## Before Contributing
 
-**Run E2E tests** before submitting a PR → See [Developer Guide](./DEVELOPERS.md)
+Run the checks of the CLI and the e2e suites that cover your change: see the [Developer Guide](./DEVELOPERS.md).
 
-**Use version management scripts** when bumping versions to maintain consistency across all project files (CI configs, examples, Docker images). See [Version Management](#version-management) section.
+```bash
+cd cli
+bun run typecheck && bunx biome check src && bun test
+```
 
 ---
 
 ## Building CLI Binaries
 
-The CLI is built as a native binary using Bun. See the `cli/` directory for the TypeScript source.
+The CLI is built as a native binary with Bun. The `cli/` directory holds the TypeScript source.
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) v1.1+ installed
+- [Bun](https://bun.sh), at the version pinned in `.bun-version`
 
 ### Build Commands
 
@@ -85,25 +88,18 @@ Run the CLI without compilation:
 
 ```bash
 bun ./cli/src/index.ts --help
-bun ./cli/src/index.ts setup interactive
 ```
 
-#### Testing deploy/build with local Dockflow
+#### Running your local Dockflow on a project
 
-Use the dev script to test deployment with your local Dockflow changes. The script automatically:
-- Sets `DOCKFLOW_DEV_PATH` to the project root
-- Adds `--dev` flag for deploy/build commands
+`cli/scripts/dev.ts` runs the CLI from source in the current directory, with the arguments you give it:
 
 ```bash
-# From your project directory (e.g., my-app/)
 cd /path/to/my-app
-
-# Run dockflow commands using the dev script
-bun /path/to/dockflow/cli/scripts/dev.ts deploy production --force
-bun /path/to/dockflow/cli/scripts/dev.ts build production
+bun /path/to/dockflow/cli/scripts/dev.ts deploy production
 ```
 
-**Recommended: Create an alias for convenience**
+**Recommended: create an alias**
 
 ```bash
 # Bash/Linux/macOS - Add to ~/.bashrc or ~/.zshrc
@@ -118,61 +114,29 @@ function dockflow-dev { bun C:\path\to\dockflow\cli\scripts\dev.ts @args }
 Then use it like the regular CLI:
 
 ```bash
-dockflow-dev deploy production --force
+dockflow-dev deploy production
 dockflow-dev build production
 dockflow-dev ssh production "docker ps"
 ```
 
-### Releasing CLI Binaries
-
-GitHub Actions automatically builds and publishes binaries when you push a tag matching `cli/*`:
-
-```bash
-# Create a new CLI release
-git tag cli/1.0.0
-git push origin cli/1.0.0
-```
-
-This will:
-1. Build binaries for all platforms
-2. Create a GitHub Release named "Dockflow CLI v1.0.0"
-3. Attach all binaries with installation instructions
-
-Download releases from the [Releases page](https://github.com/Shawiizz/dockflow/releases).
-
 ---
 
-## Version Management
+## Releasing
 
-Automated scripts handle version updates across all files.
-
-### Commands
-
-**Commands:**
-```bash
-npm run version:dev        # Add/increment dev version (1.0.33 → 1.0.33-dev1)
-npm run version:release    # Create release (1.0.33-dev1 → 1.0.34)
-npm run version:downgrade  # Decrement version
-```
-
-### What Gets Updated
-
-| Files Updated |
-|---------------|
-| `package.json`, CI/CD configs (`*.yml`), example files |
-
----
-
-## Creating New Releases
+A release is a Git tag: its name is the version. Nothing is bumped by hand, the release workflow
+writes the version into the packages it publishes.
 
 ```bash
-# 1. Update version
-npm run version:release
-
-# 2. Create and push Git tag
-git tag -a X.Y.Z -m "Version X.Y.Z"
+git tag -a X.Y.Z -m "Dockflow X.Y.Z"
 git push origin X.Y.Z
 ```
+
+`publish-cli.yml` then builds every binary, runs the CLI checks and the setup e2e suite on the built
+binary, and only if they pass publishes the GitHub Release (binaries and `SHA256SUMS`), the npm
+package `@dockflow-tools/cli`, and the docs. A tag such as `X.Y.Z-dev1` is a prerelease: npm
+publishes it under the `dev` tag, so installs keep the latest stable version.
+
+The MCP server is released the same way with a tag `mcp-X.Y.Z` (`publish-mcp.yml`).
 
 ---
 
