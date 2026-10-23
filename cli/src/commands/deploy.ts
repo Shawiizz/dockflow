@@ -5,7 +5,7 @@
  * Setup resolution, phase execution, and types are split into:
  *   deploy-context.ts  — DeployContext interface
  *   deploy-run.ts      — one run: its steps, the undo on failure or Ctrl+C, the record
- *   deploy-phases.ts   — build, accessories, app, audit phases
+ *   deploy-phases/     — the phases: build, uploads, accessories, app, health checks, history
  *   deploy-dry-run.ts  — dry-run display
  */
 
