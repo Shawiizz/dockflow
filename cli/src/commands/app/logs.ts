@@ -1,7 +1,3 @@
-/**
- * Logs command - View service logs
- */
-
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import type { SSHKeyConnection } from '../../types';

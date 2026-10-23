@@ -1,7 +1,3 @@
-/**
- * Lock release command - Release a deployment lock
- */
-
 import type { Command } from 'commander';
 import { printInfo, printNote, printBlank, printDim, createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
@@ -18,7 +14,6 @@ export function registerLockReleaseCommand(parent: Command): void {
       const lockService = await createEnvLock(env, stackName, config.lock?.stale_threshold_minutes);
       const spinner = createSpinner();
 
-      // Check if lock exists
       spinner.start('Checking lock status...');
       const current = await lockService.status();
 
@@ -32,7 +27,6 @@ export function registerLockReleaseCommand(parent: Command): void {
         return;
       }
 
-      // Show lock info before releasing
       spinner.stop();
       if (current.data.data) {
         printInfo('Current lock:');
@@ -45,7 +39,6 @@ export function registerLockReleaseCommand(parent: Command): void {
         printBlank();
       }
 
-      // Release lock
       spinner.start('Releasing lock...');
       const result = await lockService.release();
 

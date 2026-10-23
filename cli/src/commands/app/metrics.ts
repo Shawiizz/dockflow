@@ -1,7 +1,3 @@
-/**
- * Metrics command - Show deployment metrics and statistics
- */
-
 import type { Command } from 'commander';
 import {
   printSection,
@@ -27,9 +23,6 @@ import {
   type MetricsSummary
 } from '../../services/metrics';
 
-/**
- * Format duration in human-readable form
- */
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
@@ -39,15 +32,11 @@ function formatDuration(ms: number): string {
 }
 
 
-/**
- * Display metrics summary
- */
 function displaySummary(summary: MetricsSummary, stackName: string): void {
   printBlank();
   printSection(`Deployment Metrics: ${stackName}`);
   printBlank();
 
-  // Overview stats
   printSection('Overview:');
   printSeparator();
   printTableRow('Total Deployments:', String(summary.total_deployments));
@@ -55,7 +44,6 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
   printTableRow('Avg Duration:', formatDuration(summary.avg_duration_ms));
   printBlank();
 
-  // Status breakdown
   printSection('Status Breakdown:');
   printSeparator();
   printRaw(`  ${colors.success('✓ Successful:')}         ${summary.successful}`);
@@ -63,7 +51,6 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
   printRaw(`  ${colors.warning('↩ Rolled Back:')}        ${summary.rolled_back}`);
   printBlank();
 
-  // Activity
   printSection('Deployment Activity:');
   printSeparator();
   printTableRow('Last 24 hours:', String(summary.deployments_last_24h));
@@ -71,7 +58,6 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
   printTableRow('Last 30 days:', String(summary.deployments_last_30d));
   printBlank();
 
-  // Most deployed versions
   if (summary.most_deployed_versions.length > 0) {
     printSection('Top Versions:');
     printSeparator();
@@ -81,7 +67,6 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
     printBlank();
   }
 
-  // Last deployment
   if (summary.last_deployment) {
     const last = summary.last_deployment;
     printSection('Last Deployment:');
@@ -94,9 +79,6 @@ function displaySummary(summary: MetricsSummary, stackName: string): void {
   }
 }
 
-/**
- * Get colored status badge
- */
 function getStatusBadge(status: string): string {
   switch (status) {
     case 'success':
@@ -110,9 +92,6 @@ function getStatusBadge(status: string): string {
   }
 }
 
-/**
- * Display deployment history
- */
 function displayHistory(metrics: DeploymentMetric[]): void {
   if (metrics.length === 0) {
     printDim('No deployment history found');
@@ -129,7 +108,6 @@ function displayHistory(metrics: DeploymentMetric[]): void {
   );
   printSeparator(80);
   
-  // Sort by timestamp descending (most recent first)
   const sorted = [...metrics].sort((a, b) => 
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
@@ -196,7 +174,6 @@ export function registerMetricsCommand(program: Command): void {
         return;
       }
 
-      // JSON output
       if (options.json) {
         if (options.history) {
           printJSON(metricsData);
@@ -207,7 +184,6 @@ export function registerMetricsCommand(program: Command): void {
         return;
       }
 
-      // History mode
       if (options.history) {
         printBlank();
         printSection(`Deployment History: ${stackName}`);
@@ -217,7 +193,6 @@ export function registerMetricsCommand(program: Command): void {
         return;
       }
       
-      // Summary mode (default)
       const summary = calculateMetricsSummary(metricsData);
       displaySummary(summary, stackName);
     })));

@@ -1,7 +1,4 @@
-/**
- * Details command - Show stack overview and resource usage
- * For specific info, use: containers, images, version
- */
+/** `dockflow details`: the stack's services, the cluster nodes and the resource usage of its containers on every node. */
 
 import type { Command } from 'commander';
 import { shellQuote, sshExec } from '../../utils/ssh';
@@ -23,7 +20,6 @@ export function registerDetailsCommand(program: Command): void {
       printIntro(`Stack: ${stackName}`);
 
       try {
-        // Services summary (compact)
         printSection('Services');
         const servicesResult = await sshExec(
           connection, 
@@ -58,7 +54,6 @@ export function registerDetailsCommand(program: Command): void {
           for (const row of rows) printRaw(format(row));
         }
 
-        // Quick tips
         printNote(
           'dockflow version <env>        Deployed version info\n' +
           'dockflow ps <env>             Container details\n' +

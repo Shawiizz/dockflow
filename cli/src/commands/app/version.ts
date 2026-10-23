@@ -1,7 +1,3 @@
-/**
- * Version command - Show deployed app version
- */
-
 import type { Command } from 'commander';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { SwarmStack } from '../../services/swarm/stack';

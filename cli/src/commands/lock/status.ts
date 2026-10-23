@@ -1,7 +1,3 @@
-/**
- * Lock status command - Show current lock status
- */
-
 import type { Command } from 'commander';
 import { printInfo, printSuccess, printWarning, printDim, printBlank, printRaw, colors } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';

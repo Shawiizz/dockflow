@@ -1,9 +1,6 @@
 /**
- * Accessories commands - Manage stateful services (databases, caches, etc.)
- * These have a separate lifecycle from the main application
- * 
- * Deployment is handled via: dockflow deploy <env> --accessories
- * These commands are for management operations (logs, exec, restart, etc.)
+ * Management commands for the accessories stack, whose lifecycle is separate from the app's.
+ * Deploying goes through `dockflow deploy <env> --accessories`.
  */
 
 import type { Command } from 'commander';
@@ -15,9 +12,6 @@ import { registerAccessoriesStopCommand } from './stop';
 import { registerAccessoriesListCommand } from './list';
 import { registerAccessoriesRemoveCommand } from './remove';
 
-/**
- * Register all accessories commands under 'dockflow accessories <cmd>'
- */
 export function registerAccessoriesCommands(program: Command): void {
   const accessories = program
     .command('accessories')

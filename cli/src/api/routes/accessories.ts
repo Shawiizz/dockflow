@@ -1,12 +1,4 @@
-/**
- * Accessories API Routes
- *
- * GET  /api/accessories              - List configured accessories (accessories.yml only)
- * GET  /api/accessories/status?env=  - Live status from Docker Swarm
- * POST /api/accessories/:name/restart?env=     - Restart an accessory (docker service update --force)
- * POST /api/accessories/:name/stop?env=        - Stop an accessory (docker service scale to 0)
- * GET  /api/accessories/:name/logs?env=&lines= - Get accessory logs
- */
+/** Routes for the accessories: the definitions in accessories.yml, their live Swarm status, restart, stop and logs. */
 
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, getAccessoriesStackName, getLayout } from '../../utils/config';
@@ -66,37 +58,29 @@ function readAccessoriesFromFile(): AccessoryInfo[] {
   }));
 }
 
-/**
- * Handle /api/accessories/* routes
- */
 export async function handleAccessoriesRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
 
-  // GET /api/accessories
   if (pathname === '/api/accessories' && method === 'GET') {
     return listAccessories();
   }
 
-  // GET /api/accessories/status?env=
   if (pathname === '/api/accessories/status' && method === 'GET') {
     return getAccessoriesStatus(url);
   }
 
-  // POST /api/accessories/:name/restart?env=
   const restartMatch = pathname.match(/^\/api\/accessories\/([^/]+)\/restart$/);
   if (restartMatch && method === 'POST') {
     return restartAccessory(decodeURIComponent(restartMatch[1]), url);
   }
 
-  // POST /api/accessories/:name/stop?env=
   const stopMatch = pathname.match(/^\/api\/accessories\/([^/]+)\/stop$/);
   if (stopMatch && method === 'POST') {
     return stopAccessory(decodeURIComponent(stopMatch[1]), url);
   }
 
-  // GET /api/accessories/:name/logs?env=&lines=
   const logsMatch = pathname.match(/^\/api\/accessories\/([^/]+)\/logs$/);
   if (logsMatch && method === 'GET') {
     return getAccessoryLogs(decodeURIComponent(logsMatch[1]), url);
@@ -105,9 +89,6 @@ export async function handleAccessoriesRoutes(req: Request): Promise<Response> {
   return errorResponse('Endpoint not found', 404);
 }
 
-/**
- * List configured accessories from accessories.yml
- */
 async function listAccessories(): Promise<Response> {
   const config = loadConfig({ silent: true });
 
@@ -128,9 +109,6 @@ async function listAccessories(): Promise<Response> {
   } satisfies AccessoriesResponse);
 }
 
-/**
- * Get live accessories status from Docker Swarm
- */
 async function getAccessoriesStatus(url: URL): Promise<Response> {
   const config = loadConfig({ silent: true });
   if (!config) {
@@ -173,7 +151,6 @@ async function getAccessoriesStatus(url: URL): Promise<Response> {
         const [serviceName, replicas, mode] = line.split('|');
         if (!serviceName || !replicas) continue;
 
-        // Docker service name format: ${accStackName}_${accessoryName}
         const prefix = `${accStackName}_`;
         if (!serviceName.startsWith(prefix)) continue;
 
@@ -205,9 +182,6 @@ async function getAccessoriesStatus(url: URL): Promise<Response> {
   }
 }
 
-/**
- * Restart an accessory (docker service update --force)
- */
 async function restartAccessory(name: string, url: URL): Promise<Response> {
   if (!isValidDockerName(name)) return errorResponse('Invalid accessory name', 400);
   const env = resolveEnvironment(url.searchParams.get('env'));
@@ -237,9 +211,6 @@ async function restartAccessory(name: string, url: URL): Promise<Response> {
   }
 }
 
-/**
- * Stop an accessory (docker service scale to 0)
- */
 async function stopAccessory(name: string, url: URL): Promise<Response> {
   if (!isValidDockerName(name)) return errorResponse('Invalid accessory name', 400);
   const env = resolveEnvironment(url.searchParams.get('env'));
@@ -269,9 +240,6 @@ async function stopAccessory(name: string, url: URL): Promise<Response> {
   }
 }
 
-/**
- * Get logs for a specific accessory
- */
 async function getAccessoryLogs(name: string, url: URL): Promise<Response> {
   if (!isValidDockerName(name)) return errorResponse('Invalid accessory name', 400);
   const envFilter = url.searchParams.get('env');

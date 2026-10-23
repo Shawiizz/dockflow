@@ -1,7 +1,4 @@
-/**
- * App commands - Interact with deployed services
- * These commands use SSH directly (no Ansible/Docker needed locally)
- */
+/** Commands that inspect and operate a deployed stack over SSH. */
 
 import type { Command } from 'commander';
 import { registerLogsCommand } from './logs';
@@ -22,11 +19,7 @@ import { registerMetricsCommand } from './metrics';
 import { registerDiagnoseCommand } from './diagnose';
 import { registerStatusCommand } from './status';
 
-/**
- * Register all app commands
- */
 export function registerAppCommands(program: Command): void {
-  // Info commands
   registerVersionCommand(program);
   registerDetailsCommand(program);
   registerPsCommand(program);
@@ -37,7 +30,6 @@ export function registerAppCommands(program: Command): void {
   registerDiagnoseCommand(program);
   registerStatusCommand(program);
   
-  // Action commands
   registerExecCommand(program);
   registerCpCommand(program);
   registerRestartCommand(program);

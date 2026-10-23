@@ -1,8 +1,3 @@
-/**
- * Backup Restore Command
- * Restore a service or accessory database from a backup
- */
-
 import type { Command } from 'commander';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { getStackName, loadConfig } from '../../utils/config';
@@ -43,7 +38,6 @@ export function registerBackupRestoreCommand(program: Command): void {
       const stackName = resolveBackupStack(env, source);
       const backupService = createBackup(connection, stackName, getBackupNodes(env));
 
-      // Resolve which backup to restore
       const resolveResult = await backupService.resolveBackup(service, options.from);
       if (!resolveResult.success) {
         throw resolveResult.error instanceof CLIError
@@ -57,7 +51,6 @@ export function registerBackupRestoreCommand(program: Command): void {
       const replicated = await backupService.replicaRefusal(service, scaleToOneHint(env, service, source));
       if (replicated) throw replicated;
 
-      // Show backup details
       printWarning('You are about to restore from this backup:');
       printRaw(`  ${colors.info('ID:')}       ${backup.id}`);
       printRaw(`  ${colors.info('Date:')}     ${new Date(backup.timestamp).toLocaleString()}`);
@@ -69,7 +62,6 @@ export function registerBackupRestoreCommand(program: Command): void {
         : 'This will OVERWRITE current data in the running database!');
       printBlank();
 
-      // Confirmation
       if (!options.yes) {
         const confirmed = await dangerousConfirmPrompt({
           message: `Type '${env}' to confirm restore:`,

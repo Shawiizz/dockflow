@@ -8,15 +8,11 @@
  * Frontend: import from '@shared/api-types'  (via tsconfig paths)
  */
 
-// ─── Health ──────────────────────────────────────────────────────────────────
-
 export interface HealthResponse {
   status: string;
   version: string;
   timestamp: string;
 }
-
-// ─── Servers ─────────────────────────────────────────────────────────────────
 
 export type ServerRole = 'manager' | 'worker';
 export type ServerConnectionStatus = 'unknown' | 'checking' | 'online' | 'offline' | 'error';
@@ -48,8 +44,6 @@ export interface EnvironmentsResponse {
   total: number;
 }
 
-// ─── Project ─────────────────────────────────────────────────────────────────
-
 export interface ProjectConfigSummary {
   project_name: string;
   registry?: string;
@@ -78,8 +72,6 @@ export interface ConnectionInfo {
   ready: boolean;
   message: string;
 }
-
-// ─── Config ──────────────────────────────────────────────────────────────────
 
 export interface ConfigResponse {
   exists: boolean;
@@ -110,8 +102,6 @@ export interface RawConfigResponse {
   content: string;
 }
 
-// ─── Services ────────────────────────────────────────────────────────────────
-
 export type ServiceState = 'running' | 'paused' | 'stopped' | 'starting' | 'error' | 'unknown';
 
 export interface ServiceInfo {
@@ -139,8 +129,6 @@ export interface ServicesListResponse {
   message?: string;
 }
 
-// ─── Logs ────────────────────────────────────────────────────────────────────
-
 export interface LogEntry {
   timestamp: string;
   message: string;
@@ -152,8 +140,6 @@ export interface LogsResponse {
   service: string;
   lines: number;
 }
-
-// ─── Deploy ──────────────────────────────────────────────────────────────────
 
 export type DeployStatus = 'pending' | 'running' | 'success' | 'failed';
 export type DeployTarget = 'app' | 'accessories' | 'all';
@@ -191,8 +177,6 @@ export interface DeployResponse {
   error?: string;
 }
 
-// ─── Accessories ─────────────────────────────────────────────────────────────
-
 export interface AccessoryInfo {
   name: string;
   image?: string;
@@ -207,8 +191,6 @@ export interface AccessoriesResponse {
   message?: string;
 }
 
-// ─── Service Actions ────────────────────────────────────────────────────────
-
 export interface ServiceActionResponse {
   success: boolean;
   message: string;
@@ -216,8 +198,6 @@ export interface ServiceActionResponse {
   /** same text as `message`, on refusals, where clients read `error` */
   error?: string;
 }
-
-// ─── Accessories Status ─────────────────────────────────────────────────────
 
 export interface AccessoryStatusInfo extends AccessoryInfo {
   status?: 'running' | 'stopped' | 'starting' | 'error' | 'unknown';
@@ -237,8 +217,6 @@ export interface AccessoryActionResponse {
   message: string;
   output?: string;
 }
-
-// ─── Operations (Deploy/Build) ──────────────────────────────────────────────
 
 export interface DeployOperationRequest {
   environment: string;
@@ -264,8 +242,6 @@ export interface OperationStatusResponse {
   environment?: string;
   startedAt?: string;
 }
-
-// ─── Prune ──────────────────────────────────────────────────────────────────
 
 export interface PruneRequest {
   targets: ('containers' | 'images' | 'volumes' | 'networks')[];
@@ -306,8 +282,6 @@ export interface DiskUsageResponse {
   nodes?: NodeDiskUsage[];
 }
 
-// ─── Locks ──────────────────────────────────────────────────────────────────
-
 export interface LockInfo {
   locked: boolean;
   performer?: string;
@@ -323,8 +297,6 @@ export interface LockActionResponse {
   success: boolean;
   message: string;
 }
-
-// ─── Monitoring ─────────────────────────────────────────────────────────────
 
 export interface ContainerStatsEntry {
   name: string;
@@ -359,8 +331,6 @@ export interface AuditResponse {
   entries: AuditEntry[];
   total: number;
 }
-
-// ─── Compose ─────────────────────────────────────────────────────────────────
 
 export interface ComposeDeployPlacement {
   constraints?: string[];
@@ -431,8 +401,6 @@ export interface ComposeUpdateResponse {
   error?: string;
 }
 
-// ─── Topology ────────────────────────────────────────────────────────────────
-
 export interface TopologyService {
   name: string;
   image?: string;
@@ -476,14 +444,10 @@ export interface TopologyUpdateResponse {
   error?: string;
 }
 
-// ─── Validation ──────────────────────────────────────────────────────────────
-
 export interface ValidationError {
   path: string;
   message: string;
 }
-
-// ─── Backup ──────────────────────────────────────────────────────────────────
 
 export type BackupDbType = 'postgres' | 'mysql' | 'mongodb' | 'redis' | 'raw' | 'volume';
 

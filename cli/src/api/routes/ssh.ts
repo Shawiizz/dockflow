@@ -1,12 +1,7 @@
 /**
- * SSH WebSocket Route Handler
- *
- * Upgrades HTTP connections to WebSocket for interactive SSH sessions.
- * Uses the ssh2 library for direct SSH connections (no temp key files needed).
- *
- * Supports two modes:
- * 1. Shell mode (/ws/ssh/:serverName) - Interactive SSH shell to a specific server
- * 2. Exec mode (/ws/exec/:serviceName?env=) - Docker exec into a running container
+ * Upgrades HTTP connections to WebSocket for interactive SSH sessions over ssh2 (the key is
+ * passed in memory, no temp key files). Shell mode is /ws/ssh/:serverName; exec mode is
+ * /ws/exec/:serviceName?env= and runs docker exec in a running container.
  */
 
 import type { ServerWebSocket } from 'bun';
@@ -35,52 +30,41 @@ export interface WSData {
   mode?: string;
 }
 
-/** Active SSH session state */
 interface SSHSession {
   client: SSHClient;
   stream: ClientChannel | null;
   lastActivity: number;
 }
 
-/** Active SSH sessions keyed by a unique ID */
 const activeSessions = new Map<string, SSHSession>();
 
-/** Heartbeat interval (30s) */
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
-/** Idle timeout (15 minutes) */
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 
-/** Watchdog scan interval (60s) */
 const WATCHDOG_INTERVAL_MS = 60_000;
 
 /** Track WebSocket references for heartbeat */
 const activeWebSockets = new Map<string, ServerWebSocket<WSData>>();
 
-/** Watchdog interval handle */
 let watchdogInterval: ReturnType<typeof setInterval> | null = null;
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
-/**
- * Start the watchdog and heartbeat timers.
- * Called lazily on first connection.
- */
+/** Start the heartbeat and watchdog timers; called lazily on the first connection. */
 function ensureTimersStarted(): void {
   if (heartbeatInterval) return;
 
-  // Heartbeat: ping all active WebSockets every 30s
   heartbeatInterval = setInterval(() => {
     for (const [sessionId, ws] of activeWebSockets) {
       try {
         ws.ping();
       } catch {
-        // WebSocket already dead — will be cleaned up by watchdog
+        // socket is dead
         cleanupSession(sessionId);
       }
     }
   }, HEARTBEAT_INTERVAL_MS);
 
-  // Watchdog: scan for idle/stale sessions every 60s
   watchdogInterval = setInterval(() => {
     const now = Date.now();
     for (const [sessionId, session] of activeSessions) {
@@ -91,9 +75,6 @@ function ensureTimersStarted(): void {
   }, WATCHDOG_INTERVAL_MS);
 }
 
-/**
- * Clean up a session by ID: close stream, end SSH client, remove from maps
- */
 function cleanupSession(sessionId: string): void {
   const session = activeSessions.get(sessionId);
   if (session) {
@@ -112,15 +93,11 @@ function cleanupSession(sessionId: string): void {
     activeWebSockets.delete(sessionId);
   }
 
-  // Stop timers when no sessions remain
   if (activeSessions.size === 0) {
     stopTimers();
   }
 }
 
-/**
- * Stop the watchdog and heartbeat timers
- */
 export function stopTimers(): void {
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval);
@@ -132,9 +109,7 @@ export function stopTimers(): void {
   }
 }
 
-/**
- * Resolve connection info for a server by name
- */
+/** Connection details of a server by name, searched across environments; null when unknown or without a key. */
 function resolveServerConnection(serverName: string) {
   const serversConfig = loadServersConfig();
   if (!serversConfig) return null;
@@ -160,15 +135,12 @@ function resolveServerConnection(serverName: string) {
   return null;
 }
 
-/**
- * Bun WebSocket handlers for SSH sessions.
- * Attach these to Bun.serve({ websocket: sshWebSocketHandlers })
- */
+/** Bun WebSocket handlers for SSH sessions, passed to `Bun.serve({ websocket })`. */
 export const sshWebSocketHandlers = {
   async open(ws: ServerWebSocket<WSData>) {
     ensureTimersStarted();
 
-    // ── Exec mode: docker exec into a container ──
+    // exec mode: docker exec into a container
     if (ws.data?.mode === 'exec') {
       const serviceName = ws.data.serviceName;
       const env = ws.data.env;
@@ -207,7 +179,7 @@ export const sshWebSocketHandlers = {
         try {
           ws.send(JSON.stringify({ type: 'error', message: hostKey?.failure()?.message ?? err.message }));
         } catch {
-          // Ignore
+          // WebSocket may be closed
         }
         cleanupSession(sessionId);
       });
@@ -301,7 +273,7 @@ export const sshWebSocketHandlers = {
       return;
     }
 
-    // ── Shell mode: interactive SSH shell to a server ──
+    // shell mode: interactive shell on a server
     const serverName = ws.data?.serverName;
     if (!serverName || !isValidDockerName(serverName)) {
       ws.send(JSON.stringify({ type: 'error', message: 'Invalid server name' }));
@@ -374,7 +346,7 @@ export const sshWebSocketHandlers = {
       try {
         ws.send(JSON.stringify({ type: 'error', message: hostKey.failure()?.message ?? err.message }));
       } catch {
-        // Ignore
+        // WebSocket may be closed
       }
       cleanupSession(sessionId);
     });
@@ -388,7 +360,6 @@ export const sshWebSocketHandlers = {
       cleanupSession(sessionId);
     });
 
-    // Connect using ssh2 - private key is passed directly as a string
     client2.connect({
       host: connShell.host,
       port: connShell.port,
@@ -405,11 +376,9 @@ export const sshWebSocketHandlers = {
     const session = sessionId ? activeSessions.get(sessionId) : null;
     if (!session?.stream) return;
 
-    // Update activity timestamp
     session.lastActivity = Date.now();
 
     if (typeof message === 'string') {
-      // Check for resize commands
       try {
         const parsed = JSON.parse(message);
         if (parsed.type === 'resize' && parsed.cols && parsed.rows) {
@@ -433,19 +402,13 @@ export const sshWebSocketHandlers = {
   },
 };
 
-/**
- * Parse server name from WebSocket URL path
- * Expected: /ws/ssh/:serverName
- */
+/** Server name from a `/ws/ssh/:serverName` path, or null. */
 export function parseSSHServerName(pathname: string): string | null {
   const match = pathname.match(/^\/ws\/ssh\/([^/]+)$/);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-/**
- * Parse service name from exec WebSocket URL path
- * Expected: /ws/exec/:serviceName
- */
+/** Service name from a `/ws/exec/:serviceName` path, or null. */
 export function parseExecServiceName(pathname: string): { serviceName: string } | null {
   const match = pathname.match(/^\/ws\/exec\/([^/?]+)/);
   return match ? { serviceName: decodeURIComponent(match[1]) } : null;

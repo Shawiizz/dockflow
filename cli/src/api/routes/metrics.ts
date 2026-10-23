@@ -1,11 +1,4 @@
-/**
- * Metrics API Routes
- *
- * Container resource stats and audit log endpoints.
- *
- * GET /api/metrics/stats  - Get real-time container resource usage (CPU, memory, network, block I/O)
- * GET /api/metrics/audit  - Get the deploy audit log for the current stack
- */
+/** Routes for container resource stats and the deploy audit log. */
 
 import { jsonResponse, errorResponse } from '../server';
 import { shellQuote, sshExec } from '../../utils/ssh';
@@ -22,30 +15,21 @@ import type {
   AuditResponse,
 } from '../types';
 
-// ─── Route handler ──────────────────────────────────────────────────────────
-
-/**
- * Handle /api/metrics/* routes
- */
 export async function handleMetricsRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
 
-  // GET /api/metrics/stats
   if (pathname === '/api/metrics/stats' && method === 'GET') {
     return getContainerStats(url);
   }
 
-  // GET /api/metrics/audit
   if (pathname === '/api/metrics/audit' && method === 'GET') {
     return getAuditLog(url);
   }
 
   return errorResponse('Endpoint not found', 404);
 }
-
-// ─── Container stats ────────────────────────────────────────────────────────
 
 const STACK_LABEL = 'com.docker.stack.namespace';
 const SERVICE_LABEL = 'com.docker.swarm.service.name';
@@ -126,10 +110,7 @@ export function parseNodeStats(
   });
 }
 
-/**
- * Get container resource stats of the app and accessories stacks, from every node that runs
- * them, via `docker stats --no-stream`.
- */
+/** Stats of the app and accessories containers on every node; nodes that do not answer are listed as unreachable. */
 async function getContainerStats(url: URL): Promise<Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
@@ -161,8 +142,6 @@ async function getContainerStats(url: URL): Promise<Response> {
   } satisfies ContainerStatsResponse);
 }
 
-// ─── Audit log ──────────────────────────────────────────────────────────────
-
 export function auditFilePath(stackName: string): string {
   return `${DOCKFLOW_AUDIT_DIR}/${stackName}.log`;
 }
@@ -181,14 +160,8 @@ export function parseAuditLine(line: string): AuditEntry | null {
 }
 
 /**
- * Read the deploy audit log from the remote server.
- *
- * The audit file has one line per entry:
- *   timestamp | action | version | performer | message
- *
- * Supports query parameters:
- * - env:   environment to query (defaults to first available)
- * - lines: max number of entries to return (default 100)
+ * Deploy audit log of the stack: `env` picks the environment, `lines` caps the entries
+ * (default 100).
  */
 async function getAuditLog(url: URL): Promise<Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
@@ -202,7 +175,7 @@ async function getAuditLog(url: URL): Promise<Response> {
 
   try {
     const command = `tail -n ${lines} ${shellQuote(auditFile)} 2>/dev/null || echo ""`;
-    // Use fallback across all nodes since audit log is replicated
+    // any node can answer: the audit log is replicated between them
     const nodeConnections = getAllNodeConnections(env);
     const connections = nodeConnections.length > 0 ? nodeConnections : [conn];
     const result = await sshExecWithFallback(connections, command);

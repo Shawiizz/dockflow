@@ -1,7 +1,4 @@
-/**
- * Accessories utilities - Shared functions for accessories commands
- * Follows DRY principle by centralizing common operations
- */
+/** Checks that the accessories stack and its services exist, for the accessories commands. */
 
 import type { SSHKeyConnection } from '../../types/connection';
 import { getAccessoriesStackName } from '../../utils/config';
@@ -9,18 +6,12 @@ import { shellQuote, sshExec } from '../../utils/ssh';
 import { runDockerQuery } from '../../services/swarm/docker';
 import { DockerError, ErrorCode } from '../../utils/errors';
 
-/**
- * Result of stack validation
- */
 export interface StackValidation {
   exists: boolean;
   stackName: string;
   services: string[];
 }
 
-/**
- * Check if accessories stack exists and return its services
- */
 export async function validateAccessoriesStack(
   connection: SSHKeyConnection,
   env: string
@@ -44,9 +35,7 @@ export async function validateAccessoriesStack(
   return { exists: true, stackName, services };
 }
 
-/**
- * Throw error if accessories stack doesn't exist
- */
+/** Throws a DockerError when the accessories stack is not deployed. */
 export async function requireAccessoriesStack(
   connection: SSHKeyConnection,
   env: string,
@@ -64,9 +53,6 @@ export async function requireAccessoriesStack(
   return { stackName: validation.stackName, services: validation.services };
 }
 
-/**
- * Check if a specific service exists in the accessories stack
- */
 export async function validateAccessoryService(
   connection: SSHKeyConnection,
   stackName: string,
@@ -81,9 +67,7 @@ export async function validateAccessoryService(
   return checkResult.stdout.trim() !== '';
 }
 
-/**
- * Throw error if accessory service doesn't exist, showing available services
- */
+/** Throws a DockerError listing the available accessories when the service is missing; otherwise returns its full Swarm name. */
 export async function requireAccessoryService(
   connection: SSHKeyConnection,
   stackName: string,
@@ -109,9 +93,6 @@ export async function requireAccessoryService(
   return `${stackName}_${service}`;
 }
 
-/**
- * Get short service names (without stack prefix)
- */
 export function getShortServiceNames(services: string[], stackName: string): string[] {
   return services.map(s => s.replace(`${stackName}_`, ''));
 }

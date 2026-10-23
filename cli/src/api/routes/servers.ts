@@ -1,10 +1,4 @@
-/**
- * Servers API Routes
- * 
- * GET /api/servers - List all servers with their status
- * GET /api/servers/:name - Get a specific server
- * GET /api/servers/:name/status - Check server connectivity
- */
+/** Routes to list servers and environments, read one server and probe its connectivity. */
 
 import { jsonResponse, errorResponse } from '../server';
 import { loadServersConfig } from '../../utils/config';
@@ -19,9 +13,6 @@ import { sshExec } from '../../utils/ssh';
 import { withTimeout } from './_helpers';
 import type { ServerConnectionStatus, ServerStatus, SwarmStatus } from '../types';
 
-/**
- * Convert ResolvedServer to ServerStatus
- */
 function toServerStatus(server: ResolvedServer): ServerStatus {
   return {
     name: server.name,
@@ -35,31 +26,24 @@ function toServerStatus(server: ResolvedServer): ServerStatus {
   };
 }
 
-/**
- * Handle /api/servers/* routes
- */
 export async function handleServersRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
   
-  // GET /api/servers - List all servers
   if (pathname === '/api/servers' && method === 'GET') {
     return listServers(url);
   }
   
-  // GET /api/servers/environments - List available environments
   if (pathname === '/api/servers/environments' && method === 'GET') {
     return listEnvironments();
   }
   
-  // GET /api/servers/:name/status - Check server status
   const statusMatch = pathname.match(/^\/api\/servers\/([^/]+)\/status$/);
   if (statusMatch && method === 'GET') {
     return checkServerStatus(statusMatch[1], url);
   }
   
-  // GET /api/servers/:name - Get specific server
   const serverMatch = pathname.match(/^\/api\/servers\/([^/]+)$/);
   if (serverMatch && method === 'GET') {
     return getServer(serverMatch[1], url);
@@ -68,9 +52,6 @@ export async function handleServersRoutes(req: Request): Promise<Response> {
   return errorResponse('Endpoint not found', 404);
 }
 
-/**
- * List all servers, optionally filtered by environment
- */
 async function listServers(url: URL): Promise<Response> {
   const envFilter = url.searchParams.get('env');
   
@@ -105,9 +86,6 @@ async function listServers(url: URL): Promise<Response> {
   });
 }
 
-/**
- * List available environments
- */
 async function listEnvironments(): Promise<Response> {
   const environments = getAvailableEnvironments();
   
@@ -117,9 +95,6 @@ async function listEnvironments(): Promise<Response> {
   });
 }
 
-/**
- * Get a specific server by name
- */
 async function getServer(serverName: string, url: URL): Promise<Response> {
   const serversConfig = loadServersConfig();
   if (!serversConfig) {
@@ -131,7 +106,6 @@ async function getServer(serverName: string, url: URL): Promise<Response> {
     return errorResponse(`Server "${serverName}" not found`, 404);
   }
   
-  // Find which environment this server belongs to
   const environments = getAvailableEnvironments();
   let resolvedServer: ResolvedServer | null = null;
   
@@ -160,9 +134,6 @@ export function connectivityStatus(sshReachable: boolean, swarmStatus?: SwarmSta
   return 'online';
 }
 
-/**
- * Check server connectivity and Swarm status
- */
 async function checkServerStatus(serverName: string, url: URL): Promise<Response> {
   const env = url.searchParams.get('env');
 

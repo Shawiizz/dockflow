@@ -9,7 +9,7 @@
  *
  * The UI is always same-origin (served by this server in production, reached
  * through the Angular dev proxy in development), so any cross-origin request
- * is illegitimate. We reject requests whose Origin or Host is not loopback.
+ * is illegitimate: requests whose Origin or Host is not loopback are rejected.
  * Non-browser clients (curl, etc.) send no Origin header and are unaffected.
  */
 

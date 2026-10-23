@@ -1,9 +1,7 @@
 /**
- * History Sync command - Replicate deployment history across all cluster nodes
- *
- * Reads the full audit log and metrics from the node that has the most data,
- * then writes it to all other nodes. Deduplicates by exact line match (audit)
- * and by metric ID (metrics JSONL).
+ * `dockflow history-sync`: merges the audit log and the metrics of every reachable node and
+ * writes the result back to each of them. Audit lines are unioned by exact match, metrics
+ * are deduplicated by id.
  */
 
 import type { Command } from 'commander';
@@ -21,9 +19,6 @@ interface NodeData {
   metricsLines: string[];
 }
 
-/**
- * Read history data from a single node
- */
 async function readNodeHistory(
   conn: SSHKeyConnection,
   stackName: string,
@@ -46,9 +41,7 @@ async function readNodeHistory(
   }
 }
 
-/**
- * Write the full history to a node (replace content)
- */
+/** Replaces the audit log and the metrics of a node with the merged content; false when a write fails. */
 export async function writeNodeHistory(
   shell: RemoteShell,
   stackName: string,
@@ -71,9 +64,7 @@ export async function writeNodeHistory(
   }
 }
 
-/**
- * Deduplicate metrics JSONL lines by ID field
- */
+/** Metric lines deduplicated by `id`; lines without an id are kept. */
 function deduplicateMetrics(lines: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -88,7 +79,7 @@ function deduplicateMetrics(lines: string[]): string[] {
         result.push(line);
       }
     } catch {
-      // Skip malformed lines
+      // malformed lines are dropped
     }
   }
 
@@ -113,7 +104,6 @@ export function registerHistorySyncCommand(program: Command): void {
       printInfo(`Syncing history for ${stackName} across ${connections.length} nodes...`);
       printBlank();
 
-      // 1. Read history from all nodes
       const spinner = createSpinner();
       spinner.start('Reading history from all nodes...');
       const nodeData: NodeData[] = [];
@@ -139,7 +129,6 @@ export function registerHistorySyncCommand(program: Command): void {
 
       spinner.succeed(`Read history from ${nodeData.length}/${connections.length} nodes`);
 
-      // 2. Merge: union of all audit lines (deduplicate exact match), deduplicate metrics by ID
       const allAuditLines = new Set<string>();
       const allMetricsLines: string[] = [];
 
@@ -150,7 +139,7 @@ export function registerHistorySyncCommand(program: Command): void {
         allMetricsLines.push(...nd.metricsLines);
       }
 
-      // Sort audit lines by timestamp (they start with ISO date)
+      // audit lines start with an ISO date, so a plain sort orders them by time
       const mergedAudit = Array.from(allAuditLines).sort();
       const mergedMetrics = deduplicateMetrics(allMetricsLines).sort((a, b) => {
         try {
@@ -164,7 +153,6 @@ export function registerHistorySyncCommand(program: Command): void {
 
       printInfo(`Merged: ${mergedAudit.length} audit entries, ${mergedMetrics.length} metric entries`);
 
-      // 3. Write merged data to all reachable nodes
       const writeSpinner = createSpinner();
       writeSpinner.start('Writing merged history to all nodes...');
       const auditContent = mergedAudit.join('\n');

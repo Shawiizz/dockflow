@@ -1,11 +1,4 @@
-/**
- * Backup API Routes
- *
- * GET  /api/backup/list?env=&service=         - List backups
- * POST /api/backup/create?env=&service=       - Create a backup
- * POST /api/backup/restore?env=&service=&id=  - Restore from a backup
- * POST /api/backup/prune?env=&service=        - Prune old backups (service optional)
- */
+/** Routes to list, create, restore and prune backups; `env`, `service` and `id` come from the query string. */
 
 import { jsonResponse, errorResponse } from '../server';
 import { printDebug } from '../../utils/output';
@@ -17,8 +10,6 @@ import { createEnvLock, LockHeldError } from '../../services/lock';
 import type { ClusterNode, SSHKeyConnection } from '../../types';
 import type { BackupEntry, BackupListResponse, BackupActionResponse, BackupPruneResponse } from '../types';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
-
 interface BackupContext {
   env: string;
   conn: SSHKeyConnection;
@@ -29,7 +20,7 @@ interface BackupContext {
   source: BackupSource;
 }
 
-/** Resolve env and connection — returns an error Response on failure */
+/** The environment and its manager connection, or the error Response to answer with. */
 async function resolveEnvAndConnection(url: URL): Promise<{ env: string; conn: SSHKeyConnection } | Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environment available', 400);
@@ -40,7 +31,7 @@ async function resolveEnvAndConnection(url: URL): Promise<{ env: string; conn: S
   return { env, conn };
 }
 
-/** Resolve backup context for a specific service (auto-detects stack) */
+/** Backup context of a service, on the app or the accessories stack depending on where its backup is configured; an error Response when it has none. */
 function resolveBackupContextForService(env: string, conn: SSHKeyConnection, service: string): BackupContext | Response {
   const cfg = getBackupConfig(service);
   if (cfg instanceof Response) return cfg;
@@ -57,7 +48,6 @@ function resolveBackupContextForService(env: string, conn: SSHKeyConnection, ser
   };
 }
 
-/** Map a service entry to the API response shape */
 function toBackupEntry(e: BackupBaseEntry): BackupEntry {
   return {
     id: e.id,
@@ -69,7 +59,7 @@ function toBackupEntry(e: BackupBaseEntry): BackupEntry {
   };
 }
 
-/** Load backup config for a service — wraps shared util with Response error handling */
+/** `requireBackupConfig`, answering 400 instead of throwing. */
 function getBackupConfig(service: string): { backupConfig: BackupAccessoryConfig; compression: 'gzip' | 'none'; source: BackupSource } | Response {
   try {
     return requireBackupConfig(service);
@@ -78,11 +68,6 @@ function getBackupConfig(service: string): { backupConfig: BackupAccessoryConfig
   }
 }
 
-// ─── Router ───────────────────────────────────────────────────────────────
-
-/**
- * Handle /api/backup/* routes
- */
 export async function handleBackupRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
@@ -107,9 +92,6 @@ export async function handleBackupRoutes(req: Request): Promise<Response> {
   return errorResponse('Endpoint not found', 404);
 }
 
-/**
- * GET /api/backup/list?env=&service=
- */
 async function listBackups(url: URL): Promise<Response> {
   const base = await resolveEnvAndConnection(url);
   if (base instanceof Response) return base;
@@ -143,9 +125,6 @@ async function listBackups(url: URL): Promise<Response> {
   return jsonResponse(response);
 }
 
-/**
- * POST /api/backup/create?env=&service=
- */
 async function handleCreateBackup(url: URL): Promise<Response> {
   const base = await resolveEnvAndConnection(url);
   if (base instanceof Response) return base;
@@ -171,9 +150,6 @@ async function handleCreateBackup(url: URL): Promise<Response> {
   return jsonResponse(response);
 }
 
-/**
- * POST /api/backup/restore?env=&service=&id=
- */
 async function restoreBackup(url: URL): Promise<Response> {
   const base = await resolveEnvAndConnection(url);
   if (base instanceof Response) return base;
@@ -186,7 +162,6 @@ async function restoreBackup(url: URL): Promise<Response> {
   const ctx = resolveBackupContextForService(base.env, base.conn, service);
   if (ctx instanceof Response) return ctx;
 
-  // Resolve backup
   const resolveResult = await ctx.backupService.resolveBackup(service, backupId ?? undefined);
   if (!resolveResult.success) {
     return errorResponse(resolveResult.error.message, 404);
@@ -224,9 +199,6 @@ async function restoreBackup(url: URL): Promise<Response> {
   return jsonResponse(response);
 }
 
-/**
- * POST /api/backup/prune?env=&service=
- */
 async function pruneBackups(url: URL): Promise<Response> {
   const base = await resolveEnvAndConnection(url);
   if (base instanceof Response) return base;

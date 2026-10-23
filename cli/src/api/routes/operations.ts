@@ -1,19 +1,8 @@
 /**
- * Operations API Routes
- *
- * SSE streaming endpoints for long-running deploy/build operations.
- * Uses Bun.spawn() to fork the CLI process and stream output as Server-Sent Events.
- *
- * A spawned process's output is buffered and broadcast to subscribers independently
- * of any single HTTP connection. Only POST /api/operations/cancel stops the process;
- * a client disconnecting does not. GET /api/operations/stream lets any client attach
- * or reattach at any time and replays the full buffered history before going live.
- *
- * POST /api/operations/deploy  - Start a deploy operation (SSE stream)
- * POST /api/operations/build   - Start a build operation (SSE stream)
- * GET  /api/operations/status  - Check if an operation is currently running
- * GET  /api/operations/stream  - Reattach to the current/last operation's output (SSE stream)
- * POST /api/operations/cancel  - Cancel the running operation
+ * SSE endpoints for long-running deploy/build operations. The CLI is spawned as a child
+ * process and its output is buffered and broadcast to subscribers independently of any
+ * HTTP connection: only POST /api/operations/cancel stops the process, and
+ * GET /api/operations/stream reattaches at any time, replaying the full history first.
  */
 
 import { join } from 'path';
@@ -23,8 +12,6 @@ import type {
   BuildOperationRequest,
   OperationStatusResponse,
 } from '../types';
-
-// ─── Operation state ─────────────────────────────────────────────────────────
 
 interface OpEvent {
   event: 'log' | 'done';
@@ -45,23 +32,13 @@ interface RunningOperation {
 
 let currentOperation: RunningOperation | null = null;
 
-// ─── CLI executable resolution ───────────────────────────────────────────────
-
-/**
- * Determine the command prefix to invoke the Dockflow CLI.
- *
- * - Compiled binary: process.argv[0] is the binary itself.
- * - Running from source via `bun run src/index.ts`: argv[0] is "bun",
- *   argv[1] is the entry file.
- */
+/** Command prefix to invoke the Dockflow CLI: the compiled binary itself, or `bun run <entry>` from source. */
 function getCliCommand(): string[] {
   const argv0 = process.argv[0];
   if (argv0.includes('bun')) {
-    // Running from source: find the main entry file
     const mainFile = process.argv[1] || join(import.meta.dir, '../../index.ts');
     return [argv0, 'run', mainFile];
   }
-  // Compiled binary
   return [argv0];
 }
 
@@ -89,45 +66,33 @@ export function buildArgs(body: BuildOperationRequest): string[] {
   return args;
 }
 
-// ─── Route handler ───────────────────────────────────────────────────────────
-
-/**
- * Handle /api/operations/* routes
- */
 export async function handleOperationsRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
 
-  // POST /api/operations/deploy
   if (pathname === '/api/operations/deploy' && method === 'POST') {
     return startDeployOperation(req);
   }
 
-  // POST /api/operations/build
   if (pathname === '/api/operations/build' && method === 'POST') {
     return startBuildOperation(req);
   }
 
-  // GET /api/operations/status
   if (pathname === '/api/operations/status' && method === 'GET') {
     return getOperationStatus();
   }
 
-  // GET /api/operations/stream
   if (pathname === '/api/operations/stream' && method === 'GET') {
     return attachToOperation();
   }
 
-  // POST /api/operations/cancel
   if (pathname === '/api/operations/cancel' && method === 'POST') {
     return cancelOperation();
   }
 
   return errorResponse('Endpoint not found', 404);
 }
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Append an event to the operation's buffer and push it to every live subscriber. */
 function broadcast(op: RunningOperation, evt: OpEvent): void {
@@ -172,7 +137,6 @@ async function pumpOutput(op: RunningOperation): Promise<void> {
         }
       }
 
-      // Flush remaining buffer
       if (buffer.trim()) {
         broadcast(op, { event: 'log', data: { line: buffer, stream: streamName } });
       }
@@ -221,7 +185,6 @@ function subscribeToOperation(op: RunningOperation): Response {
         }
       }
 
-      // Catch up on everything that happened before this client (re)connected
       for (const evt of op.buffer) send(evt);
 
       if (op.finished) {
@@ -293,11 +256,6 @@ function launchOperation(type: 'deploy' | 'build', environment: string, args: st
   return op;
 }
 
-// ─── Endpoint implementations ────────────────────────────────────────────────
-
-/**
- * Start a deploy operation and stream output as SSE
- */
 async function startDeployOperation(req: Request): Promise<Response> {
   let body: DeployOperationRequest;
   try {
@@ -325,9 +283,6 @@ async function startDeployOperation(req: Request): Promise<Response> {
   return subscribeToOperation(op);
 }
 
-/**
- * Start a build operation and stream output as SSE
- */
 async function startBuildOperation(req: Request): Promise<Response> {
   let body: BuildOperationRequest;
   try {
@@ -385,9 +340,6 @@ function attachToOperation(): Response {
   return subscribeToOperation(currentOperation);
 }
 
-/**
- * Cancel the running operation by killing the child process
- */
 function cancelOperation(): Response {
   if (!currentOperation || currentOperation.finished) {
     return jsonResponse({ success: false, message: 'No operation is currently running' }, 409);

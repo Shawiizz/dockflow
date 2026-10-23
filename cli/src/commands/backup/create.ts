@@ -1,8 +1,3 @@
-/**
- * Backup Create Command
- * Create a backup of a service or accessory database
- */
-
 import type { Command } from 'commander';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { printIntro, printOutro, printInfo, printBlank, printDim, printJSON, createSpinner } from '../../utils/output';

@@ -13,9 +13,9 @@ import { printWarning } from '../../utils/output';
 export type BackupSource = 'services' | 'accessories';
 
 /**
- * Load and validate backup configuration for a specific service.
- * Searches both `backup.services` (main stack) and `backup.accessories`.
- * Returns the config, compression setting, and which source it came from.
+ * Backup configuration of a service, found in `backup.services` (app stack) or
+ * `backup.accessories`, with its compression setting and which of the two it came from.
+ * Throws a BackupError, with a config example, when the service has none.
  */
 export function requireBackupConfig(service: string): {
   backupConfig: BackupAccessoryConfig;
@@ -45,11 +45,7 @@ export function requireBackupConfig(service: string): {
   );
 }
 
-/**
- * Resolve the stack name based on where the backup config was found.
- * - 'services' → main stack name ({project}-{env})
- * - 'accessories' → accessories stack name ({project}-{env}-accessories)
- */
+/** Stack name for where the backup config was found: the app stack for 'services', the accessories stack for 'accessories'. */
 export function resolveBackupStack(env: string, source: BackupSource): string {
   const stackName = source === 'services'
     ? getStackName(env)
@@ -72,10 +68,7 @@ export function scaleToOneHint(env: string, service: string, source: BackupSourc
     : `Set replicas to 1 for ${service} in accessories.yml and run \`dockflow deploy ${env} --accessories\`, restore, then put the count back.`;
 }
 
-/**
- * Get all configured backup stack names for an environment.
- * Returns entries for both services and accessories stacks if configured.
- */
+/** The backup stacks configured for an environment: the app stack and/or the accessories stack. */
 export function getAllBackupStacks(env: string): { stackName: string; source: BackupSource }[] {
   const config = loadConfig();
   const stacks: { stackName: string; source: BackupSource }[] = [];
@@ -93,9 +86,6 @@ export function getAllBackupStacks(env: string): { stackName: string; source: Ba
   return stacks;
 }
 
-/**
- * Get all configured backup service names (from both services and accessories).
- */
 export function getBackupServiceNames(): string[] {
   const config = loadConfig();
   const names: string[] = [];
@@ -120,7 +110,7 @@ export function getBackupNodes(env: string): ClusterNode[] {
   });
 }
 
-/** Say which servers did not answer, and what that leaves out. */
+/** Warns which servers did not answer, and what that leaves out. */
 export function warnUnreachableNodes(unreachable: ClusterNode[], consequence: string): void {
   if (unreachable.length === 0) return;
   printWarning(`${unreachable.length} server(s) did not answer (${unreachable.map(node => node.name).join(', ')}); ${consequence}`);
@@ -130,7 +120,7 @@ function addUnreachable(into: Map<string, ClusterNode>, nodes: ClusterNode[]): v
   for (const node of nodes) into.set(`${node.connection.host}:${node.connection.port}`, node);
 }
 
-// ─── Shared data-fetching helpers (used by both CLI commands and API routes) ──
+// used by both the CLI commands and the API routes
 
 /** Backup entries grouped by service within a single stack */
 export interface StackGroupedEntries {

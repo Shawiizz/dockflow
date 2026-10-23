@@ -1,6 +1,4 @@
-/**
- * List images command - Show the app's images on every node
- */
+/** `dockflow list images`: the app's images on every node. */
 
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';

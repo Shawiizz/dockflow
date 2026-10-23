@@ -62,8 +62,8 @@ async function setupBitbucket(projectRoot: string, jobs: CIJob[], version: strin
     ),
   );
 
-  // Each template is a full YAML document; we extract the `pipelines:` block from each
-  // and merge them under a shared header. Only the first template contributes the header.
+  // each template is a full YAML document: take the `pipelines:` block of each and merge them
+  // under a shared header, which only the first template contributes
   const [first, ...rest] = sections;
   const header = first.split('pipelines:')[0];
   const allPipelineBlocks = sections

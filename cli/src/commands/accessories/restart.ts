@@ -1,8 +1,3 @@
-/**
- * Accessories Restart Command
- * Restart accessory services by forcing an update
- */
-
 import type { Command } from 'commander';
 import { printIntro, printOutro, printDebug, printBlank, printWarning, createSpinner } from '../../utils/output';
 import { idleServices } from '../app/service-name';

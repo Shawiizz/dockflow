@@ -1,9 +1,4 @@
-/**
- * Config API Routes
- * 
- * GET /api/config - Get current configuration
- * PUT /api/config - Update configuration
- */
+/** Routes to read and update config.yml and servers.yml, parsed or as raw text. */
 
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, loadServersConfig, getProjectRoot, writeConfig, writeServersConfig } from '../../utils/config';
@@ -11,41 +6,32 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml } from 'yaml';
 
-/**
- * Handle /api/config/* routes
- */
 export async function handleConfigRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
   
-  // GET /api/config - Get config.yml
   if (pathname === '/api/config' && method === 'GET') {
     return getConfig();
   }
   
-  // PUT /api/config - Update config.yml
   if (pathname === '/api/config' && method === 'PUT') {
     return updateConfig(req);
   }
   
-  // GET /api/config/servers - Get servers.yml
   if (pathname === '/api/config/servers' && method === 'GET') {
     return getServersConfig();
   }
   
-  // PUT /api/config/servers - Update servers.yml
   if (pathname === '/api/config/servers' && method === 'PUT') {
     return updateServersConfig(req);
   }
   
-  // GET /api/config/raw/:file - Get raw file content
   const rawMatch = pathname.match(/^\/api\/config\/raw\/(.+)$/);
   if (rawMatch && method === 'GET') {
     return getRawConfig(rawMatch[1]);
   }
   
-  // PUT /api/config/raw/:file - Save raw file content
   const rawSaveMatch = pathname.match(/^\/api\/config\/raw\/(.+)$/);
   if (rawSaveMatch && method === 'PUT') {
     return saveRawConfig(rawSaveMatch[1], req);
@@ -54,9 +40,6 @@ export async function handleConfigRoutes(req: Request): Promise<Response> {
   return errorResponse('Endpoint not found', 404);
 }
 
-/**
- * Get parsed config.yml
- */
 async function getConfig(): Promise<Response> {
   const config = loadConfig({ silent: true });
   
@@ -74,9 +57,6 @@ async function getConfig(): Promise<Response> {
   });
 }
 
-/**
- * Update config.yml
- */
 async function updateConfig(req: Request): Promise<Response> {
   try {
     const body = await req.json();
@@ -98,9 +78,6 @@ async function updateConfig(req: Request): Promise<Response> {
   }
 }
 
-/**
- * Get parsed servers.yml
- */
 async function getServersConfig(): Promise<Response> {
   const serversConfig = loadServersConfig();
   
@@ -118,9 +95,6 @@ async function getServersConfig(): Promise<Response> {
   });
 }
 
-/**
- * Update servers.yml
- */
 async function updateServersConfig(req: Request): Promise<Response> {
   try {
     const body = await req.json();
@@ -148,9 +122,6 @@ async function updateServersConfig(req: Request): Promise<Response> {
   }
 }
 
-/**
- * Get raw file content
- */
 async function getRawConfig(fileName: string): Promise<Response> {
   // Sanitize filename to prevent directory traversal
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '');
@@ -174,9 +145,6 @@ async function getRawConfig(fileName: string): Promise<Response> {
   });
 }
 
-/**
- * Save raw file content
- */
 async function saveRawConfig(fileName: string, req: Request): Promise<Response> {
   try {
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '');
@@ -194,7 +162,6 @@ async function saveRawConfig(fileName: string, req: Request): Promise<Response> 
       return errorResponse('Missing "content" field', 400);
     }
 
-    // Validate YAML syntax
     try {
       parseYaml(content);
     } catch (e) {

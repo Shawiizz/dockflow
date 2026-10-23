@@ -1,7 +1,4 @@
-/**
- * Accessories Stop Command
- * Stop accessory services by scaling to 0 replicas
- */
+/** `dockflow accessories stop`: stops accessory services by scaling them to 0 replicas. */
 
 import type { Command } from 'commander';
 import { printInfo, printIntro, printOutro, printNote, printWarning, printBlank, createSpinner } from '../../utils/output';

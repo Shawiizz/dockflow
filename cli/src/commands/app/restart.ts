@@ -1,7 +1,3 @@
-/**
- * Restart command - Restart services
- */
-
 import type { Command } from 'commander';
 import { printDebug, printWarning, createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';

@@ -1,7 +1,3 @@
-/**
- * Scale command - Scale service replicas
- */
-
 import type { Command } from 'commander';
 import { printDebug, createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';

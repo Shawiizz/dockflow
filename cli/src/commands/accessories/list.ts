@@ -1,8 +1,3 @@
-/**
- * Accessories List Command
- * List all running accessories and their status
- */
-
 import type { Command } from 'commander';
 import { getLayout } from '../../utils/config';
 import { sshExec } from '../../utils/ssh';
@@ -19,9 +14,6 @@ interface ServiceInfo {
   ports: string;
 }
 
-/**
- * Parse docker stack services output
- */
 function parseServicesOutput(output: string): ServiceInfo[] {
   const lines = output.trim().split('\n').filter(Boolean);
   return lines.map(line => {
@@ -36,9 +28,6 @@ function parseServicesOutput(output: string): ServiceInfo[] {
   });
 }
 
-/**
- * Format replicas with color
- */
 function formatReplicas(replicas: string): string {
   if (!replicas) return colors.dim('-');
   
@@ -61,9 +50,6 @@ function hasAccessoriesFile(): boolean {
   return getLayout().accessoriesPath !== null;
 }
 
-/**
- * Register the accessories list command
- */
 export function registerAccessoriesListCommand(program: Command): void {
   program
     .command('list <env>')
@@ -77,7 +63,6 @@ export function registerAccessoriesListCommand(program: Command): void {
         printBlank();
       }
 
-      // Validate environment
       const { connection } = await resolveEnv(env, options.server);
       const validation = await validateAccessoriesStack(connection, env);
 
@@ -96,7 +81,6 @@ export function registerAccessoriesListCommand(program: Command): void {
 
         const { stackName } = validation;
 
-        // Get services info using docker stack services
         const format = '{{.Name}}\t{{.Mode}}\t{{.Replicas}}\t{{.Image}}\t{{.Ports}}';
         const listCmd = `docker stack services ${stackName} --format "${format}"`;
         
@@ -118,7 +102,6 @@ export function registerAccessoriesListCommand(program: Command): void {
           return;
         }
 
-        // Display table header
         printRaw(colors.bold('  SERVICE'.padEnd(30) + 'REPLICAS'.padEnd(15) + 'IMAGE'.padEnd(35) + 'PORTS'));
         printDim('  ' + '-'.repeat(90));
 
@@ -138,7 +121,6 @@ export function registerAccessoriesListCommand(program: Command): void {
 
         printBlank();
 
-        // Show volumes (associated with the stack)
         const volumesResult = await sshExec(connection, 
           `docker volume ls --filter "label=com.docker.stack.namespace=${stackName}" --format "{{.Name}}"`
         );

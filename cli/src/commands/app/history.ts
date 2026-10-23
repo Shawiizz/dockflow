@@ -1,7 +1,3 @@
-/**
- * History command - Show deployment history / audit log
- */
-
 import type { Command } from 'commander';
 import { shellQuote, sshExec } from '../../utils/ssh';
 import { printSection, printNote, printDebug, colors, printBlank, printWarning, printDim, printJSON, printRaw } from '../../utils/output';
@@ -101,7 +97,6 @@ export function registerHistoryCommand(program: Command): void {
           return;
         }
 
-        // Header
         printRaw(
           colors.dim('TIMESTAMP'.padEnd(26)) +
           colors.dim('ACTION'.padEnd(12)) +
@@ -110,7 +105,6 @@ export function registerHistoryCommand(program: Command): void {
         );
         printDim('─'.repeat(80));
 
-        // Entries
         entries.forEach(entry => {
           printRaw(formatAuditEntry(entry));
         });

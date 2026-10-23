@@ -1,17 +1,9 @@
-/**
- * Accessories Exec Command
- * Execute commands in accessory containers
- */
-
 import type { Command } from 'commander';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { withErrorHandler } from '../../utils/errors';
 import { collectEnv, type ExecCommandOptions, planExecCommand, runExecIn } from '../app/exec';
 
-/**
- * Register the accessories exec command
- */
 export function registerAccessoriesExecCommand(program: Command): void {
   program
     .command('exec <env> <service> [command...]')

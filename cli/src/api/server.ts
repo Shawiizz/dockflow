@@ -1,12 +1,7 @@
 /**
- * API Server - Bun HTTP server for Dockflow WebUI
- *
- * Serves the Angular frontend and exposes REST API endpoints
- * for interacting with the Dockflow CLI functionality.
- *
- * Supports two modes:
- * 1. Compiled binary: serves embedded UI assets via generated manifest
- * 2. Source mode: serves from ui/dist/browser/browser on disk
+ * Bun HTTP server of the WebUI: serves the Angular frontend and the REST API. A compiled
+ * binary serves its embedded UI assets (generated manifest); from source it serves
+ * ui/dist/browser/browser from disk.
  */
 
 import { join, resolve, sep } from 'path';
@@ -15,9 +10,6 @@ import { handleApiRoutes } from './routes/index';
 import { sshWebSocketHandlers, parseSSHServerName, parseExecServiceName } from './routes/ssh';
 import { isSameOriginRequest } from './origin';
 
-/**
- * Try to load embedded UI assets (only available in compiled binary)
- */
 async function loadEmbeddedAssets(): Promise<Map<string, string> | null> {
   try {
     // This file is generated at build time and only exists in compiled binaries
@@ -29,9 +21,6 @@ async function loadEmbeddedAssets(): Promise<Map<string, string> | null> {
   }
 }
 
-/**
- * Get the path to the UI dist folder (for source/dev mode)
- */
 function getUIDistPath(): string {
   // Angular 21 with application builder outputs to dist/browser/browser
   // When running from source: cli/src/api -> cli/ui/dist/browser/browser
@@ -39,9 +28,7 @@ function getUIDistPath(): string {
 }
 
 /**
- * Create a JSON response.
- *
- * The API is same-origin only (see origin.ts), so no CORS headers are sent —
+ * The API is same-origin only (see origin.ts), so no CORS headers are sent:
  * cross-origin requests are rejected before reaching any handler.
  */
 export function jsonResponse(data: unknown, status = 200): Response {
@@ -53,20 +40,13 @@ export function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-/**
- * Create an error response
- */
 export function errorResponse(message: string, status = 500): Response {
   return jsonResponse({ error: message }, status);
 }
 
-/**
- * Start the Dockflow WebUI server
- */
 export async function startWebServer(port: number): Promise<void> {
   const uiDistPath = getUIDistPath();
 
-  // Try to load embedded assets (compiled binary mode)
   const embeddedAssets = await loadEmbeddedAssets();
   const hasEmbeddedUI = embeddedAssets !== null && embeddedAssets.size > 0;
   const hasDiskUI = existsSync(join(uiDistPath, 'index.html'));
@@ -87,12 +67,10 @@ export async function startWebServer(port: number): Promise<void> {
         return new Response('Forbidden: cross-origin requests are not allowed', { status: 403 });
       }
 
-      // API routes
       if (pathname.startsWith('/api/')) {
         return handleApiRoutes(req);
       }
       
-      // WebSocket upgrade for SSH terminal
       if (pathname.startsWith('/ws/ssh/')) {
         const serverName = parseSSHServerName(pathname);
         if (!serverName) {
@@ -105,7 +83,6 @@ export async function startWebServer(port: number): Promise<void> {
         return new Response('WebSocket upgrade failed', { status: 400 });
       }
 
-      // WebSocket upgrade for exec into container
       if (pathname.startsWith('/ws/exec/')) {
         const parsed = parseExecServiceName(pathname);
         if (!parsed) {
@@ -119,7 +96,6 @@ export async function startWebServer(port: number): Promise<void> {
         return new Response('WebSocket upgrade failed', { status: 400 });
       }
       
-      // Serve from embedded assets (compiled binary)
       if (hasEmbeddedUI && embeddedAssets) {
         const assetPath = pathname === '/' ? '/index.html' : pathname;
         const embeddedPath = embeddedAssets.get(assetPath);
@@ -140,7 +116,6 @@ export async function startWebServer(port: number): Promise<void> {
         }
       }
       
-      // Serve from disk (source/dev mode with built UI)
       if (hasDiskUI) {
         // Resolve within the dist dir and reject anything that escapes it,
         // so a crafted path (e.g. /../../etc/passwd) cannot read outside.
@@ -165,21 +140,16 @@ export async function startWebServer(port: number): Promise<void> {
         }
       }
       
-      // No UI available
       return new Response(getNoUIHTML(), {
         status: 200,
         headers: { 'Content-Type': 'text/html' },
       });
     },
 
-    // WebSocket handlers for SSH terminal sessions
     websocket: sshWebSocketHandlers,
   });
 }
 
-/**
- * Get MIME type for a file path
- */
 function getMimeType(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase();
   
@@ -203,9 +173,6 @@ function getMimeType(filePath: string): string {
   return mimeTypes[ext || ''] || 'application/octet-stream';
 }
 
-/**
- * HTML page shown when UI is not built
- */
 function getNoUIHTML(): string {
   return `<!DOCTYPE html>
 <html lang="en">

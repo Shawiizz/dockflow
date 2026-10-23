@@ -1,8 +1,3 @@
-/**
- * Backup command group
- * Backup and restore accessory databases
- */
-
 import type { Command } from 'commander';
 import { registerBackupCreateCommand } from './create';
 import { registerBackupListCommand } from './list';

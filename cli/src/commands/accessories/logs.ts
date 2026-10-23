@@ -1,17 +1,9 @@
-/**
- * Accessories Logs Command
- * View logs for accessory services
- */
-
 import type { Command } from 'commander';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
 import { withErrorHandler } from '../../utils/errors';
 import { type LogsCommandOptions, showLogs } from '../app/logs';
 
-/**
- * Register the accessories logs command
- */
 export function registerAccessoriesLogsCommand(program: Command): void {
   program
     .command('logs <env> [service]')

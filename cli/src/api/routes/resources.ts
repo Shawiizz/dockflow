@@ -1,12 +1,4 @@
-/**
- * Resources & Locks API Routes
- *
- * POST   /api/resources/prune   - Prune Docker resources (containers, images, volumes, networks)
- * GET    /api/resources/disk    - Get Docker disk usage
- * GET    /api/locks/:env        - Get lock status for an environment
- * POST   /api/locks/:env        - Acquire a deploy lock
- * DELETE /api/locks/:env        - Release a deploy lock
- */
+/** Routes to prune Docker resources and read disk usage on every node, and to read and take deploy locks. */
 
 import { jsonResponse, errorResponse } from '../server';
 import { sshExec } from '../../utils/ssh';
@@ -27,22 +19,15 @@ import type {
   LockActionResponse,
 } from '../types';
 
-// ─── Resources handler ──────────────────────────────────────────────────────
-
-/**
- * Handle /api/resources/* routes
- */
 export async function handleResourcesRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
 
-  // POST /api/resources/prune
   if (pathname === '/api/resources/prune' && method === 'POST') {
     return pruneResources(req);
   }
 
-  // GET /api/resources/disk
   if (pathname === '/api/resources/disk' && method === 'GET') {
     return getDiskUsage(url);
   }
@@ -50,17 +35,11 @@ export async function handleResourcesRoutes(req: Request): Promise<Response> {
   return errorResponse('Endpoint not found', 404);
 }
 
-// ─── Locks handler ──────────────────────────────────────────────────────────
-
-/**
- * Handle /api/locks/* routes
- */
 export async function handleLocksRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
 
-  // Match /api/locks/:env
   const lockMatch = pathname.match(/^\/api\/locks\/([^/]+)$/);
   if (!lockMatch) {
     return errorResponse('Endpoint not found', 404);
@@ -68,25 +47,20 @@ export async function handleLocksRoutes(req: Request): Promise<Response> {
 
   const env = decodeURIComponent(lockMatch[1]);
 
-  // GET /api/locks/:env
   if (method === 'GET') {
     return getLockStatus(env);
   }
 
-  // POST /api/locks/:env
   if (method === 'POST') {
     return acquireLock(env, req);
   }
 
-  // DELETE /api/locks/:env
   if (method === 'DELETE') {
     return releaseLock(env);
   }
 
   return errorResponse('Method not allowed', 405);
 }
-
-// ─── Prune implementation ───────────────────────────────────────────────────
 
 const PRUNE_TARGETS = ['containers', 'images', 'volumes', 'networks'] as const;
 type PruneTarget = (typeof PRUNE_TARGETS)[number];
@@ -173,9 +147,6 @@ export async function pruneNodes(
   return results;
 }
 
-/**
- * Prune Docker resources on every node of the environment
- */
 async function pruneResources(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const env = resolveEnvironment(url.searchParams.get('env'));
@@ -204,8 +175,6 @@ async function pruneResources(req: Request): Promise<Response> {
   return jsonResponse({ results } satisfies PruneResponse);
 }
 
-// ─── Disk usage implementation ──────────────────────────────────────────────
-
 /** `docker system df` of each node: the plain text for one node, a block per node for several. */
 export function formatDiskUsage(nodes: NodeDiskUsage[]): string {
   if (nodes.length === 1 && nodes[0].raw !== undefined) return nodes[0].raw;
@@ -214,9 +183,6 @@ export function formatDiskUsage(nodes: NodeDiskUsage[]): string {
     .join('\n\n');
 }
 
-/**
- * Get Docker disk usage of every node via `docker system df`
- */
 async function getDiskUsage(url: URL): Promise<Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
@@ -243,11 +209,6 @@ async function getDiskUsage(url: URL): Promise<Response> {
   return jsonResponse({ raw: formatDiskUsage(nodes), nodes } satisfies DiskUsageResponse);
 }
 
-// ─── Lock implementations (using Lock service) ─────────────────────────────
-
-/**
- * Get the current lock status for an environment
- */
 async function getLockStatus(env: string): Promise<Response> {
   const conn = await getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
@@ -282,9 +243,6 @@ async function getLockStatus(env: string): Promise<Response> {
   }
 }
 
-/**
- * Acquire a deploy lock
- */
 async function acquireLock(env: string, req: Request): Promise<Response> {
   const conn = await getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);
@@ -317,9 +275,6 @@ async function acquireLock(env: string, req: Request): Promise<Response> {
   }
 }
 
-/**
- * Release a deploy lock
- */
 async function releaseLock(env: string): Promise<Response> {
   const conn = await getManagerConnection(env);
   if (!conn) return errorResponse('No manager server with credentials found', 404);

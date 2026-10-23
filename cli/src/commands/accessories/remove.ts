@@ -1,8 +1,3 @@
-/**
- * Accessories Remove Command
- * Remove the accessories stack entirely
- */
-
 import type { Command } from 'commander';
 import { sshExec, shellQuote } from '../../utils/ssh';
 import type { SSHKeyConnection } from '../../types/connection';
@@ -16,9 +11,6 @@ import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 import { nodesOf, onEveryNode, type NodeRef } from '../app/nodes';
 import { STACK_REMOVAL_MAX_ATTEMPTS, STACK_REMOVAL_POLL_INTERVAL_MS, DOCKFLOW_ACCESSORIES_DIR } from '../../constants';
 
-/**
- * Register the accessories remove command
- */
 export function registerAccessoriesRemoveCommand(program: Command): void {
   program
     .command('remove <env>')

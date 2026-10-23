@@ -29,7 +29,6 @@ export async function handleTopologyRoutes(req: Request): Promise<Response> {
 
 async function getTopology(): Promise<Response> {
   try {
-    // 1. Load compose
     const composePath = getComposePath();
     let composeServices: Record<string, { image?: string; ports?: string[]; deploy?: { replicas?: number; placement?: { constraints?: string[] } } }> = {};
 
@@ -39,11 +38,9 @@ async function getTopology(): Promise<Response> {
       composeServices = parsed?.services ?? {};
     }
 
-    // 2. Load servers config
     const serversConfig = loadServersConfig({ silent: true });
     const rawServers = serversConfig?.servers ?? {};
 
-    // 3. Build service list
     const services: TopologyService[] = Object.entries(composeServices).map(([name, svc]) => ({
       name,
       image: svc.image,
@@ -51,7 +48,6 @@ async function getTopology(): Promise<Response> {
       ports: svc.ports,
     }));
 
-    // 4. Build server list
     const servers: TopologyServer[] = Object.entries(rawServers).map(([name, config]) => ({
       name,
       role: config.role ?? 'worker',
@@ -59,7 +55,6 @@ async function getTopology(): Promise<Response> {
       tags: config.tags ?? [],
     }));
 
-    // 5. Parse connections from placement constraints
     const connections: TopologyConnection[] = [];
     const servicesWithConstraints = new Set<string>();
 
@@ -81,7 +76,6 @@ async function getTopology(): Promise<Response> {
               implicit: false,
             });
           } else {
-            // For role constraints, find all servers matching the role
             for (const srv of servers) {
               if (srv.role === value) {
                 connections.push({
@@ -98,7 +92,7 @@ async function getTopology(): Promise<Response> {
       }
     }
 
-    // 6. Services without constraints can run on any node (implicit)
+    // a service without constraints can run on any node: implicit connections to every server
     for (const name of Object.keys(composeServices)) {
       if (!servicesWithConstraints.has(name)) {
         for (const srv of servers) {
@@ -136,7 +130,6 @@ async function updateTopology(req: Request): Promise<Response> {
       return errorResponse('No docker-compose.yml found', 404);
     }
 
-    // Read the current compose file
     const content = readFileSync(composePath, 'utf-8');
     const compose = parseYaml(content) as ComposeFile;
 
@@ -144,7 +137,6 @@ async function updateTopology(req: Request): Promise<Response> {
       return jsonResponse({ success: false, error: 'Invalid compose file: no services' }, 400);
     }
 
-    // Apply connections as placement constraints
     for (const [name, svc] of Object.entries(compose.services)) {
       const serviceConns = body.connections.filter(c => c.serviceName === name);
 
@@ -155,7 +147,6 @@ async function updateTopology(req: Request): Promise<Response> {
           `node.${c.constraintType}==${c.constraintValue}`,
         );
       } else {
-        // Remove constraints if no connections for this service
         if (svc.deploy?.placement?.constraints) {
           delete svc.deploy.placement.constraints;
           if (Object.keys(svc.deploy.placement).length === 0) {
@@ -168,7 +159,6 @@ async function updateTopology(req: Request): Promise<Response> {
       }
     }
 
-    // Write back
     const yamlContent = stringifyYaml(compose, { indent: 2 });
     writeFileSync(composePath, yamlContent, 'utf-8');
 

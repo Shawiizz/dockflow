@@ -1,13 +1,4 @@
-/**
- * Services API Routes
- *
- * GET  /api/services               - List Docker stack services
- * GET  /api/services/:name/logs    - Get service logs
- * POST /api/services/:name/restart - Restart a service
- * POST /api/services/:name/stop    - Stop a service (scale to 0)
- * POST /api/services/:name/scale   - Scale a service (body: { replicas })
- * POST /api/services/:name/rollback - Rollback a service
- */
+/** Routes for the Swarm services of an environment: list, logs, restart, stop, scale and rollback. */
 
 import { jsonResponse, errorResponse } from '../server';
 import { getAccessoriesStackName, getStackName, loadConfig } from '../../utils/config';
@@ -35,44 +26,35 @@ import type {
   LogsResponse,
 } from '../types';
 
-/**
- * Handle /api/services/* routes
- */
 export async function handleServicesRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
 
-  // GET /api/services
   if (pathname === '/api/services' && method === 'GET') {
     return listServices(url);
   }
 
-  // POST /api/services/:name/restart
   const restartMatch = pathname.match(/^\/api\/services\/([^/]+)\/restart$/);
   if (restartMatch && method === 'POST') {
     return restartService(restartMatch[1], url);
   }
 
-  // POST /api/services/:name/stop
   const stopMatch = pathname.match(/^\/api\/services\/([^/]+)\/stop$/);
   if (stopMatch && method === 'POST') {
     return stopService(stopMatch[1], url);
   }
 
-  // POST /api/services/:name/scale
   const scaleMatch = pathname.match(/^\/api\/services\/([^/]+)\/scale$/);
   if (scaleMatch && method === 'POST') {
     return scaleService(scaleMatch[1], url, req);
   }
 
-  // POST /api/services/:name/rollback
   const rollbackMatch = pathname.match(/^\/api\/services\/([^/]+)\/rollback$/);
   if (rollbackMatch && method === 'POST') {
     return rollbackService(rollbackMatch[1], url);
   }
 
-  // GET /api/services/:name/logs
   const logsMatch = pathname.match(/^\/api\/services\/([^/]+)\/logs$/);
   if (logsMatch && method === 'GET') {
     return getServiceLogs(logsMatch[1], url);
@@ -134,9 +116,8 @@ export function parseServiceLs(output: string, stackName: string, role?: Service
 const FAILED_TASK_STATE_PREFIXES = ['failed', 'rejected'];
 
 /**
- * Classify a task's `{{.CurrentState}}` string as a failure or normal convergence progress
- * (docker reports states like "Running 3 seconds ago", "Starting 1 second ago",
- * "Pending 4 seconds ago", "Failed 2 seconds ago").
+ * Classify a task's `{{.CurrentState}}` string ("Running 3 seconds ago", "Pending 4 seconds
+ * ago", "Failed 2 seconds ago") as a failure or normal convergence progress.
  */
 export function classifyTaskState(currentState: string): 'failed' | 'converging' {
   const normalized = currentState.trim().toLowerCase();
@@ -179,9 +160,6 @@ export function serviceListCommand(stackName: string): string {
   return `docker service ls --filter ${shellQuote(`label=com.docker.stack.namespace=${stackName}`)} --format "table {{.ID}}  {{.Name}}  {{.Mode}}  {{.Replicas}}  {{.Image}}  {{.Ports}}"`;
 }
 
-/**
- * List the Docker services of the app stack and the accessories stack of the environment
- */
 async function listServices(url: URL): Promise<Response> {
   const envFilter = url.searchParams.get('env');
   const config = loadConfig({ silent: true });
@@ -230,9 +208,6 @@ async function listServices(url: URL): Promise<Response> {
   }
 }
 
-/**
- * Restart a Docker service
- */
 async function restartService(serviceName: string, url: URL): Promise<Response> {
   if (!isValidDockerName(serviceName)) return errorResponse('Invalid service name', 400);
   const env = resolveEnvironment(url.searchParams.get('env'));
@@ -256,9 +231,6 @@ async function restartService(serviceName: string, url: URL): Promise<Response> 
   }
 }
 
-/**
- * Stop a Docker service (scale to 0)
- */
 async function stopService(serviceName: string, url: URL): Promise<Response> {
   if (!isValidDockerName(serviceName)) return errorResponse('Invalid service name', 400);
   const env = resolveEnvironment(url.searchParams.get('env'));
@@ -282,9 +254,6 @@ async function stopService(serviceName: string, url: URL): Promise<Response> {
   }
 }
 
-/**
- * Scale a Docker service
- */
 async function scaleService(serviceName: string, url: URL, req: Request): Promise<Response> {
   if (!isValidDockerName(serviceName)) return errorResponse('Invalid service name', 400);
   const env = resolveEnvironment(url.searchParams.get('env'));
@@ -404,9 +373,6 @@ export async function readServiceLogs(
   return { logs: arrangeLogLines(parseDockerLogLines(result.stdout, service), stackName) };
 }
 
-/**
- * Get logs for a specific service
- */
 async function getServiceLogs(serviceName: string, url: URL): Promise<Response> {
   if (!isValidDockerName(serviceName)) return errorResponse('Invalid service name', 400);
   const envFilter = url.searchParams.get('env');

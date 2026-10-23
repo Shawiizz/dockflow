@@ -1,7 +1,3 @@
-/**
- * Rollback command - Rollback to previous version
- */
-
 import type { Command } from 'commander';
 import { getPerformer } from '../../utils/config';
 import { createSpinner } from '../../utils/output';
@@ -60,7 +56,6 @@ export function registerRollbackCommand(program: Command): void {
             Notification.notify(config.notifications?.webhooks, { project: config.project_name, env, version: 'service-rollback', branch: '', performer: getPerformer(), status: 'success', duration_ms: durationMs, message }),
           ]);
         } else {
-          // Full stack rollback — redeploy previous release compose and update symlink
           spinner.start('Rolling back to previous release...');
           const releases = new Release(connection);
           const rollbackStartedAt = new Date();

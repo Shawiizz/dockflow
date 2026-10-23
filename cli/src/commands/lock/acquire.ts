@@ -1,7 +1,3 @@
-/**
- * Lock acquire command - Manually acquire a deployment lock
- */
-
 import type { Command } from 'commander';
 import { printWarning, printNote, printDim, printBlank, createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
@@ -20,7 +16,6 @@ export function registerLockAcquireCommand(parent: Command): void {
       const lockService = await createEnvLock(env, stackName, config.lock?.stale_threshold_minutes);
       const spinner = createSpinner();
 
-      // Check for existing lock (show info if blocked)
       if (!options.force) {
         spinner.start('Checking for existing lock...');
         const current = await lockService.status();
@@ -39,7 +34,6 @@ export function registerLockAcquireCommand(parent: Command): void {
         spinner.stop();
       }
 
-      // Acquire lock
       spinner.start('Acquiring lock...');
       const result = await lockService.acquire({
         message: options.message,

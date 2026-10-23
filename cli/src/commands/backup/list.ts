@@ -1,8 +1,3 @@
-/**
- * Backup List Command
- * List available backups for services and accessories
- */
-
 import type { Command } from 'commander';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { printIntro, printInfo, printBlank, printJSON, printRaw, printDim, colors, formatRelativeTime } from '../../utils/output';
@@ -29,7 +24,6 @@ export function registerBackupListCommand(program: Command): void {
       let unreachable;
 
       if (service) {
-        // Specific service — resolve which stack it belongs to
         const { source } = requireBackupConfig(service);
         const stackName = resolveBackupStack(env, source);
         const backupService = createBackup(connection, stackName, getBackupNodes(env));
@@ -55,7 +49,6 @@ export function registerBackupListCommand(program: Command): void {
         return;
       }
 
-      // Table header
       const header = `${'SERVICE'.padEnd(20)} ${'ID'.padEnd(17)} ${'DATE'.padEnd(20)} ${'SIZE'.padEnd(10)} ${'NODE'.padEnd(12)} AGE`;
       printDim(header);
       printDim('─'.repeat(header.length));

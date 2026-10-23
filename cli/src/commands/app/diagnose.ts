@@ -15,10 +15,7 @@ interface DiagnosticIssue {
   suggestion?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Error pattern table — ordered from most to least specific
-// ---------------------------------------------------------------------------
-
+// first match wins, so the patterns run from most to least specific
 const ERROR_PATTERNS: Array<{
   pattern: RegExp;
   suggestion: string | ((m: RegExpMatchArray) => string);
@@ -85,10 +82,6 @@ export function analyzeTaskError(error: string): string {
   return 'Check Docker logs for more details: docker service logs <service_name>';
 }
 
-// ---------------------------------------------------------------------------
-// Command
-// ---------------------------------------------------------------------------
-
 export function registerDiagnoseCommand(program: Command): void {
   program
     .command('diagnose <env>')
@@ -107,7 +100,6 @@ export function registerDiagnoseCommand(program: Command): void {
       const issues: DiagnosticIssue[] = [];
       const swarm = new SwarmStack(connection);
 
-      // ── Stack existence ──────────────────────────────────────────────────
       printSection('Stack Status');
       const stackExists = await swarm.stackExists(stackName);
       if (!stackExists) {
@@ -123,7 +115,6 @@ export function registerDiagnoseCommand(program: Command): void {
       }
       printSuccess('Stack exists');
 
-      // ── Service replicas ─────────────────────────────────────────────────
       printSection('Services');
       const services = await swarm.getServices(stackName);
       for (const service of services) {
@@ -139,7 +130,6 @@ export function registerDiagnoseCommand(program: Command): void {
         }
       }
 
-      // ── Failed tasks ─────────────────────────────────────────────────────
       printSection('Task Errors');
       const tasks = await swarm.getTasks(stackName);
       const failures = tasks
@@ -165,7 +155,6 @@ export function registerDiagnoseCommand(program: Command): void {
         }
       }
 
-      // ── Pending tasks ────────────────────────────────────────────────────
       printSection('Pending Tasks');
       const pending = tasks.filter(t =>
         t.currentState.includes('Pending') ||
@@ -184,7 +173,6 @@ export function registerDiagnoseCommand(program: Command): void {
         }
       }
 
-      // ── Recent Docker events (verbose only) ──────────────────────────────
       if (options.verbose) {
         printSection('Recent Docker Events');
         try {
@@ -202,7 +190,6 @@ export function registerDiagnoseCommand(program: Command): void {
         }
       }
 
-      // ── System resources ─────────────────────────────────────────────────
       printSection('System Resources');
 
       try {

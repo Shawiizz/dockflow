@@ -17,7 +17,6 @@ export function registerSshCommand(program: Command): void {
     .action(withServicesRequired(withResolvedEnv(async (env: string, commandParts: string[], options: { server?: string }) => {
       const { connection, serverName } = await resolveEnv(env, options.server, { anyServer: true });
       
-      // If command is provided, execute it and return
       if (commandParts && commandParts.length > 0) {
         const command = commandParts.join(' ');
         printInfo(`Executing on ${env} server (${serverName}): ${command}`);
@@ -33,7 +32,6 @@ export function registerSshCommand(program: Command): void {
         return;
       }
 
-      // Otherwise, open interactive shell
       printInfo(`Connecting to ${env} server (${serverName})...`);
       printBlank();
 

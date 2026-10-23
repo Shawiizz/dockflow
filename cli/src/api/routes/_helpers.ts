@@ -15,17 +15,12 @@ import type { SSHKeyConnection } from '../../types';
 
 export { getAllNodeConnections };
 
-/**
- * Docker name validation regex.
- * Docker service/stack/container names: alphanumeric, underscores, hyphens, dots.
- * Must start with alphanumeric.
- */
+/** Docker service/stack/container names: alphanumeric, underscore, hyphen and dot, starting with an alphanumeric. */
 const DOCKER_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 
 /**
- * Validate a Docker resource name (service, stack, container, accessory).
- * Returns true if the name is safe to interpolate into shell commands.
- * Rejects empty strings and anything with shell metacharacters.
+ * Whether a Docker resource name (service, stack, container, accessory) is safe to interpolate
+ * into a shell command: non-empty and free of shell metacharacters.
  */
 export function isValidDockerName(name: string): boolean {
   return name.length > 0 && name.length <= 256 && DOCKER_NAME_RE.test(name);
@@ -78,9 +73,7 @@ export function parseIntParam(raw: string | null, fallback: number, min = 1, max
   return Math.min(Math.max(parsed, min), max);
 }
 
-/**
- * Resolve the default environment (from query param or first available)
- */
+/** The requested environment, else the first configured one; null when there is none. */
 export function resolveEnvironment(envFilter: string | null): string | null {
   if (envFilter) return envFilter;
   const environments = getAvailableEnvironments();

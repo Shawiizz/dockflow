@@ -1,7 +1,5 @@
 ﻿/**
- * Deploy API Routes
- *
- * GET /api/deploy/history - Get deployment history from remote manager
+ * Deploy history route, read from the metrics the manager records for the stack.
  */
 
 import { jsonResponse, errorResponse } from '../server';
@@ -13,15 +11,11 @@ import type { DeploymentMetric } from '../../services/metrics';
 import { DOCKFLOW_METRICS_DIR } from '../../constants';
 import type { DeployHistoryEntry, DeployHistoryResponse } from '../types';
 
-/**
- * Handle /api/deploy/* routes
- */
 export async function handleDeployRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
 
-  // GET /api/deploy/history
   if (pathname === '/api/deploy/history' && method === 'GET') {
     return getDeployHistory(url);
   }
@@ -30,13 +24,8 @@ export async function handleDeployRoutes(req: Request): Promise<Response> {
 }
 
 /**
- * Read deploy history from the remote manager's metrics database.
- *
- * Dockflow records deployment metrics in JSONL format at:
- *   /var/lib/dockflow/metrics/<stackName>/deployments.json
- *
- * Each line is a JSON object with fields like:
- *   id, timestamp, version, environment, status, duration_ms, performer, etc.
+ * Deploy history from `deployments.json` in the stack's metrics directory on the manager:
+ * one JSON metric per line.
  */
 async function getDeployHistory(url: URL): Promise<Response> {
   const envFilter = url.searchParams.get('env');
@@ -59,8 +48,8 @@ async function getDeployHistory(url: URL): Promise<Response> {
   const metricsPath = `${DOCKFLOW_METRICS_DIR}/${conn.stackName}/deployments.json`;
 
   try {
-    // Read the last N*2 lines to account for potential filtering
-    // Use fallback across all nodes since history is replicated
+    // read a margin over the limit (malformed lines are skipped when parsing); any node can
+    // answer, the history is replicated between them
     const cmd = `tail -n ${limit * 2} "${metricsPath}" 2>/dev/null || echo ""`;
     const nodeConnections = getAllNodeConnections(env);
     const connections = nodeConnections.length > 0 ? nodeConnections : [conn];
@@ -83,14 +72,12 @@ async function getDeployHistory(url: URL): Promise<Response> {
       user: metric.performer || undefined,
     }));
 
-    // Sort by most recent first
     entries.sort((a, b) => {
       const dateA = new Date(a.startedAt || 0).getTime();
       const dateB = new Date(b.startedAt || 0).getTime();
       return dateB - dateA;
     });
 
-    // Limit results
     const limited = entries.slice(0, limit);
 
     return jsonResponse({
@@ -106,9 +93,7 @@ async function getDeployHistory(url: URL): Promise<Response> {
   }
 }
 
-/**
- * Map metric status to deploy UI status
- */
+/** Metric status as the deploy UI shows it: a rollback counts as failed, an unknown status as pending. */
 export function mapMetricStatus(status: string | undefined): 'success' | 'failed' | 'pending' | 'running' {
   switch (status) {
     case 'success':

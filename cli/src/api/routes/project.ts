@@ -1,9 +1,4 @@
-/**
- * Project API Routes
- * 
- * GET /api/project - Get current project info
- * GET /api/project/connection - Check connection status
- */
+/** Routes for the project summary and whether connection credentials are available. */
 
 import { jsonResponse, errorResponse } from '../server';
 import { loadConfig, loadServersConfig, getLayout, getProjectRoot } from '../../utils/config';
@@ -11,20 +6,15 @@ import { getAvailableEnvironments } from '../../utils/servers';
 import { existsSync } from 'fs';
 import { join, basename } from 'path';
 
-/**
- * Handle /api/project/* routes
- */
 export async function handleProjectRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
   
-  // GET /api/project - Get project info
   if (pathname === '/api/project' && method === 'GET') {
     return getProjectInfo();
   }
   
-  // GET /api/project/connection - Check if connection credentials exist
   if (pathname === '/api/project/connection' && method === 'GET') {
     return checkConnection();
   }
@@ -32,9 +22,6 @@ export async function handleProjectRoutes(req: Request): Promise<Response> {
   return errorResponse('Endpoint not found', 404);
 }
 
-/**
- * Get project information
- */
 async function getProjectInfo(): Promise<Response> {
   const layout = getLayout();
   const { root: projectRoot, composePath } = layout;
@@ -68,21 +55,16 @@ async function getProjectInfo(): Promise<Response> {
   });
 }
 
-/**
- * Check connection status
- */
 async function checkConnection(): Promise<Response> {
   const projectRoot = getProjectRoot();
   const envFilePath = join(projectRoot, '.env.dockflow');
   
   const hasEnvFile = existsSync(envFilePath);
   
-  // Check for CI environment variables
   const hasCISecrets = Object.keys(process.env).some(key => 
     key.endsWith('_CONNECTION') || key.endsWith('_SSH_KEY')
   );
   
-  // Get list of servers that have credentials
   const serversConfig = loadServersConfig();
   const serversWithCreds: string[] = [];
   const serversWithoutCreds: string[] = [];
@@ -92,7 +74,6 @@ async function checkConnection(): Promise<Response> {
     const envs = getAvailableEnvironments();
     
     for (const serverName of Object.keys(serversConfig.servers)) {
-      // Try each environment to find credentials for this server
       const hasKey = envs.some(env => !!getServerPrivateKey(env, serverName));
       if (hasKey) {
         serversWithCreds.push(serverName);

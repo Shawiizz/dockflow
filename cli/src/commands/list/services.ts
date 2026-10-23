@@ -1,7 +1,3 @@
-/**
- * List services command - Show services in a deployed stack
- */
-
 import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
 import { printSection, printNote, printJSON, printBlank, printDim, printRaw, colors } from '../../utils/output';
@@ -49,7 +45,6 @@ export function registerListServicesCommand(parent: Command): void {
         printSection(`Services: ${stackName}`);
         printBlank();
 
-        // Header
         printRaw(
           colors.dim('SERVICE'.padEnd(25)) +
           colors.dim('REPLICAS'.padEnd(12)) +
@@ -59,7 +54,6 @@ export function registerListServicesCommand(parent: Command): void {
         printDim('─'.repeat(90));
 
         for (const svc of services) {
-          // Parse replicas for coloring
           const [current, desired] = svc.replicas.split('/').map(n => parseInt(n, 10));
           const replicasColor = current === desired && current > 0
             ? colors.success
@@ -67,12 +61,10 @@ export function registerListServicesCommand(parent: Command): void {
               ? colors.error
               : colors.warning;
 
-          // Short name: strip stack prefix if present
           const shortName = svc.name.startsWith(`${stackName}_`)
             ? svc.name.replace(`${stackName}_`, '')
             : svc.name;
 
-          // Shorten image name
           const shortImage = svc.image.length > 38
             ? '...' + svc.image.slice(-35)
             : svc.image;
@@ -84,7 +76,6 @@ export function registerListServicesCommand(parent: Command): void {
             colors.dim(svc.ports || '-')
           );
 
-          // Show tasks/containers if requested
           if (options.tasks) {
             const fullName = qualifyServiceName(stackName, svc.name);
             const tasksCmd = `docker service ps ${fullName} --format '{{.ID}}|{{.Name}}|{{.Node}}|{{.CurrentState}}|{{.Error}}' --no-trunc 2>/dev/null | head -10`;
@@ -96,7 +87,6 @@ export function registerListServicesCommand(parent: Command): void {
               const shortId = (id || '').substring(0, 12);
               const taskName = (name || '').replace(`${stackName}_`, '');
 
-              // Color based on state
               let stateColor = colors.dim;
               if (state?.toLowerCase().includes('running')) stateColor = colors.success;
               else if (state?.toLowerCase().includes('failed') || error) stateColor = colors.error;

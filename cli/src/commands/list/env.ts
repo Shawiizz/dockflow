@@ -1,7 +1,3 @@
-/**
- * List env command - Show available environments and their configuration
- */
-
 import type { Command } from 'commander';
 import { loadConfig, loadServersConfig } from '../../utils/config';
 import { printSection, printNote, printError, printBlank, printJSON, printDim, printRaw, colors } from '../../utils/output';
@@ -24,7 +20,6 @@ function getEnvironmentsInfo(): EnvironmentInfo[] {
     return [];
   }
 
-  // Group servers by environment tag
   const envMap = new Map<string, EnvironmentInfo>();
 
   for (const [serverName, serverConfig] of Object.entries(serversConfig.servers)) {
@@ -133,7 +128,6 @@ export function registerListEnvCommand(parent: Command): void {
         printBlank();
       }
 
-      // Show deployment commands hint
       const deployHints = environments.slice(0, 2).map(env => `dockflow deploy ${env.name}`).join('\n');
       printNote(deployHints, 'Deploy to an environment');
     }));

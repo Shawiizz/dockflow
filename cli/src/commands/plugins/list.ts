@@ -1,7 +1,3 @@
-/**
- * Plugins list command - Show the plugins a project can use
- */
-
 import type { Command } from 'commander';
 import { getProjectRoot } from '../../utils/config';
 import { colors, printBlank, printDim, printError, printJSON, printNote, printRaw, printSection } from '../../utils/output';

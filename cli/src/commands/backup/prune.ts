@@ -1,7 +1,4 @@
-/**
- * Backup Prune Command
- * Remove old backups keeping only the last N
- */
+/** `dockflow backup prune`: removes old backups, keeping only the last N. */
 
 import type { Command } from 'commander';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
@@ -33,7 +30,6 @@ export function registerBackupPruneCommand(program: Command): void {
 
       const retentionCount = parseRetention(options.keep, loadConfig()?.backup?.retention_count ?? 10);
 
-      // Collect entries per stack, grouped by service
       const stackData: StackGroupedEntries[] = [];
 
       if (service) {
@@ -50,7 +46,6 @@ export function registerBackupPruneCommand(program: Command): void {
         stackData.push(...grouped.stacks);
       }
 
-      // Count what needs pruning across all stacks
       let totalToPrune = 0;
       const pruneSummary: { service: string; total: number; toRemove: number }[] = [];
 
@@ -75,7 +70,6 @@ export function registerBackupPruneCommand(program: Command): void {
       }
       printBlank();
 
-      // Confirmation
       if (!options.yes) {
         const confirmed = await confirmPrompt({
           message: 'Proceed with pruning?',
@@ -93,7 +87,7 @@ export function registerBackupPruneCommand(program: Command): void {
       let removed = 0;
       let bytesFreed = 0;
 
-      // Prune per-stack, per-service (avoids cross-stack entry mixing)
+      // per stack and per service, so entries of different stacks never mix
       for (const { backupService, byService } of stackData) {
         for (const [svc, entries] of Object.entries(byService)) {
           if (entries.length <= retentionCount) continue;
