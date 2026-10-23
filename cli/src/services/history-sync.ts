@@ -7,7 +7,7 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecChannel } from '../utils/ssh';
+import { sshExec, shellQuote } from '../utils/ssh';
 import { printWarning, printDebug } from '../utils/output';
 import { DOCKFLOW_AUDIT_DIR, DOCKFLOW_METRICS_DIR } from '../constants';
 
@@ -25,17 +25,14 @@ export async function syncToNode(
   const metricsFile = `${metricsDir}/deployments.json`;
 
   try {
-    await sshExec(targetConnection, `mkdir -p "${DOCKFLOW_AUDIT_DIR}" "${metricsDir}"`);
+    await sshExec(targetConnection, `mkdir -p ${shellQuote(DOCKFLOW_AUDIT_DIR)} ${shellQuote(metricsDir)}`);
 
-    const [auditHandle, metricsHandle] = await Promise.all([
-      sshExecChannel(targetConnection, `cat >> "${auditFile}"`),
-      sshExecChannel(targetConnection, `cat >> "${metricsFile}"`),
+    const writes = await Promise.all([
+      sshExec(targetConnection, `cat >> ${shellQuote(auditFile)}`, { stdin: `${auditEntry}\n` }),
+      sshExec(targetConnection, `cat >> ${shellQuote(metricsFile)}`, { stdin: `${metricsEntry}\n` }),
     ]);
-
-    auditHandle.stream.end(auditEntry + '\n');
-    metricsHandle.stream.end(metricsEntry + '\n');
-
-    await Promise.all([auditHandle.done, metricsHandle.done]);
+    const refused = writes.find((write) => write.exitCode !== 0);
+    if (refused) throw new Error(refused.stderr.trim() || `exit ${refused.exitCode}`);
   } catch (error) {
     printWarning(`History sync failed for ${targetConnection.host}: ${error instanceof Error ? error.message : String(error)}`);
   }

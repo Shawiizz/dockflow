@@ -65,8 +65,10 @@ class ScriptedSsh {
     return { call, reply: typeof rule.answer === 'function' ? rule.answer(command) : rule.answer };
   }
 
-  exec = async (_conn: unknown, command: string): Promise<SSHExecResult> => {
-    const { reply } = this.reply('exec', command);
+  /** a command given a standard input is recorded as a channel, with what it was sent */
+  exec = async (_conn: unknown, command: string, options?: { stdin?: string | Buffer }): Promise<SSHExecResult> => {
+    const { call, reply } = this.reply(options?.stdin === undefined ? 'exec' : 'channel', command);
+    if (options?.stdin !== undefined) call.stdin = String(options.stdin);
     return { exitCode: reply.exitCode ?? 0, stdout: reply.stdout ?? '', stderr: reply.stderr ?? '' };
   };
 

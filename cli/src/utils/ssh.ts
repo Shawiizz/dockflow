@@ -432,11 +432,17 @@ function execStreamOnClient(
  * Execute a command via SSH (returns collected output).
  * Uses connection pooling — one TCP connection per unique host.
  */
+/** Runs `command` and collects its output; `stdin`, when given, is written to its standard input. */
 export async function sshExec(
   conn: ConnectionInfo,
   command: string,
-  options?: { collectBinary?: boolean },
+  options?: { collectBinary?: boolean; stdin?: string | Buffer },
 ): Promise<SSHExecResult> {
+  if (options?.stdin !== undefined) {
+    const { stream, done } = await sshExecChannel(conn, command);
+    stream.end(options.stdin);
+    return done;
+  }
   const client = await getPooledClient(conn);
 
   try {

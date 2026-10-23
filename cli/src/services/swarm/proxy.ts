@@ -8,7 +8,7 @@ import { createHash } from 'crypto';
 
 import type { SSHKeyConnection } from '../../types';
 import type { ProxyConfig } from '../../utils/config';
-import { shellQuote, sshExec, sshExecChannel } from '../../utils/ssh';
+import { shellQuote, sshExec } from '../../utils/ssh';
 import { printDebug, printDim, printSuccess } from '../../utils/output';
 import { DeployError, ErrorCode } from '../../utils/errors';
 import {
@@ -99,12 +99,11 @@ export class SwarmProxy {
       );
     }
 
-    const { stream, done } = await sshExecChannel(
+    const result = await sshExec(
       this.connection,
       `docker stack deploy --prune --resolve-image changed -c - ${TRAEFIK_STACK_NAME}`,
+      { stdin: SwarmProxy.generateCompose(proxyConfig, configHash) },
     );
-    stream.end(SwarmProxy.generateCompose(proxyConfig, configHash));
-    const result = await done;
 
     if (result.exitCode !== 0) {
       throw new Error(`Traefik deployment failed: ${result.stderr.trim() || result.stdout.trim()}`);

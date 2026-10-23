@@ -15,7 +15,7 @@ import type { ClusterNode, SSHKeyConnection } from '../types';
 import type { BackupDbType, BackupAccessoryConfig } from '../utils/config';
 import { ok, err, type Result } from '../types';
 import { BackupError, ErrorCode, ValidationError } from '../utils/errors';
-import { sshExec, sshExecChannel, sshExecChannelUnbuffered, shellQuote } from '../utils/ssh';
+import { sshExec, sshExecChannelUnbuffered, shellQuote } from '../utils/ssh';
 import { formatBytes, printDebug, printInfo, printWarning } from '../utils/output';
 import { findSwarmContainer, qualifyServiceName } from './swarm/docker';
 import { SwarmStack } from './swarm/stack';
@@ -409,9 +409,7 @@ export class Backup {
   /** Writes `<id>.meta.json` (mode 0600) beside the data; null on success */
   private async writeMetadata(nodeConn: SSHKeyConnection, backupDir: string, metadata: BackupMetadata): Promise<Error | null> {
     const metaPath = `${backupDir}/${metadata.id}.meta.json`;
-    const { stream, done } = await sshExecChannel(nodeConn, `umask 077 && cat > ${shellQuote(metaPath)}`);
-    stream.end(JSON.stringify(metadata, null, 2));
-    const result = await done;
+    const result = await sshExec(nodeConn, `umask 077 && cat > ${shellQuote(metaPath)}`, { stdin: JSON.stringify(metadata, null, 2) });
     if (result.exitCode !== 0) {
       return new Error(`Cannot write the metadata of backup ${metadata.id}: ${result.stderr.trim() || `exit code ${result.exitCode}`}`);
     }

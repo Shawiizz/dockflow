@@ -18,7 +18,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs
 import { join } from 'path';
 import { tmpdir } from 'os';
 import type { SSHKeyConnection } from '../types';
-import { sshExecChannel, shellQuote } from '../utils/ssh';
+import { shellQuote, sshExec } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase, HooksConfig } from '../utils/config';
@@ -213,9 +213,7 @@ async function execRemote(
   fatal: boolean,
   label: string,
 ): Promise<void> {
-  const { stream, done } = await sshExecChannel(connection, program);
-  stream.end(input);
-  const result = await done;
+  const result = await sshExec(connection, program, { stdin: input });
   if (result.stdout.trim()) printRaw(result.stdout.trim());
   // The entry's own output goes to stdout; stderr only carries a failure to set it up.
   if (result.exitCode !== 0 && result.stderr.trim()) printRaw(result.stderr.trim());

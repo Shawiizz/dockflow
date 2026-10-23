@@ -4,7 +4,7 @@
  * All data is stored in /var/lib/dockflow/metrics/<stack>/
  */
 
-import { sshExec, sshExecChannel } from '../utils/ssh';
+import { sshExec, shellQuote } from '../utils/ssh';
 import { DOCKFLOW_METRICS_DIR } from '../constants';
 import type { SSHKeyConnection } from '../types';
 import { printDebug } from '../utils/output';
@@ -185,9 +185,7 @@ export class Metrics {
     const entryJson = JSON.stringify(entry);
 
     await sshExec(this.connection, `mkdir -p "${metricsDir}"`);
-    const { stream, done } = await sshExecChannel(this.connection, `cat >> "${metricsPath}"`);
-    stream.end(entryJson + '\n');
-    const writeResult = await done;
+    const writeResult = await sshExec(this.connection, `cat >> ${shellQuote(metricsPath)}`, { stdin: `${entryJson}\n` });
     if (writeResult.exitCode !== 0) {
       // Throw so the caller's best-effort net surfaces a warning instead of
       // silently losing the deployment history entry.

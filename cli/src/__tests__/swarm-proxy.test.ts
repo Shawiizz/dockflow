@@ -116,13 +116,13 @@ describe('SwarmProxy.ensureRunning: ports', () => {
       return ok('');
     };
     restore = [
-      spyOn(ssh, 'sshExec').mockImplementation(async (_conn, command) => answer(command)),
+      spyOn(ssh, 'sshExec').mockImplementation(async (_conn, command, options) => {
+        if (options?.stdin === undefined) return answer(command);
+        deployed = true;
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }),
       spyOn(output, 'printDim').mockImplementation(() => {}),
       spyOn(output, 'printSuccess').mockImplementation(() => {}),
-      spyOn(ssh, 'sshExecChannel').mockImplementation((async () => {
-        deployed = true;
-        return { stream: { end: () => {} }, done: Promise.resolve({ stdout: '', stderr: '', exitCode: 0 }) };
-      }) as never),
     ];
   }
 

@@ -372,12 +372,11 @@ export async function registryLogin(
   if (!config.username) return;
   printDebug('Logging in to container registry...');
 
-  const { stream, done } = await sshExecChannel(
+  const result = await sshExec(
     connection,
     `${engine} login ${shellQuote(config.url)} -u ${shellQuote(config.username)} --password-stdin`,
+    { stdin: `${config.password}\n` },
   );
-  stream.end(`${config.password}\n`);
-  const result = await done;
 
   if (result.exitCode !== 0) {
     throw new DeployError(

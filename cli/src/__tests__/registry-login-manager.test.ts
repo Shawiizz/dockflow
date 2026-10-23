@@ -6,10 +6,9 @@ let reply: SSHExecResult = { stdout: '', stderr: '', exitCode: 0 };
 
 const realSsh = await import('../utils/ssh');
 const sshSpies = [
-  spyOn(realSsh, 'sshExecChannel').mockImplementation((async (_conn: unknown, command: string) => {
-    const call = { command, stdin: '' };
-    calls.push(call);
-    return { stream: { end: (data: string) => { call.stdin = data; } }, done: Promise.resolve(reply) };
+  spyOn(realSsh, 'sshExec').mockImplementation((async (_conn: unknown, command: string, options?: { stdin?: string }) => {
+    calls.push({ command, stdin: options?.stdin ?? '' });
+    return reply;
   }) as never),
 ];
 afterAll(() => {

@@ -10,7 +10,7 @@ import { resolve, join, relative } from 'path';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { loadFromString } from './compose';
 import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecChannel, shellQuote } from '../utils/ssh';
+import { sshExec, shellQuote } from '../utils/ssh';
 import { printDim, printRaw, printSuccess, printWarning, createTaskLog } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { createTar, type TarEntry } from '../utils/tar';
@@ -529,9 +529,9 @@ export async function buildRemote(
 
       const remoteEngine = target.engine || 'docker';
 
-      const { stream, done } = await sshExecChannel(connection, 'sh -s');
-      stream.end(remoteBuildScript(remoteEngine, target.args ?? {}, `-f ${qDockerfile} -t ${qTag} ${qContext}`));
-      const buildResult = await done;
+      const buildResult = await sshExec(connection, 'sh -s', {
+        stdin: remoteBuildScript(remoteEngine, target.args ?? {}, `-f ${qDockerfile} -t ${qTag} ${qContext}`),
+      });
 
       if (buildResult.exitCode !== 0) {
         printRaw(buildResult.stdout);

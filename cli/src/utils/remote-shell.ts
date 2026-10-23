@@ -4,7 +4,7 @@
  */
 
 import type { SSHExecResult, SSHKeyConnection } from '../types';
-import { sshExec, sshExecChannel } from './ssh';
+import { sshExec } from './ssh';
 
 export interface RemoteShell {
   /** runs `command`, `stdin` written to its standard input */
@@ -13,11 +13,6 @@ export interface RemoteShell {
 
 export function sshShell(connection: SSHKeyConnection): RemoteShell {
   return {
-    async run(command: string, stdin?: string): Promise<SSHExecResult> {
-      if (stdin === undefined) return sshExec(connection, command);
-      const { stream, done } = await sshExecChannel(connection, command);
-      stream.end(stdin);
-      return done;
-    },
+    run: (command: string, stdin?: string): Promise<SSHExecResult> => sshExec(connection, command, { stdin }),
   };
 }

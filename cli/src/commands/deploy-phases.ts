@@ -366,9 +366,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
           hostState.created.push(destPath);
         }
 
-        const { stream, done } = await sshExecChannel(conn, `cat > '${destPath}'`);
-        stream.end(fileContent);
-        const result = await done;
+        const result = await sshExec(conn, `cat > ${shellQuote(destPath)}`, { stdin: fileContent });
         if (result.exitCode !== 0) {
           const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
           throw new DeployError(

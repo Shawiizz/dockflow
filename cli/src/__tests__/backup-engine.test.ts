@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, spyOn } from 'bu
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { Duplex, PassThrough, Writable } from 'stream';
+import { Duplex, PassThrough } from 'stream';
 import { Backup, type BackupListEntry, type BackupMetadata, restoreTypeMismatch } from '../services/backup';
 import { hasPosixShell } from './helpers/local-shell';
 import { BackupError, ErrorCode } from '../utils/errors';
@@ -63,7 +63,6 @@ class FakeNodes {
   }
 }
 
-type ChannelHandle = Awaited<ReturnType<typeof ssh.sshExecChannel>>;
 type UnbufferedHandle = Awaited<ReturnType<typeof ssh.sshExecChannelUnbuffered>>;
 
 let nodes: FakeNodes;
@@ -77,31 +76,12 @@ beforeEach(() => {
   // a verification script prints OK when the archive is sound
   nodes.on(/echo OK/, { stdout: 'OK\n' });
   spies = [
-    spyOn(ssh, 'sshExec').mockImplementation(async (conn, command) => {
-      nodes.calls.push({ host: conn.host, command, via: 'exec', input: '' });
+    spyOn(ssh, 'sshExec').mockImplementation(async (conn, command, options) => {
+      const input = options?.stdin === undefined ? undefined : String(options.stdin);
+      nodes.calls.push({ host: conn.host, command, via: input === undefined ? 'exec' : 'channel', input: input ?? '' });
       const reply = nodes.reply(conn.host, command);
       if (reply instanceof Error) throw reply;
       return { exitCode: reply.exitCode ?? 0, stdout: reply.stdout ?? '', stderr: reply.stderr ?? '' };
-    }),
-    spyOn(ssh, 'sshExecChannel').mockImplementation(async (conn, command) => {
-      const call: NodeCall = { host: conn.host, command, via: 'channel', input: '' };
-      nodes.calls.push(call);
-      const chunks: Buffer[] = [];
-      const stream = new Writable({
-        write(chunk, _encoding, callback) {
-          chunks.push(Buffer.from(chunk));
-          callback();
-        },
-      });
-      const done = new Promise<{ exitCode: number; stdout: string; stderr: string }>((resolve) => {
-        stream.on('finish', () => {
-          call.input = Buffer.concat(chunks).toString();
-          const reply = nodes.reply(conn.host, command);
-          const result = reply instanceof Error ? { exitCode: 255, stderr: reply.message } : reply;
-          resolve({ exitCode: result.exitCode ?? 0, stdout: result.stdout ?? '', stderr: result.stderr ?? '' });
-        });
-      });
-      return { stream: stream as unknown as ChannelHandle['stream'], done };
     }),
     spyOn(ssh, 'sshExecChannelUnbuffered').mockImplementation(async (conn, command) => {
       const call: NodeCall = { host: conn.host, command, via: 'stream', input: '' };

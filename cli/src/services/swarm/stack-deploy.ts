@@ -5,7 +5,7 @@
  */
 
 import type { SSHKeyConnection } from '../../types';
-import { shellQuote, sshExec, sshExecChannel } from '../../utils/ssh';
+import { shellQuote, sshExec } from '../../utils/ssh';
 import { printDebug, printInfo, printWarning, printSuccess } from '../../utils/output';
 import { DeployError, ErrorCode } from '../../utils/errors';
 import { accessoriesDigest } from '../compose';
@@ -131,12 +131,7 @@ export async function deployStack(
   const seconds = Number(serverNow?.stdout.trim());
   const startedAt = serverNow && Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
 
-  const { stream, done } = await sshExecChannel(
-    connection,
-    `docker stack deploy ${flags} -c - ${shellQuote(stackName)}`,
-  );
-  stream.end(composeYaml);
-  const result = await done;
+  const result = await sshExec(connection, `docker stack deploy ${flags} -c - ${shellQuote(stackName)}`, { stdin: composeYaml });
 
   if (result.exitCode !== 0) {
     throw new DeployError(
@@ -212,12 +207,7 @@ export async function deployAccessories(
 
   // pulled first (best-effort), from stdin like the deploy itself
   try {
-    const { stream: pullStream, done: pullDone } = await sshExecChannel(
-      connection,
-      `docker compose -f - pull 2>/dev/null || true`,
-    );
-    pullStream.end(accessoriesComposeYaml);
-    await pullDone;
+    await sshExec(connection, `docker compose -f - pull 2>/dev/null || true`, { stdin: accessoriesComposeYaml });
   } catch {
     printDebug('Accessories image pull skipped (compose v2 not available or pull failed)');
   }

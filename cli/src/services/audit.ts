@@ -6,7 +6,7 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecChannel } from '../utils/ssh';
+import { sshExec, shellQuote } from '../utils/ssh';
 import { DOCKFLOW_AUDIT_DIR } from '../constants';
 import { getPerformer } from '../utils/config';
 
@@ -34,9 +34,7 @@ export class Audit {
     const line = `${timestamp} | ${result} | ${version} | ${performer} | ${message}`;
 
     await sshExec(this.connection, `mkdir -p "${DOCKFLOW_AUDIT_DIR}"`);
-    const { stream, done } = await sshExecChannel(this.connection, `cat >> "${auditFile}"`);
-    stream.end(line + '\n');
-    const writeResult = await done;
+    const writeResult = await sshExec(this.connection, `cat >> ${shellQuote(auditFile)}`, { stdin: `${line}\n` });
     if (writeResult.exitCode !== 0) {
       // Throw so the caller's best-effort net surfaces a warning instead of
       // silently losing the audit entry.
