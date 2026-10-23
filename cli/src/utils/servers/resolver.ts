@@ -21,6 +21,7 @@ import type {
   ResolvedDeployment,
   EnvVars,
   SSHKeyConnection,
+  ServerRole,
 } from '../../types';
 import { SERVER_DEFAULTS } from '../../types/servers';
 import { 
@@ -274,18 +275,25 @@ export function getAllNodeConnections(environment: string): SSHKeyConnection[] {
   return getAllNodes(environment).map((node) => node.connection);
 }
 
-/** Every node of the environment this machine can reach, managers first, with its servers.yml name. */
-export function getAllNodes(environment: string): { name: string; connection: SSHKeyConnection }[] {
+export interface EnvNode {
+  /** the server's name in servers.yml */
+  name: string;
+  role: ServerRole;
+  connection: SSHKeyConnection;
+}
+
+/** Every node of the environment this machine can reach, managers first. */
+export function getAllNodes(environment: string): EnvNode[] {
   const servers = resolveServersForEnvironment(environment);
   const sorted = [
     ...servers.filter(s => s.role === 'manager'),
     ...servers.filter(s => s.role === 'worker'),
   ];
 
-  const nodes: { name: string; connection: SSHKeyConnection }[] = [];
+  const nodes: EnvNode[] = [];
   for (const server of sorted) {
     const connection = getFullConnectionInfo(environment, server.name);
-    if (connection) nodes.push({ name: server.name, connection });
+    if (connection) nodes.push({ name: server.name, role: server.role, connection });
   }
   return nodes;
 }

@@ -11,7 +11,9 @@ import { jsonResponse, errorResponse } from '../server';
 import { shellQuote, sshExec } from '../../utils/ssh';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { getAccessoriesStackName, getStackName } from '../../utils/config';
-import { getApiNodes, getManagerConnection, getAllNodeConnections, onEveryNode, resolveEnvironment, parseIntParam } from './_helpers';
+import { getManagerConnection, getAllNodeConnections, resolveEnvironment, parseIntParam } from './_helpers';
+import { getAllNodes } from '../../utils/servers';
+import { settleOnEveryNode } from '../../commands/app/nodes';
 import { DOCKFLOW_AUDIT_DIR } from '../../constants';
 import type {
   ContainerStatsEntry,
@@ -136,11 +138,11 @@ async function getContainerStats(url: URL): Promise<Response> {
   const accessories = getAccessoriesStackName(env);
   if (!app || !accessories) return errorResponse('Project name not found in config', 500);
 
-  const nodes = getApiNodes(env);
+  const nodes = getAllNodes(env);
   if (nodes.length === 0) return errorResponse('No server with credentials found', 404);
 
   const command = statsCommand([app, accessories]);
-  const outcomes = await onEveryNode(nodes, async ({ name, connection }) => {
+  const outcomes = await settleOnEveryNode(nodes, async ({ name, connection }) => {
     const result = await sshExec(connection, command);
     if (result.exitCode !== 0) throw new Error(result.stderr.trim() || 'Failed to get container stats');
     return parseNodeStats(result.stdout, name, { app, accessories });

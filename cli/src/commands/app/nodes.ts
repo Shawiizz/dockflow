@@ -19,18 +19,34 @@ export function nodesOf(env: string, manager: NodeRef): NodeRef[] {
   return [manager, ...others];
 }
 
+export type NodeOutcome<N, T> =
+  | { node: N; ok: true; value: T }
+  | { node: N; ok: false; error: string };
+
+/** Runs `run` on every node at once; a node that fails is an outcome, not an exception. */
+export async function settleOnEveryNode<N, T>(nodes: readonly N[], run: (node: N) => Promise<T>): Promise<NodeOutcome<N, T>[]> {
+  return Promise.all(
+    nodes.map(async (node): Promise<NodeOutcome<N, T>> => {
+      try {
+        return { node, ok: true, value: await run(node) };
+      } catch (error) {
+        return { node, ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    }),
+  );
+}
+
 /**
  * Runs `fn` on every node at once. A node that fails is reported and left out; only when every
  * node failed does the command fail.
  */
 export async function onEveryNode<T>(nodes: readonly NodeRef[], fn: (node: NodeRef) => Promise<T>): Promise<{ node: NodeRef; value: T }[]> {
-  const settled = await Promise.allSettled(nodes.map(fn));
   const results: { node: NodeRef; value: T }[] = [];
   const failures: string[] = [];
-  settled.forEach((outcome, index) => {
-    if (outcome.status === 'fulfilled') results.push({ node: nodes[index], value: outcome.value });
-    else failures.push(`${nodes[index].name}: ${outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)}`);
-  });
+  for (const outcome of await settleOnEveryNode(nodes, fn)) {
+    if (outcome.ok) results.push({ node: outcome.node, value: outcome.value });
+    else failures.push(`${outcome.node.name}: ${outcome.error}`);
+  }
   if (results.length === 0 && failures.length > 0) {
     throw new ConnectionError(`No node answered:\n  ${failures.join('\n  ')}`);
   }

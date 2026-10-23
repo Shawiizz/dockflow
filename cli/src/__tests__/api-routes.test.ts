@@ -5,7 +5,7 @@ import type { Lock, LockData } from '../services/lock';
 import { afterAll, describe, expect, it, test } from 'bun:test';
 import { hasPosixShell, LocalShell } from './helpers/local-shell';
 import { parseNodeStats, statsCommand } from '../api/routes/metrics';
-import type { ApiNode } from '../api/routes/_helpers';
+import type { EnvNode } from '../utils/servers';
 import { resolveApiService, withTimeout } from '../api/routes/_helpers';
 import { formatDiskUsage, parseDockerSize, pruneCommand, pruneNodes, sumDockerSizes, unknownPruneTargets } from '../api/routes/resources';
 import { execServiceCandidates, locateExecContainer } from '../api/routes/ssh';
@@ -230,7 +230,7 @@ describe('docker sizes', () => {
 });
 
 describe('pruneNodes', () => {
-  const node = (name: string, role: 'manager' | 'worker'): ApiNode => ({
+  const node = (name: string, role: 'manager' | 'worker'): EnvNode => ({
     name,
     role,
     connection: { host: `${name}.example`, port: 22, user: 'deploy', privateKey: 'key' },

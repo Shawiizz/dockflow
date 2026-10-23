@@ -12,8 +12,6 @@ import {
   findActiveManager,
 } from '../../utils/servers';
 import type { SSHKeyConnection } from '../../types';
-import type { ServerRole } from '../types';
-import { DEFAULT_SSH_PORT } from '../../constants';
 
 export { getAllNodeConnections };
 
@@ -33,20 +31,11 @@ export function isValidDockerName(name: string): boolean {
   return name.length > 0 && name.length <= 256 && DOCKER_NAME_RE.test(name);
 }
 
-export interface ManagerConnection {
-  host: string;
-  port: number;
-  user: string;
-  privateKey: string;
-  hostKey?: string;
+export interface ManagerConnection extends SSHKeyConnection {
   /** `<project>-<env>`, the name of the app stack on the cluster */
   stackName: string;
 }
 
-/**
- * Get SSH connection to manager server for a given environment.
- * Returns null if no manager or credentials found.
- */
 /** The manager chosen per environment, reused for a while: the UI polls, a probe per request would be slow. */
 const chosenManagers = new Map<string, { name: string; until: number }>();
 const MANAGER_CHOICE_TTL_MS = 30_000;
@@ -74,14 +63,8 @@ export async function getManagerConnection(env: string): Promise<ManagerConnecti
     }
   }
 
-  return {
-    host: manager.host,
-    port: manager.port || DEFAULT_SSH_PORT,
-    user: manager.user,
-    privateKey: getServerPrivateKey(env, manager.name)!,
-    hostKey: manager.hostKey,
-    stackName: getStackName(env) ?? '',
-  };
+  const connection = getFullConnectionInfo(env, manager.name);
+  return connection && { ...connection, stackName: getStackName(env) ?? '' };
 }
 
 /**
@@ -116,41 +99,6 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, message: s
   } finally {
     clearTimeout(timer);
   }
-}
-
-export interface ApiNode {
-  name: string;
-  role: ServerRole;
-  connection: SSHKeyConnection;
-}
-
-/** The servers of an environment that have credentials, managers first. */
-export function getApiNodes(env: string): ApiNode[] {
-  const servers = resolveServersForEnvironment(env);
-  const ordered = [...servers.filter((s) => s.role === 'manager'), ...servers.filter((s) => s.role === 'worker')];
-  const nodes: ApiNode[] = [];
-  for (const server of ordered) {
-    const connection = getFullConnectionInfo(env, server.name);
-    if (connection) nodes.push({ name: server.name, role: server.role, connection });
-  }
-  return nodes;
-}
-
-export type NodeOutcome<T> =
-  | { node: ApiNode; ok: true; value: T }
-  | { node: ApiNode; ok: false; error: string };
-
-/** Runs `run` on every node at once; a node that fails is an outcome, not an exception. */
-export async function onEveryNode<T>(nodes: ApiNode[], run: (node: ApiNode) => Promise<T>): Promise<NodeOutcome<T>[]> {
-  return Promise.all(
-    nodes.map(async (node): Promise<NodeOutcome<T>> => {
-      try {
-        return { node, ok: true, value: await run(node) };
-      } catch (error) {
-        return { node, ok: false, error: error instanceof Error ? error.message : String(error) };
-      }
-    }),
-  );
 }
 
 export interface ApiStacks {

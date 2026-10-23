@@ -12,7 +12,9 @@ import { jsonResponse, errorResponse } from '../server';
 import { sshExec } from '../../utils/ssh';
 import { createEnvLock } from '../../services/lock';
 import { loadConfig } from '../../utils/config';
-import { type ApiNode, getApiNodes, getManagerConnection, onEveryNode, resolveEnvironment } from './_helpers';
+import { getManagerConnection, resolveEnvironment } from './_helpers';
+import { type EnvNode, getAllNodes } from '../../utils/servers';
+import { settleOnEveryNode } from '../../commands/app/nodes';
 import type { SSHExecResult, SSHKeyConnection } from '../../types';
 import type {
   PruneRequest,
@@ -136,7 +138,7 @@ export type NodeExec = (connection: SSHKeyConnection, command: string) => Promis
  * node; the failing nodes are named in its error and the space freed is summed over the others.
  */
 export async function pruneNodes(
-  nodes: ApiNode[],
+  nodes: EnvNode[],
   targets: PruneTarget[],
   all: boolean,
   exec: NodeExec = sshExec,
@@ -145,7 +147,7 @@ export async function pruneNodes(
 
   for (const target of targets) {
     const command = pruneCommand(target, all);
-    const outcomes = await onEveryNode(nodes, async ({ connection }) => {
+    const outcomes = await settleOnEveryNode(nodes, async ({ connection }) => {
       const result = await exec(connection, command);
       if (result.exitCode !== 0) throw new Error(result.stderr.trim() || 'Prune command failed');
       return result.stdout.match(/Total reclaimed space:\s*(.+)/i)?.[1].trim() ?? '0B';
@@ -179,7 +181,7 @@ async function pruneResources(req: Request): Promise<Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
-  const nodes = getApiNodes(env);
+  const nodes = getAllNodes(env);
   if (nodes.length === 0) return errorResponse('No server with credentials found', 404);
 
   let body: PruneRequest;
@@ -219,10 +221,10 @@ async function getDiskUsage(url: URL): Promise<Response> {
   const env = resolveEnvironment(url.searchParams.get('env'));
   if (!env) return errorResponse('No environments configured', 404);
 
-  const apiNodes = getApiNodes(env);
+  const apiNodes = getAllNodes(env);
   if (apiNodes.length === 0) return errorResponse('No server with credentials found', 404);
 
-  const outcomes = await onEveryNode(apiNodes, async ({ connection }) => {
+  const outcomes = await settleOnEveryNode(apiNodes, async ({ connection }) => {
     const result = await sshExec(connection, 'docker system df');
     if (result.exitCode !== 0) throw new Error(result.stderr.trim() || 'Failed to get disk usage');
     return result.stdout.trim();

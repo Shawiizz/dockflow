@@ -30,6 +30,7 @@ export {
   getFullConnectionInfo,
   getAllNodeConnections,
   getAllNodes,
+  type EnvNode,
   getEnvVarsForEnvironment,
 } from './resolver';
 
