@@ -4,7 +4,7 @@
  */
 
 import type { SSHKeyConnection } from '../../types';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { printDebug, createTimedSpinner } from '../../utils/output';
 import { DeployError, ErrorCode } from '../../utils/errors';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S } from '../../constants';
@@ -81,7 +81,7 @@ export async function waitForConvergence(
   while (clock.now() < deadline) {
     const result = await sshExec(
       connection,
-      `docker stack services ${shellQuote(stackName)} --format '{{.Name}}\t{{.Replicas}}' 2>/dev/null || echo ""`,
+      sh`docker stack services ${stackName} --format '{{.Name}}\t{{.Replicas}}' 2>/dev/null || echo ""`,
     );
 
     let lines = result.stdout.trim().split('\n').filter(Boolean);
@@ -202,10 +202,9 @@ async function serviceUpdateStates(connection: SSHKeyConnection, serviceLines: s
   const serviceNames = serviceLines.map((l) => l.split('\t')[0]).filter(Boolean);
   if (serviceNames.length === 0) return new Map();
 
-  const quoted = serviceNames.map(shellQuote).join(' ');
   const result = await sshExec(
     connection,
-    `for svc in ${quoted}; do ` +
+    sh`for svc in ${serviceNames}; do ` +
       `STATE=$(docker service inspect "$svc" --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}|{{.UpdateStatus.StartedAt}}{{end}}' 2>/dev/null); ` +
       `echo "$svc\t$STATE"; ` +
     `done`,
@@ -267,7 +266,7 @@ function updatingServices(states: Map<string, UpdateState>): string[] {
 async function failedTasks(connection: SSHKeyConnection, stackName: string): Promise<Map<string, Map<string, string>>> {
   const result = await sshExec(
     connection,
-    `docker stack ps ${shellQuote(stackName)} --no-trunc --filter 'desired-state=shutdown' --format '{{.ID}}|{{.Name}}|{{.CurrentState}}|{{.Error}}' 2>/dev/null || echo ""`,
+    sh`docker stack ps ${stackName} --no-trunc --filter 'desired-state=shutdown' --format '{{.ID}}|{{.Name}}|{{.CurrentState}}|{{.Error}}' 2>/dev/null || echo ""`,
   ).catch(() => null);
   return failedTasksByService(result?.stdout ?? '');
 }
@@ -284,7 +283,7 @@ function pendingTaskErrors(connection: SSHKeyConnection, stackName: string): Pro
 async function taskErrors(connection: SSHKeyConnection, stackName: string, desiredState: 'shutdown' | 'running'): Promise<string> {
   const result = await sshExec(
     connection,
-    `docker stack ps ${shellQuote(stackName)} --no-trunc --filter 'desired-state=${desiredState}' --format '{{.Name}}|{{.Error}}' 2>/dev/null || echo ""`,
+    sh`docker stack ps ${stackName} --no-trunc --filter ${`desired-state=${desiredState}`} --format '{{.Name}}|{{.Error}}' 2>/dev/null || echo ""`,
   );
   const lines = result.stdout.trim().split('\n').filter(Boolean);
   const errors = lines

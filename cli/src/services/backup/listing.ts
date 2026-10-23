@@ -7,7 +7,7 @@ import type { ClusterNode } from '../../types';
 import { ok, err, type Result } from '../../types';
 import { BackupError, ErrorCode, ValidationError } from '../../utils/errors';
 import { printDebug } from '../../utils/output';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { DOCKFLOW_BACKUPS_DIR } from '../../constants';
 import { buildBackupDir, buildDataFilePath, findBackupMatch, newestBackupFirst } from '../backup-strategies';
 import { parseMetadata } from './metadata';
@@ -71,7 +71,7 @@ export async function listBackups(
   const baseDir = service
     ? buildBackupDir(stackName, service)
     : `${DOCKFLOW_BACKUPS_DIR}/${stackName}`;
-  const findCmd = `find ${shellQuote(baseDir)} -name '*.meta.json' 2>/dev/null | sort -r | while IFS= read -r f; do echo '${SEP}'; cat "$f"; done`;
+  const findCmd = sh`find ${baseDir} -name '*.meta.json' 2>/dev/null | sort -r | while IFS= read -r f; do echo ${SEP}; cat "$f"; done`;
 
   const answers = await Promise.all(nodes.map(async (node) => {
     try {

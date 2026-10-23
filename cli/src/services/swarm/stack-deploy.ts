@@ -5,7 +5,7 @@
  */
 
 import type { SSHKeyConnection } from '../../types';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { raw, sh, sshExec } from '../../utils/ssh';
 import { printDebug, printInfo, printWarning, printSuccess } from '../../utils/output';
 import { DeployError, ErrorCode } from '../../utils/errors';
 import { accessoriesDigest } from '../compose';
@@ -25,11 +25,11 @@ export async function createExternalResources(connection: SSHKeyConnection, netw
   await Promise.all([
     ...networks.map((name) => {
       printDebug(`Creating overlay network: ${name}`);
-      return sshExec(connection, `docker network create --driver overlay --attachable ${shellQuote(name)} 2>/dev/null || true`);
+      return sshExec(connection, sh`docker network create --driver overlay --attachable ${name} 2>/dev/null || true`);
     }),
     ...volumes.map((name) => {
       printDebug(`Creating volume: ${name}`);
-      return sshExec(connection, `docker volume create ${shellQuote(name)} 2>/dev/null || true`);
+      return sshExec(connection, sh`docker volume create ${name} 2>/dev/null || true`);
     }),
   ]);
 }
@@ -38,7 +38,7 @@ export async function createExternalResources(connection: SSHKeyConnection, netw
 async function stuckServices(connection: SSHKeyConnection, stackName: string): Promise<string[]> {
   const listResult = await sshExec(
     connection,
-    `docker stack services ${shellQuote(stackName)} --format '{{.Name}}' 2>/dev/null || true`,
+    sh`docker stack services ${stackName} --format '{{.Name}}' 2>/dev/null || true`,
   );
 
   const serviceNames = listResult.stdout
@@ -51,12 +51,12 @@ async function stuckServices(connection: SSHKeyConnection, stackName: string): P
   const results = await Promise.all(serviceNames.map(async (svc) => {
     const inspectResult = await sshExec(
       connection,
-      `docker service inspect ${shellQuote(svc)} --format '{{json .UpdateStatus}}' 2>/dev/null || echo '{}'`,
+      sh`docker service inspect ${svc} --format '{{json .UpdateStatus}}' 2>/dev/null || echo '{}'`,
     );
 
-    const raw = inspectResult.stdout.trim();
+    const statusJson = inspectResult.stdout.trim();
     try {
-      const status = JSON.parse(raw);
+      const status = JSON.parse(statusJson);
       const state = (status?.State ?? '').toLowerCase();
       if (state === 'rollback_paused' || state === 'paused') {
         return svc;
@@ -72,7 +72,7 @@ async function stuckServices(connection: SSHKeyConnection, stackName: string): P
 
 /** Removes a stack and waits up to 60s for it to disappear. */
 export async function removeStackAndWait(connection: SSHKeyConnection, clock: SwarmClock, stackName: string): Promise<void> {
-  const rmResult = await sshExec(connection, `docker stack rm ${shellQuote(stackName)}`);
+  const rmResult = await sshExec(connection, sh`docker stack rm ${stackName}`);
   if (rmResult.exitCode !== 0) {
     printWarning(`docker stack rm failed (exit ${rmResult.exitCode}): ${rmResult.stderr.trim()}`);
   }
@@ -82,7 +82,7 @@ export async function removeStackAndWait(connection: SSHKeyConnection, clock: Sw
 
     const check = await sshExec(
       connection,
-      `docker stack ls --format '{{.Name}}' | grep -xF ${shellQuote(stackName)} || echo ""`,
+      sh`docker stack ls --format '{{.Name}}' | grep -xF ${stackName} || echo ""`,
     );
 
     if (!check.stdout.trim()) {
@@ -131,7 +131,7 @@ export async function deployStack(
   const seconds = Number(serverNow?.stdout.trim());
   const startedAt = serverNow && Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
 
-  const result = await sshExec(connection, `docker stack deploy ${flags} -c - ${shellQuote(stackName)}`, { stdin: composeYaml });
+  const result = await sshExec(connection, sh`docker stack deploy ${raw(flags)} -c - ${stackName}`, { stdin: composeYaml });
 
   if (result.exitCode !== 0) {
     throw new DeployError(
@@ -142,7 +142,7 @@ export async function deployStack(
 
   const verify = await sshExec(
     connection,
-    `docker stack ls --format '{{.Name}}' | grep -xF ${shellQuote(stackName)} || echo ""`,
+    sh`docker stack ls --format '{{.Name}}' | grep -xF ${stackName} || echo ""`,
   );
 
   if (!verify.stdout.trim()) {
@@ -160,7 +160,7 @@ export async function deployStack(
 export async function readAccessoriesDigest(connection: SSHKeyConnection, stackName: string): Promise<string | null> {
   const result = await sshExec(
     connection,
-    `cat ${shellQuote(`${DOCKFLOW_ACCESSORIES_DIR}/${stackName}/.hash`)} 2>/dev/null || echo ""`,
+    sh`cat ${`${DOCKFLOW_ACCESSORIES_DIR}/${stackName}/.hash`} 2>/dev/null || echo ""`,
   );
   return result.stdout.trim() || null;
 }
@@ -185,7 +185,7 @@ export async function deployAccessories(
   if (!options?.force) {
     const remoteResult = await sshExec(
       connection,
-      `cat ${shellQuote(hashFile)} 2>/dev/null || echo ""`,
+      sh`cat ${hashFile} 2>/dev/null || echo ""`,
     );
     const remoteHash = remoteResult.stdout.trim();
 
@@ -193,7 +193,7 @@ export async function deployAccessories(
       // a stack removed by hand leaves its hash behind
       const present = await sshExec(
         connection,
-        `docker stack ls --format '{{.Name}}' | grep -xF ${shellQuote(accessoriesStackName)} || echo ""`,
+        sh`docker stack ls --format '{{.Name}}' | grep -xF ${accessoriesStackName} || echo ""`,
       );
       if (present.stdout.trim()) {
         printInfo('Accessories unchanged, skipping');
@@ -222,7 +222,7 @@ export async function deployAccessories(
   // recorded only once they converged: a failed deploy is tried again next time
   await sshExec(
     connection,
-    `mkdir -p ${shellQuote(hashDir)} && echo ${shellQuote(localHash)} > ${shellQuote(hashFile)}`,
+    sh`mkdir -p ${hashDir} && echo ${localHash} > ${hashFile}`,
   );
 
   printSuccess('Accessories deployed');

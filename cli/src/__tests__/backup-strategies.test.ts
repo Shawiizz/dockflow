@@ -933,14 +933,14 @@ describe('parseRetention', () => {
 describe('volume restore scripts', () => {
   it('extract beside the data', () => {
     expect(buildExtractScript('/dockflow/v0', 'ab12cd34')).toBe(
-      ["set -e; d='/dockflow/v0'; new=\"$d/.dockflow-restore-ab12cd34\"", 'rm -rf "$new"; mkdir "$new"', 'tar xf - -C "$new"'].join('\n'),
+      ["set -e; d='/dockflow/v0'; new=\"$d\"/'.dockflow-restore-ab12cd34'", 'rm -rf "$new"; mkdir "$new"', 'tar xf - -C "$new"'].join('\n'),
     );
   });
 
   it('swap moves the old contents aside, then the new ones in', () => {
     expect(buildSwapScript('/dockflow/v0', 'ab12cd34')).toBe(
       [
-        "set -e; d='/dockflow/v0'; new=\"$d/.dockflow-restore-ab12cd34\"; old=\"$d/.dockflow-old-ab12cd34\"",
+        "set -e; d='/dockflow/v0'; new=\"$d\"/'.dockflow-restore-ab12cd34'; old=\"$d\"/'.dockflow-old-ab12cd34'",
         'rm -rf "$old"; mkdir "$old"',
         'for e in "$d"/* "$d"/.[!.]* "$d"/..?*; do [ -e "$e" ] || [ -L "$e" ] || continue; case "$e" in "$new"|"$old") continue;; esac; mv "$e" "$old/"; done',
         'for e in "$new"/* "$new"/.[!.]* "$new"/..?*; do [ -e "$e" ] || [ -L "$e" ] || continue; mv "$e" "$d/"; done',
@@ -950,7 +950,7 @@ describe('volume restore scripts', () => {
   });
 
   it('discard removes the extraction directory only', () => {
-    expect(buildDiscardScript('/dockflow/v0', 'ab12cd34')).toBe("d='/dockflow/v0'; rm -rf \"$d/.dockflow-restore-ab12cd34\"");
+    expect(buildDiscardScript('/dockflow/v0', 'ab12cd34')).toBe("d='/dockflow/v0'; rm -rf \"$d\"/'.dockflow-restore-ab12cd34'");
   });
 
   it('never wipes the mount root', () => {

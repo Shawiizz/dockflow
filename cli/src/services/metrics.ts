@@ -3,7 +3,7 @@
  * the metrics dir of the stack.
  */
 
-import { sshExec, shellQuote } from '../utils/ssh';
+import { sh, sshExec } from '../utils/ssh';
 import { DOCKFLOW_METRICS_DIR } from '../constants';
 import type { SSHKeyConnection } from '../types';
 import { printDebug } from '../utils/output';
@@ -159,8 +159,8 @@ export class Metrics {
     const metricsPath = getMetricsPath(params.stackName);
     const entryJson = JSON.stringify(entry);
 
-    await sshExec(this.connection, `mkdir -p "${metricsDir}"`);
-    const writeResult = await sshExec(this.connection, `cat >> ${shellQuote(metricsPath)}`, { stdin: `${entryJson}\n` });
+    await sshExec(this.connection, sh`mkdir -p ${metricsDir}`);
+    const writeResult = await sshExec(this.connection, sh`cat >> ${metricsPath}`, { stdin: `${entryJson}\n` });
     if (writeResult.exitCode !== 0) {
       // Throw so the caller's best-effort net surfaces a warning instead of
       // silently losing the deployment history entry.
@@ -174,8 +174,8 @@ export class Metrics {
     const metricsPath = getMetricsPath(stackName);
 
     const cmd = limit
-      ? `tail -n ${limit} "${metricsPath}" 2>/dev/null || echo ""`
-      : `cat "${metricsPath}" 2>/dev/null || echo ""`;
+      ? sh`tail -n ${limit} ${metricsPath} 2>/dev/null || echo ""`
+      : sh`cat ${metricsPath} 2>/dev/null || echo ""`;
 
     const result = await sshExec(this.connection, cmd);
     return parseJsonlLines<DeploymentMetric>(result.stdout);
@@ -185,7 +185,7 @@ export class Metrics {
   async prune(stackName: string, keepLast: number = 1000): Promise<number> {
     const metricsPath = getMetricsPath(stackName);
 
-    const countResult = await sshExec(this.connection, `wc -l < "${metricsPath}" 2>/dev/null || echo "0"`);
+    const countResult = await sshExec(this.connection, sh`wc -l < ${metricsPath} 2>/dev/null || echo "0"`);
     const currentCount = parseInt(countResult.stdout.trim(), 10);
 
     if (currentCount <= keepLast) {
@@ -193,9 +193,10 @@ export class Metrics {
     }
 
     const toRemove = currentCount - keepLast;
+    const tmpPath = `${metricsPath}.tmp`;
 
     await sshExec(this.connection,
-      `tail -n ${keepLast} "${metricsPath}" > "${metricsPath}.tmp" && mv "${metricsPath}.tmp" "${metricsPath}"`,
+      sh`tail -n ${keepLast} ${metricsPath} > ${tmpPath} && mv ${tmpPath} ${metricsPath}`,
     );
 
     return toRemove;

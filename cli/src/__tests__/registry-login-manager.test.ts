@@ -29,7 +29,7 @@ describe('registryLogin on the manager', () => {
   it('passes the password on stdin, never in the command', async () => {
     await registryLogin(manager, { url: 'registry.example.com', username: 'deploy', password: "s3'cret" });
     expect(calls).toEqual([
-      { command: "docker login 'registry.example.com' -u 'deploy' --password-stdin", stdin: "s3'cret\n" },
+      { command: "'docker' login 'registry.example.com' -u 'deploy' --password-stdin", stdin: "s3'cret\n" },
     ]);
   });
 

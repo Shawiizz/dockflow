@@ -7,7 +7,7 @@ import type { ClusterNode, SSHKeyConnection } from '../../types';
 import { ok, err, type Result } from '../../types';
 import { createHash } from 'crypto';
 import { BackupError, ErrorCode } from '../../utils/errors';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { raw, sh, sshExec } from '../../utils/ssh';
 import { printDebug } from '../../utils/output';
 import {
   RESTORE_MOUNT_DIR,
@@ -65,7 +65,7 @@ async function restoreVolumesOn(
   const nodeConn = node.connection;
   const backupDir = buildBackupDir(stackName, service);
 
-  const metaResult = await sshExec(nodeConn, `cat ${shellQuote(`${backupDir}/${backupId}.meta.json`)} 2>/dev/null`);
+  const metaResult = await sshExec(nodeConn, sh`cat ${`${backupDir}/${backupId}.meta.json`} 2>/dev/null`);
   if (!metaResult.stdout.trim()) {
     throw new BackupError(`Backup ${backupId} not found`, { code: ErrorCode.BACKUP_NOT_FOUND });
   }
@@ -115,15 +115,16 @@ async function restoreVolumesOn(
 
   const id8 = restoreId(backupDir, backupId);
   const helper = (plan: RestorePlan, script: string, interactive: boolean): string =>
-    `docker run --rm ${interactive ? '-i ' : ''}-v ${shellQuote(plan.source)}:${RESTORE_MOUNT_DIR} alpine sh -c ${shellQuote(script)}`;
+    // `-i ` and the mount point are the code's own
+    sh`docker run --rm ${raw(interactive ? '-i ' : '')}-v ${plan.source}:${raw(RESTORE_MOUNT_DIR)} alpine sh -c ${script}`;
 
   const extracted: RestorePlan[] = [];
   try {
     for (const plan of plans) {
       extracted.push(plan);
       const command = helper(plan, buildExtractScript(RESTORE_MOUNT_DIR, id8), true);
-      const feed = compression === 'gzip' ? `gunzip -c ${shellQuote(plan.file)}` : `cat ${shellQuote(plan.file)}`;
-      const result = await sshExec(nodeConn, `${feed} | ${command}`);
+      const feed = compression === 'gzip' ? sh`gunzip -c ${plan.file}` : sh`cat ${plan.file}`;
+      const result = await sshExec(nodeConn, sh`${raw(feed)} | ${raw(command)}`);
       if (result.exitCode !== 0) throw extractionError(service, plan, node, result);
     }
   } catch (e) {
@@ -174,7 +175,7 @@ function resolveVolume(stackName: string, existing: Set<string>, record: BackupV
 }
 
 async function requireBindPath(conn: SSHKeyConnection, node: ClusterNode, record: BackupVolumeRecord): Promise<string> {
-  const result = await sshExec(conn, `test -d ${shellQuote(record.sourcePath)}`);
+  const result = await sshExec(conn, sh`test -d ${record.sourcePath}`);
   if (result.exitCode !== 0) {
     throw new BackupError(
       `Bind mount ${record.sourcePath} does not exist on ${node.name}; nothing was restored`,

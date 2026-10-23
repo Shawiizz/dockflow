@@ -4,7 +4,7 @@
  */
 
 import type { SSHKeyConnection } from '../../types';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { printDebug, createTimedSpinner } from '../../utils/output';
 import type { SwarmClock } from './clock';
 import type { InternalHealthResult } from './types';
@@ -73,7 +73,7 @@ async function pollHealth(
 ): Promise<{ healthy: string[]; unhealthy: string[]; rolledBack: string[] }> {
   const listResult = await sshExec(
     connection,
-    `docker stack services ${shellQuote(stackName)} --format '{{.Name}}' 2>/dev/null || echo ""`,
+    sh`docker stack services ${stackName} --format '{{.Name}}' 2>/dev/null || echo ""`,
   );
 
   let serviceNames = listResult.stdout.trim().split('\n').filter(Boolean);
@@ -118,7 +118,7 @@ async function serviceHealth(
   // state and completion time of the last update, in one call
   const inspectResult = await sshExec(
     connection,
-    `docker service inspect ${shellQuote(serviceName)} --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}|{{.UpdateStatus.CompletedAt}}{{end}}' 2>/dev/null`,
+    sh`docker service inspect ${serviceName} --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}|{{.UpdateStatus.CompletedAt}}{{end}}' 2>/dev/null`,
   );
   const raw = inspectResult.stdout.trim();
   if (raw) {
@@ -145,7 +145,7 @@ async function serviceHealth(
 
   const psResult = await sshExec(
     connection,
-    `docker service ps ${shellQuote(serviceName)} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
+    sh`docker service ps ${serviceName} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
   );
   const tasks = psResult.stdout.trim().split('\n').filter(Boolean);
   if (tasks.length === 0) {

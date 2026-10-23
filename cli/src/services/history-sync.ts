@@ -4,7 +4,7 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec, shellQuote } from '../utils/ssh';
+import { sh, sshExec } from '../utils/ssh';
 import { printWarning, printDebug } from '../utils/output';
 import { DOCKFLOW_AUDIT_DIR, DOCKFLOW_METRICS_DIR } from '../constants';
 
@@ -20,11 +20,11 @@ export async function syncToNode(
   const metricsFile = `${metricsDir}/deployments.json`;
 
   try {
-    await sshExec(targetConnection, `mkdir -p ${shellQuote(DOCKFLOW_AUDIT_DIR)} ${shellQuote(metricsDir)}`);
+    await sshExec(targetConnection, sh`mkdir -p ${DOCKFLOW_AUDIT_DIR} ${metricsDir}`);
 
     const writes = await Promise.all([
-      sshExec(targetConnection, `cat >> ${shellQuote(auditFile)}`, { stdin: `${auditEntry}\n` }),
-      sshExec(targetConnection, `cat >> ${shellQuote(metricsFile)}`, { stdin: `${metricsEntry}\n` }),
+      sshExec(targetConnection, sh`cat >> ${auditFile}`, { stdin: `${auditEntry}\n` }),
+      sshExec(targetConnection, sh`cat >> ${metricsFile}`, { stdin: `${metricsEntry}\n` }),
     ]);
     const refused = writes.find((write) => write.exitCode !== 0);
     if (refused) throw new Error(refused.stderr.trim() || `exit ${refused.exitCode}`);

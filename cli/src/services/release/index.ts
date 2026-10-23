@@ -17,7 +17,7 @@
 
 import { randomBytes } from 'crypto';
 import type { SSHKeyConnection } from '../../types';
-import { shellQuote } from '../../utils/ssh';
+import { raw, sh } from '../../utils/ssh';
 import { sshShell, type RemoteShell } from '../../utils/remote-shell';
 import { printDebug, printInfo, printWarning } from '../../utils/output';
 import { DeployError, ErrorCode } from '../../utils/errors';
@@ -117,23 +117,24 @@ export class Release {
     const dir = this.releaseDir(stackName, version);
     const backup = this.backupDir(stackName, version);
     const tmp = `${stackDir}/${TEMP_PREFIX}${version}-${randomBytes(4).toString('hex')}`;
-    const q = shellQuote;
+    const currentLink = `${stackDir}/${CURRENT_LINK}`;
 
     // leftovers of an interrupted create are dropped; the deploy lock rules out a concurrent one
     const prepared = await this.shell.run(
       [
         'umask 077',
-        `mkdir -p ${q(stackDir)} || exit 1`,
-        `rm -rf ${q(stackDir)}/${TEMP_PREFIX}* ${q(stackDir)}/${BACKUP_PREFIX}*`,
-        `mkdir ${q(tmp)} || exit 1`,
-        `readlink ${q(`${stackDir}/${CURRENT_LINK}`)} 2>/dev/null || true`,
+        sh`mkdir -p ${stackDir} || exit 1`,
+        // the quoted directory keeps the globs after it live
+        sh`rm -rf ${stackDir}/${TEMP_PREFIX}* ${stackDir}/${BACKUP_PREFIX}*`,
+        sh`mkdir ${tmp} || exit 1`,
+        sh`readlink ${currentLink} 2>/dev/null || true`,
       ].join('\n'),
     );
     if (prepared.exitCode !== 0) {
       throw new DeployError(
         `Failed to create release directory ${dir}: ${failure(prepared)}`,
         ErrorCode.DEPLOY_FAILED,
-        `Ensure the deploy user has write access to ${stackDir}. Run once as root:\n  mkdir -p ${q(stackDir)} && chown ${this.owner}: ${q(stackDir)}`,
+        `Ensure the deploy user has write access to ${stackDir}. Run once as root:\n  ${sh`mkdir -p ${stackDir} && chown ${this.owner}: ${stackDir}`}`,
       );
     }
     for (const key of this.replaced) {
@@ -147,7 +148,7 @@ export class Release {
       { name: METADATA_FILE, label: 'metadata', content: JSON.stringify(metadata, null, 2) },
     ];
     const written = await Promise.all(
-      files.map((file) => this.shell.run(`umask 077 && cat > ${q(`${tmp}/${file.name}`)}`, file.content)),
+      files.map((file) => this.shell.run(sh`umask 077 && cat > ${`${tmp}/${file.name}`}`, file.content)),
     );
     const failed = written.findIndex((result) => result.exitCode !== 0);
     if (failed >= 0) {
@@ -158,22 +159,21 @@ export class Release {
       );
     }
 
-    const names = RELEASE_FILES.map(q).join(' ');
     const committed = await this.shell.run(
       [
         'umask 077',
-        `if [ -d ${q(dir)} ]; then`,
-        `  rm -rf ${q(backup)} && cp -Rp ${q(dir)} ${q(backup)} || exit 1`,
+        sh`if [ -d ${dir} ]; then`,
+        sh`  rm -rf ${backup} && cp -Rp ${dir} ${backup} || exit 1`,
         '  echo replacing',
-        `  for f in ${names}; do`,
-        `    if [ -f ${q(tmp)}/"$f" ]; then mv -f ${q(tmp)}/"$f" ${q(dir)}/"$f" || exit 1; else rm -f ${q(dir)}/"$f"; fi`,
+        sh`  for f in ${RELEASE_FILES}; do`,
+        sh`    if [ -f ${tmp}/"$f" ]; then mv -f ${tmp}/"$f" ${dir}/"$f" || exit 1; else rm -f ${dir}/"$f"; fi`,
         '  done',
-        `  rm -rf ${q(tmp)}`,
+        sh`  rm -rf ${tmp}`,
         'else',
-        `  mv ${q(tmp)} ${q(dir)} || exit 1`,
+        sh`  mv ${tmp} ${dir} || exit 1`,
         'fi',
         // the `current` symlink is what rollback and partial deploys resolve
-        `ln -sfn ${q(dir)} ${q(`${stackDir}/${CURRENT_LINK}`)} || exit 2`,
+        sh`ln -sfn ${dir} ${currentLink} || exit 2`,
       ].join('\n'),
     );
     const replacing = committed.stdout.includes('replacing');
@@ -205,13 +205,13 @@ export class Release {
 
   /** The compose file of the release `current` points at, null when there is none yet. */
   async getCurrentComposeContent(stackName: string): Promise<string | null> {
-    const result = await this.shell.run(`cat ${shellQuote(`${this.stackDir(stackName)}/${CURRENT_LINK}/${COMPOSE_FILE}`)} 2>/dev/null`);
+    const result = await this.shell.run(sh`cat ${`${this.stackDir(stackName)}/${CURRENT_LINK}/${COMPOSE_FILE}`} 2>/dev/null`);
     return result.exitCode === 0 && result.stdout.trim() ? result.stdout : null;
   }
 
   /** The version `current` points at, null without one. */
   async currentVersion(stackName: string): Promise<string | null> {
-    const result = await this.shell.run(`readlink ${shellQuote(`${this.stackDir(stackName)}/${CURRENT_LINK}`)} 2>/dev/null`);
+    const result = await this.shell.run(sh`readlink ${`${this.stackDir(stackName)}/${CURRENT_LINK}`} 2>/dev/null`);
     const target = result.stdout.trim().replace(/\/+$/, '');
     if (result.exitCode !== 0 || !target) return null;
     return target.slice(target.lastIndexOf('/') + 1) || null;
@@ -221,9 +221,9 @@ export class Release {
   async listReleases(stackName: string): Promise<ReleaseMetadata[]> {
     const dir = this.stackDir(stackName);
     const result = await this.shell.run(
-      `cd ${shellQuote(dir)} 2>/dev/null && for d in */; do ` +
+      sh`cd ${dir} 2>/dev/null && for d in */; do ` +
         '[ -L "${d%/}" ] && continue; ' +
-        `[ -f "\${d}${METADATA_FILE}" ] && printf '%s\\t' "\${d%/}" && tr -d '\\n' < "\${d}${METADATA_FILE}" && echo; ` +
+        sh`[ -f "\${d}"${METADATA_FILE} ] && printf '%s\\t' "\${d%/}" && tr -d '\\n' < "\${d}"${METADATA_FILE} && echo; ` +
         'done || true',
     );
     return parseReleaseList(result.stdout, (directory) =>
@@ -278,7 +278,7 @@ export class Release {
 
     // a release written before the rendered stack was stored only has its compose
     const stackResult = await this.shell.run(
-      `cat ${shellQuote(`${previousDir}/${RELEASE_STACK_FILE}`)} 2>/dev/null || cat ${shellQuote(`${previousDir}/${COMPOSE_FILE}`)}`,
+      sh`cat ${`${previousDir}/${RELEASE_STACK_FILE}`} 2>/dev/null || cat ${`${previousDir}/${COMPOSE_FILE}`}`,
     );
     if (stackResult.exitCode !== 0 || !stackResult.stdout.trim()) {
       throw new DeployError(
@@ -306,7 +306,7 @@ export class Release {
 
     await this.warnIfAccessoriesChanged(stackName, swarm, previousDir, previousVersion);
 
-    const linkResult = await this.shell.run(`ln -sfn ${shellQuote(previousDir)} ${shellQuote(`${this.stackDir(stackName)}/${CURRENT_LINK}`)}`);
+    const linkResult = await this.shell.run(sh`ln -sfn ${previousDir} ${`${this.stackDir(stackName)}/${CURRENT_LINK}`}`);
     if (linkResult.exitCode !== 0) {
       throw new DeployError(
         `Rollback deployed ${previousVersion} but failed to update the current release symlink: ${failure(linkResult)}`,
@@ -317,7 +317,7 @@ export class Release {
     if (failedVersion && !sameVersion) {
       const failedDir = this.releaseDir(stackName, failedVersion);
       const removed = await this.shell
-        .run(`timeout 30 rm -rf ${shellQuote(failedDir)} ${shellQuote(this.backupDir(stackName, failedVersion))}`)
+        .run(sh`timeout 30 rm -rf ${failedDir} ${this.backupDir(stackName, failedVersion)}`)
         .catch(() => null);
       if (!removed || removed.exitCode !== 0) printWarning(`Could not remove failed release directory ${failedDir}`);
     }
@@ -330,7 +330,7 @@ export class Release {
    * as a task that never starts, after the whole convergence timeout.
    */
   private async requireImagesOnNodes(dir: string, version: string, nodes: ImageNode[]): Promise<void> {
-    const compose = await this.shell.run(`cat ${shellQuote(`${dir}/${COMPOSE_FILE}`)} 2>/dev/null`);
+    const compose = await this.shell.run(sh`cat ${`${dir}/${COMPOSE_FILE}`} 2>/dev/null`);
     const images = compose.exitCode === 0 ? extractComposeImages(compose.stdout, true) : [];
     if (images.length === 0) return;
 
@@ -360,7 +360,7 @@ export class Release {
   /** Accessories are not part of the stack a rollback redeploys; say so when they are not what the release ran with. */
   private async warnIfAccessoriesChanged(stackName: string, swarm: SwarmStack, dir: string, version: string): Promise<void> {
     try {
-      const metadata = await this.shell.run(`cat ${shellQuote(`${dir}/${METADATA_FILE}`)} 2>/dev/null`);
+      const metadata = await this.shell.run(sh`cat ${`${dir}/${METADATA_FILE}`} 2>/dev/null`);
       const recorded = metadata.exitCode === 0 ? parseMetadata(metadata.stdout)?.accessories_digest : undefined;
       if (typeof recorded !== 'string' || recorded === '') return;
       const running = await swarm.accessoriesDigest(stackName);
@@ -376,10 +376,10 @@ export class Release {
    */
   async removeRelease(stackName: string, version: string, restoreTo?: string | null): Promise<void> {
     const dir = this.releaseDir(stackName, version);
-    const link = shellQuote(`${this.stackDir(stackName)}/${CURRENT_LINK}`);
+    const link = `${this.stackDir(stackName)}/${CURRENT_LINK}`;
     const restoreLink = restoreTo === undefined
       ? ''
-      : `if [ "$(readlink ${link} 2>/dev/null)" = ${shellQuote(dir)} ]; then ${restoreTo ? `ln -sfn ${shellQuote(restoreTo)} ${link}` : `rm -f ${link}`}; fi`;
+      : sh`if [ "$(readlink ${link} 2>/dev/null)" = ${dir} ]; then ${raw(restoreTo ? sh`ln -sfn ${restoreTo} ${link}` : sh`rm -f ${link}`)}; fi`;
 
     if (this.replaced.has(`${stackName}/${version}`)) {
       await this.restoreReplaced(stackName, version);
@@ -390,7 +390,7 @@ export class Release {
 
     // current first: never a dangling pointer
     if (restoreLink) await this.shell.run(restoreLink);
-    await this.shell.run(`timeout 30 rm -rf ${shellQuote(dir)} ${shellQuote(this.backupDir(stackName, version))}`);
+    await this.shell.run(sh`timeout 30 rm -rf ${dir} ${this.backupDir(stackName, version)}`);
     printDebug(`Removed release ${version}`);
   }
 
@@ -412,7 +412,7 @@ export class Release {
       list.length === 0
         ? Promise.resolve({ stdout: '', stderr: '', exitCode: 0 })
         : this.shell.run(
-            `for f in ${list.map(r => shellQuote(`${this.releaseDir(stackName, r.version)}/${COMPOSE_FILE}`)).join(' ')}; do cat "$f" 2>/dev/null; echo '---'; done`,
+            sh`for f in ${list.map(r => `${this.releaseDir(stackName, r.version)}/${COMPOSE_FILE}`)}; do cat "$f" 2>/dev/null; echo '---'; done`,
           );
 
     const [runningResult, keptResult, removeResult] = await Promise.all([
@@ -443,24 +443,24 @@ export class Release {
     }
 
     const paths = removed.flatMap(r => [this.releaseDir(stackName, r.version), this.backupDir(stackName, r.version)]);
-    await this.shell.run(`timeout 60 rm -rf ${paths.map(shellQuote).join(' ')}`);
+    await this.shell.run(sh`timeout 60 rm -rf ${paths}`);
 
     printInfo(`Cleaned up ${removed.length} old release(s)`);
   }
 
   /** Puts back the files a same-version create kept aside (only complete copies are kept aside). */
   private async restoreReplaced(stackName: string, version: string): Promise<void> {
-    const dir = shellQuote(this.releaseDir(stackName, version));
-    const backup = shellQuote(this.backupDir(stackName, version));
+    const dir = this.releaseDir(stackName, version);
+    const backup = this.backupDir(stackName, version);
     const result = await this.shell.run(
       [
         'umask 077',
-        `if [ -d ${backup} ]; then`,
-        `  mkdir -p ${dir} || exit 1`,
-        `  for f in ${RELEASE_FILES.map(shellQuote).join(' ')}; do`,
-        `    if [ -f ${backup}/"$f" ]; then mv -f ${backup}/"$f" ${dir}/"$f" || exit 1; else rm -f ${dir}/"$f"; fi`,
+        sh`if [ -d ${backup} ]; then`,
+        sh`  mkdir -p ${dir} || exit 1`,
+        sh`  for f in ${RELEASE_FILES}; do`,
+        sh`    if [ -f ${backup}/"$f" ]; then mv -f ${backup}/"$f" ${dir}/"$f" || exit 1; else rm -f ${dir}/"$f"; fi`,
         '  done',
-        `  rm -rf ${backup}`,
+        sh`  rm -rf ${backup}`,
         'fi',
       ].join('\n'),
     );
@@ -475,7 +475,7 @@ export class Release {
 
   private async discard(tmp: string): Promise<void> {
     await this.shell
-      .run(`rm -rf ${shellQuote(tmp)}`)
+      .run(sh`rm -rf ${tmp}`)
       .catch((error: unknown) =>
         printDebug(`Release temp cleanup failed: ${error instanceof Error ? error.message : String(error)}`),
       );

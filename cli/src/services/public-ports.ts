@@ -11,7 +11,7 @@
 import script from './public-ports.sh' with { type: 'text' };
 import type { DockflowConfig, PublicPort } from '../utils/config';
 import type { ParsedCompose } from './compose';
-import { shellQuote } from '../utils/ssh';
+import { raw, sh } from '../utils/ssh';
 import { parsePortSpec, type PortRange } from '../utils/port-spec';
 import { PUBLIC_PORTS_BIN, PUBLIC_PORTS_OFF_MARKER } from '../constants';
 
@@ -103,11 +103,12 @@ export function describePublished(port: PublishedPort): string {
  * on a node set up with --no-port-filter, `missing` on one set up before the filter existed.
  */
 export function recordCommand(project: string, rules: readonly PortRule[], user: string): string {
-  const sudo = user === 'root' ? '' : 'sudo -n ';
-  const args = [project, ...rules.map(ruleSpec)].map(shellQuote).join(' ');
+  // the code's own prefix, not a value
+  const sudo = raw(user === 'root' ? '' : 'sudo -n ');
+  const args = [project, ...rules.map(ruleSpec)];
   return (
-    `if [ -x ${PUBLIC_PORTS_BIN} ]; then ${sudo}${PUBLIC_PORTS_BIN} set ${args}; ` +
-    `elif [ -e ${PUBLIC_PORTS_OFF_MARKER} ]; then echo off; else echo missing; fi`
+    sh`if [ -x ${PUBLIC_PORTS_BIN} ]; then ${sudo}${PUBLIC_PORTS_BIN} set ${args}; ` +
+    sh`elif [ -e ${PUBLIC_PORTS_OFF_MARKER} ]; then echo off; else echo missing; fi`
   );
 }
 

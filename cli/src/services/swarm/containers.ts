@@ -5,7 +5,7 @@
 
 import { PassThrough, type Readable } from 'stream';
 import type { SSHKeyConnection } from '../../types';
-import { sshExec, sshExecStream, sshExecChannelUnbuffered, executeInteractiveSSH, shellQuote, type SSHUnbufferedChannelHandle } from '../../utils/ssh';
+import { sshExec, sshExecStream, sshExecChannelUnbuffered, executeInteractiveSSH, raw, sh, type RawShell, type SSHUnbufferedChannelHandle } from '../../utils/ssh';
 import { CLIError, ConnectionError, ErrorCode } from '../../utils/errors';
 import type { ExecRequest } from '../../utils/exec-plan';
 import { printWarning } from '../../utils/output';
@@ -21,14 +21,15 @@ export function dockerExecCommand(
   argv: readonly string[],
   options: Partial<Pick<ExecRequest, 'tty' | 'stdin' | 'workdir' | 'user' | 'env'>> = {},
 ): string {
-  const parts = ['docker exec'];
-  if (options.tty) parts.push('-it');
-  else if (options.stdin) parts.push('-i');
-  if (options.workdir !== undefined) parts.push('-w', shellQuote(options.workdir));
-  if (options.user !== undefined) parts.push('-u', shellQuote(options.user));
-  for (const [key, value] of Object.entries(options.env ?? {})) parts.push('-e', shellQuote(`${key}=${value}`));
-  parts.push(shellQuote(containerId), ...argv.map(shellQuote));
-  return parts.join(' ');
+  // the flags are the code's own, every value after them is quoted
+  const parts: (string | number | RawShell)[] = [raw('docker exec')];
+  if (options.tty) parts.push(raw('-it'));
+  else if (options.stdin) parts.push(raw('-i'));
+  if (options.workdir !== undefined) parts.push(raw('-w'), options.workdir);
+  if (options.user !== undefined) parts.push(raw('-u'), options.user);
+  for (const [key, value] of Object.entries(options.env ?? {})) parts.push(raw('-e'), `${key}=${value}`);
+  parts.push(containerId, ...argv);
+  return sh`${parts}`;
 }
 
 const COPY_NOT_FOUND = /Could not find the file|No such container:path/i;
@@ -131,13 +132,13 @@ export class SwarmContainers {
 
   async shell(stackName: string, serviceName: string, shell: 'auto' | '/bin/sh' | '/bin/bash', taskId?: string): Promise<number> {
     const found = await this.locate(stackName, serviceName, taskId);
-    const id = shellQuote(found.containerId);
+    const id = found.containerId;
     let path = shell;
     if (path === 'auto') {
-      const probe = await sshExec(found.connection, `docker exec ${id} which bash 2>/dev/null || echo not_found`);
+      const probe = await sshExec(found.connection, sh`docker exec ${id} which bash 2>/dev/null || echo not_found`);
       path = probe.stdout.trim() === 'not_found' ? '/bin/sh' : '/bin/bash';
     }
-    return executeInteractiveSSH(found.connection, `docker exec -it ${id} ${shellQuote(path)}`);
+    return executeInteractiveSSH(found.connection, sh`docker exec -it ${id} ${path}`);
   }
 
   /**
@@ -146,7 +147,7 @@ export class SwarmContainers {
    */
   async copyOut(stackName: string, serviceName: string, path: string, taskId?: string): Promise<Readable> {
     const found = await this.locate(stackName, serviceName, taskId);
-    const channel = await this.openCopyChannel(found.connection, `docker cp ${shellQuote(`${found.containerId}:${path}`)} -`);
+    const channel = await this.openCopyChannel(found.connection, sh`docker cp ${`${found.containerId}:${path}`} -`);
     const { stream } = channel;
     stream.end();
     const stderr = collectText(stream.stderr);
@@ -185,7 +186,7 @@ export class SwarmContainers {
 
     const found = await Promise.race([this.locate(stackName, serviceName, taskId), localFailure]);
     const channel = await Promise.race([
-      this.openCopyChannel(found.connection, `docker cp - ${shellQuote(`${found.containerId}:${destDir}`)}`),
+      this.openCopyChannel(found.connection, sh`docker cp - ${`${found.containerId}:${destDir}`}`),
       localFailure,
     ]);
     const { stream } = channel;
@@ -269,12 +270,13 @@ export class SwarmContainers {
     onLine: (line: string) => void,
     onError: (err: Error) => void,
   ): Promise<void> {
-    const parts = [baseCommand];
-    if (options.follow) parts.push('-f');
-    parts.push(`--tail ${options.tail ?? 100}`);
-    if (options.timestamps) parts.push('--timestamps');
-    if (options.since !== undefined) parts.push(`--since ${shellQuote(dockerSinceValue(parseSince(options.since, LOCAL_OFFSET)))}`);
-    parts.push(shellQuote(target), '2>&1');
+    // `baseCommand` and the flags are the code's own; the tail, the since value and the target are quoted
+    const parts: (string | number | RawShell)[] = [raw(baseCommand)];
+    if (options.follow) parts.push(raw('-f'));
+    parts.push(raw('--tail'), options.tail ?? 100);
+    if (options.timestamps) parts.push(raw('--timestamps'));
+    if (options.since !== undefined) parts.push(raw('--since'), dockerSinceValue(parseSince(options.since, LOCAL_OFFSET)));
+    parts.push(target, raw('2>&1'));
 
     // whole lines only: a chunk can end in the middle of one
     const stdout = new LogLineBuffer();
@@ -284,7 +286,7 @@ export class SwarmContainers {
     };
 
     try {
-      await sshExecStream(connection, parts.join(' '), {
+      await sshExecStream(connection, sh`${parts}`, {
         onStdout: (chunk) => emit(stdout.push(chunk)),
         onStderr: (chunk) => emit(stderr.push(chunk)),
       });

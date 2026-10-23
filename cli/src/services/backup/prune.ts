@@ -6,7 +6,7 @@
 import type { ClusterNode } from '../../types';
 import { ok, err, type Result } from '../../types';
 import { BackupError } from '../../utils/errors';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { raw, sh, sshExec, type RawShell } from '../../utils/ssh';
 import { formatBytes, printDebug, printInfo } from '../../utils/output';
 import { BACKUP_ORPHAN_GRACE_H, DOCKFLOW_BACKUPS_DIR } from '../../constants';
 import { buildBackupDir, selectBackupsToPrune } from '../backup-strategies';
@@ -37,7 +37,7 @@ export async function pruneBackups(
     }
 
     const toRemove = selectBackupsToPrune(entries, retentionCount);
-    const byNode = new Map<string, { node: ClusterNode; patterns: string[] }>();
+    const byNode = new Map<string, { node: ClusterNode; patterns: RawShell[] }>();
     let bytesFreed = 0;
     for (const entry of toRemove) {
       if (!SAFE_NAME.test(entry.id) || !SAFE_NAME.test(entry.service)) {
@@ -47,12 +47,12 @@ export async function pruneBackups(
       const key = `${node.connection.host}:${node.connection.port}`;
       const group = byNode.get(key) ?? { node, patterns: [] };
       // `<id>.` then a glob: the data files, the metadata and any rc file of that backup only
-      group.patterns.push(`${shellQuote(`${buildBackupDir(stackName, entry.service)}/${entry.id}.`)}*`);
+      group.patterns.push(raw(sh`${`${buildBackupDir(stackName, entry.service)}/${entry.id}.`}*`));
       byNode.set(key, group);
       bytesFreed += entry.sizeBytes;
     }
     for (const { node, patterns } of byNode.values()) {
-      const result = await sshExec(node.connection, `rm -f -- ${patterns.join(' ')}`);
+      const result = await sshExec(node.connection, sh`rm -f -- ${patterns}`);
       if (result.exitCode !== 0) {
         throw new BackupError(`Cannot remove backups on ${node.name}: ${result.stderr.trim() || `exit code ${result.exitCode}`}`);
       }
@@ -73,7 +73,7 @@ async function pruneOrphans(stackName: string, service: string | undefined, node
   const base = service ? buildBackupDir(stackName, service) : `${DOCKFLOW_BACKUPS_DIR}/${stackName}`;
   // backup ids start with the date, so only files named after one are candidates
   const command =
-    `find ${shellQuote(base)} -type f -name '[0-9]*' ! -name '*.meta.json' -mmin +${BACKUP_ORPHAN_GRACE_H * 60} 2>/dev/null | ` +
+    sh`find ${base} -type f -name '[0-9]*' ! -name '*.meta.json' -mmin +${BACKUP_ORPHAN_GRACE_H * 60} 2>/dev/null | ` +
     `while IFS= read -r f; do b=\${f##*/}; [ -e "\${f%/*}/\${b%%.*}.meta.json" ] && continue; ` +
     `s=$(stat -c %s "$f" 2>/dev/null || echo 0); rm -f -- "$f" && printf '%s\\t%s\\n' "$s" "$f"; done`;
 

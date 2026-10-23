@@ -6,7 +6,7 @@
 import type { SSHKeyConnection } from '../../types';
 import type { BackupAccessoryConfig } from '../../utils/config';
 import { ok, err, type Result } from '../../types';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { formatBytes, printDebug, printWarning } from '../../utils/output';
 import {
   buildBackupDir,
@@ -58,17 +58,17 @@ export async function backupDatabase(
   const startTime = Date.now();
   const stored = storedBackups();
 
-  const dockerExec = `docker exec ${shellQuote(containerId)} sh -c ${shellQuote(dumpScript)}`;
+  const dockerExec = sh`docker exec ${containerId} sh -c ${dumpScript}`;
   const result = await sshExec(nodeConn, buildCapturePipeline(dockerExec, filePath, compression === 'gzip'));
   if (result.exitCode !== 0) {
-    await sshExec(nodeConn, `rm -f ${shellQuote(filePath)}`);
+    await sshExec(nodeConn, sh`rm -f ${filePath}`);
     return err(new Error(`Backup failed: ${result.stderr}`));
   }
 
   const integrity = integrityOf(config, compression);
   const archiveIssue = await checkArchive(nodeConn, filePath, compression, integrity);
   if (archiveIssue) {
-    await sshExec(nodeConn, `rm -f ${shellQuote(filePath)}`);
+    await sshExec(nodeConn, sh`rm -f ${filePath}`);
     return err(new Error(
       `Backup verification failed: ${archiveIssue}${result.stderr.trim() ? ` (dump stderr: ${result.stderr.trim()})` : ''}`,
     ));
@@ -76,7 +76,7 @@ export async function backupDatabase(
 
   const durationMs = Date.now() - startTime;
 
-  const sizeCmd = `SIZE=$(stat -c %s ${shellQuote(filePath)} 2>/dev/null || echo 0) && echo $SIZE`;
+  const sizeCmd = sh`SIZE=$(stat -c %s ${filePath} 2>/dev/null || echo 0) && echo $SIZE`;
   const sizeResult = await sshExec(nodeConn, sizeCmd);
   const sizeBytes = parseInt(sizeResult.stdout.trim(), 10) || 0;
 
@@ -99,7 +99,7 @@ export async function backupDatabase(
 
   const writeError = await writeMetadata(nodeConn, backupDir, metadata);
   if (writeError) {
-    await sshExec(nodeConn, `rm -f ${shellQuote(filePath)}`);
+    await sshExec(nodeConn, sh`rm -f ${filePath}`);
     return err(writeError);
   }
 
@@ -123,7 +123,7 @@ async function getContainerMounts(
 ): Promise<MountInfo[]> {
   const result = await sshExec(
     nodeConn,
-    `docker inspect --format '{{json .Mounts}}' ${shellQuote(containerId)}`
+    sh`docker inspect --format '{{json .Mounts}}' ${containerId}`
   );
 
   try {
@@ -163,8 +163,8 @@ export async function backupVolumes(
 
     // a named volume is archived from a temporary alpine container, a bind mount from its host path
     const tarCmd = mount.mountType === 'volume'
-      ? `docker run --rm -v ${shellQuote(mount.source)}:/backup-source:ro alpine tar cf - -C /backup-source .`
-      : `tar cf - -C ${shellQuote(mount.source)} .`;
+      ? sh`docker run --rm -v ${mount.source}:/backup-source:ro alpine tar cf - -C /backup-source .`
+      : sh`tar cf - -C ${mount.source} .`;
 
     const result = await sshExec(nodeConn, buildCapturePipeline(tarCmd, filePath, compression === 'gzip'));
     if (result.exitCode !== 0) {
@@ -178,7 +178,7 @@ export async function backupVolumes(
       return { ok: false as const, mount, error: `${archiveIssue}${result.stderr.trim() ? ` (${result.stderr.trim()})` : ''}` };
     }
 
-    const sizeCmd = `stat -c %s ${shellQuote(filePath)} 2>/dev/null || echo 0`;
+    const sizeCmd = sh`stat -c %s ${filePath} 2>/dev/null || echo 0`;
     const sizeResult = await sshExec(nodeConn, sizeCmd);
     const sizeBytes = parseInt(sizeResult.stdout.trim(), 10) || 0;
     return { ok: true as const, mount, sizeBytes };
@@ -187,8 +187,7 @@ export async function backupVolumes(
   // one failure removes every file of this backup id
   const failed = backupResults.find(r => !r.ok);
   if (failed) {
-    const cleanupPaths = filePaths.map(f => shellQuote(f)).join(' ');
-    await sshExec(nodeConn, `rm -f ${cleanupPaths}`);
+    await sshExec(nodeConn, sh`rm -f ${filePaths}`);
     return err(new Error(`Backup failed for ${failed.mount.mountType} ${failed.mount.source}: ${failed.error}`));
   }
 
@@ -222,7 +221,7 @@ export async function backupVolumes(
 
   const writeError = await writeMetadata(nodeConn, backupDir, { ...metadata, volumes: volumeEntries });
   if (writeError) {
-    await sshExec(nodeConn, `rm -f ${filePaths.map(f => shellQuote(f)).join(' ')}`);
+    await sshExec(nodeConn, sh`rm -f ${filePaths}`);
     return err(writeError);
   }
 

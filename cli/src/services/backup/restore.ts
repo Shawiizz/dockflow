@@ -7,7 +7,7 @@ import type { ClusterNode, SSHKeyConnection } from '../../types';
 import type { BackupAccessoryConfig, BackupDbType } from '../../utils/config';
 import { ok, err, type Result } from '../../types';
 import { BackupError, ErrorCode } from '../../utils/errors';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { printDebug } from '../../utils/output';
 import { findSwarmContainer, qualifyServiceName } from '../swarm/docker';
 import type { SwarmStack } from '../swarm/stack';
@@ -60,7 +60,7 @@ export async function replicaRefusal(
 ): Promise<BackupError | null> {
   const result = await sshExec(
     connection,
-    `docker service inspect ${shellQuote(qualifyServiceName(stackName, service))} ` +
+    sh`docker service inspect ${qualifyServiceName(stackName, service)} ` +
       `--format '{{if .Spec.Mode.Global}}global{{else if .Spec.Mode.Replicated}}{{.Spec.Mode.Replicated.Replicas}}{{end}}'`,
   );
   const mode = result.exitCode === 0 ? result.stdout.trim() : '';
@@ -131,7 +131,7 @@ export async function restoreEntry(
   }
 
   // the container may run on another node than the one holding the backup
-  const dockerExec = `docker exec -i ${shellQuote(containerId)} sh -c ${shellQuote(restoreScript)}`;
+  const dockerExec = sh`docker exec -i ${containerId} sh -c ${restoreScript}`;
   let result: { exitCode: number; stderr: string };
   try {
     result = await streamInto(node, dataFile, backupCompression === 'gzip', containerConn, dockerExec);

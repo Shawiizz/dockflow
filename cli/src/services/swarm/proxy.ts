@@ -8,7 +8,7 @@ import { createHash } from 'crypto';
 
 import type { SSHKeyConnection } from '../../types';
 import type { ProxyConfig } from '../../utils/config';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { printDebug, printDim, printSuccess } from '../../utils/output';
 import { DeployError, ErrorCode } from '../../utils/errors';
 import {
@@ -83,20 +83,20 @@ export class SwarmProxy {
     // the network already existing is fine
     await sshExec(
       this.connection,
-      `docker network create --driver overlay --attachable ${TRAEFIK_NETWORK_NAME} 2>/dev/null || true`,
+      sh`docker network create --driver overlay --attachable ${TRAEFIK_NETWORK_NAME} 2>/dev/null || true`,
     );
 
     const acme = proxyConfig.acme !== false;
     if (acme) {
       await sshExec(
         this.connection,
-        `docker volume create ${TRAEFIK_CERTS_VOLUME} 2>/dev/null || true`,
+        sh`docker volume create ${TRAEFIK_CERTS_VOLUME} 2>/dev/null || true`,
       );
     }
 
     const result = await sshExec(
       this.connection,
-      `docker stack deploy --prune --resolve-image changed -c - ${TRAEFIK_STACK_NAME}`,
+      sh`docker stack deploy --prune --resolve-image changed -c - ${TRAEFIK_STACK_NAME}`,
       { stdin: SwarmProxy.generateCompose(proxyConfig, configHash) },
     );
 
@@ -137,7 +137,7 @@ export class SwarmProxy {
   private async swarmServiceHolders(ports: number[]): Promise<PortHolder[]> {
     const listing = await sshExec(
       this.connection,
-      `docker service ls -q | xargs -r docker service inspect --format ${shellQuote(SERVICE_PORTS_FORMAT)} 2>/dev/null`,
+      sh`docker service ls -q | xargs -r docker service inspect --format ${SERVICE_PORTS_FORMAT} 2>/dev/null`,
     );
     if (listing.exitCode !== 0) {
       printDebug(`Could not list the published ports of the Swarm services: ${listing.stderr.trim() || `exit ${listing.exitCode}`}`);
@@ -172,7 +172,7 @@ export class SwarmProxy {
   private async runsOn(service: string, nodes: Set<string>): Promise<boolean> {
     const result = await sshExec(
       this.connection,
-      `docker service ps ${shellQuote(service)} --filter desired-state=running --format '{{.Node}}' 2>/dev/null`,
+      sh`docker service ps ${service} --filter desired-state=running --format '{{.Node}}' 2>/dev/null`,
     );
     return result.stdout.split('\n').some((line) => nodes.has(line.trim()));
   }
@@ -200,8 +200,8 @@ export class SwarmProxy {
   private async currentState(): Promise<{ replicas: string; configHash: string }> {
     const service = TRAEFIK_SERVICE;
     const [replicas, labels] = await Promise.all([
-      sshExec(this.connection, `docker service ls --filter ${shellQuote(`name=${service}`)} --format '{{.Replicas}}' 2>/dev/null`),
-      sshExec(this.connection, `docker service inspect ${shellQuote(service)} --format '{{index .Spec.Labels "${CONFIG_HASH_LABEL}"}}' 2>/dev/null`),
+      sshExec(this.connection, sh`docker service ls --filter ${`name=${service}`} --format '{{.Replicas}}' 2>/dev/null`),
+      sshExec(this.connection, sh`docker service inspect ${service} --format ${`{{index .Spec.Labels "${CONFIG_HASH_LABEL}"}}`} 2>/dev/null`),
     ]);
     return { replicas: replicas.stdout.trim(), configHash: labels.exitCode === 0 ? labels.stdout.trim() : '' };
   }

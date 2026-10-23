@@ -16,7 +16,7 @@
 
 import { randomBytes } from 'crypto';
 import type { SSHExecResult, SSHKeyConnection } from '../types';
-import { shellQuote } from '../utils/ssh';
+import { raw, sh } from '../utils/ssh';
 import { sshShell, type RemoteShell } from '../utils/remote-shell';
 import { ok, err, type Result } from '../types';
 import { DOCKFLOW_LOCKS_DIR } from '../constants';
@@ -58,6 +58,10 @@ export interface LockOptions {
 const ACQUIRED = 'ACQUIRED';
 const TAKEN = 'TAKEN';
 const BUSY = 'BUSY';
+// the words the lock scripts print and assign to `r`: constants of this file, so they go in as syntax
+const R_ACQUIRED = raw(ACQUIRED);
+const R_TAKEN = raw(TAKEN);
+const R_BUSY = raw(BUSY);
 const STALE_TAKEN = 'Lock was stale but another deploy acquired it first';
 /** a takeover guard older than this was left by a killed process (the guarded step takes milliseconds) */
 const ABANDONED_GUARD_MINUTES = 1;
@@ -176,9 +180,9 @@ export class Lock {
   async release(): Promise<Result<void, CLIError>> {
     await this.stopKeepAlive();
     try {
-      const file = shellQuote(this.lockFile);
+      const file = this.lockFile;
       const command = this.held === null
-        ? `rm -f ${file}; test -f ${file} && echo EXISTS || echo REMOVED`
+        ? sh`rm -f ${file}; test -f ${file} && echo EXISTS || echo REMOVED`
         : this.ownReleaseCommand(this.held);
       const outcome = (await this.shell.run(command)).stdout.trim();
       if (outcome === 'EXISTS') {
@@ -232,7 +236,7 @@ export class Lock {
   }
 
   private async read(): Promise<LockRead> {
-    const result = await this.shell.run(`cat ${shellQuote(this.lockFile)} 2>/dev/null || echo NO_LOCK`);
+    const result = await this.shell.run(sh`cat ${this.lockFile} 2>/dev/null || echo NO_LOCK`);
     const output = result.stdout.trim();
     if (output === 'NO_LOCK' || !output) return { status: { locked: false }, content: null };
 
@@ -265,12 +269,12 @@ export class Lock {
 
   /** `ln` refuses an existing target: the create-if-absent step, with the content already complete. */
   private async tryCreate(content: string): Promise<boolean | CLIError> {
-    const tmp = shellQuote(this.tempFile());
+    const tmp = this.tempFile();
     const result = await this.shell.run(
       [
-        `mkdir -p ${shellQuote(this.locksDir)} && cat > ${tmp} || { rm -f ${tmp}; exit 1; }`,
-        `ln ${tmp} ${shellQuote(this.lockFile)} 2>/dev/null && r=${ACQUIRED} || r=LOCKED`,
-        `rm -f ${tmp}`,
+        sh`mkdir -p ${this.locksDir} && cat > ${tmp} || { rm -f ${tmp}; exit 1; }`,
+        sh`ln ${tmp} ${this.lockFile} 2>/dev/null && r=${R_ACQUIRED} || r=LOCKED`,
+        sh`rm -f ${tmp}`,
         'echo "$r"',
       ].join('\n'),
       content,
@@ -280,22 +284,22 @@ export class Lock {
   }
 
   private forceCommand(): string {
-    const tmp = shellQuote(this.tempFile());
-    return `mkdir -p ${shellQuote(this.locksDir)} && cat > ${tmp} && mv -f ${tmp} ${shellQuote(this.lockFile)} || { rm -f ${tmp}; exit 1; }`;
+    const tmp = this.tempFile();
+    return sh`mkdir -p ${this.locksDir} && cat > ${tmp} && mv -f ${tmp} ${this.lockFile} || { rm -f ${tmp}; exit 1; }`;
   }
 
   private ownReleaseCommand(own: string): string {
-    const file = shellQuote(this.lockFile);
-    const guard = shellQuote(`${this.lockFile}.takeover`);
+    const file = this.lockFile;
+    const guard = `${this.lockFile}.takeover`;
     return [
-      `r=${TAKEN}`,
-      `find ${guard} -prune -type d -mmin +${ABANDONED_GUARD_MINUTES} -exec rmdir {} + 2>/dev/null`,
-      `if [ ! -e ${file} ]; then r=REMOVED`,
-      `elif mkdir ${guard} 2>/dev/null; then`,
-      `  if [ "$(cat ${file} 2>/dev/null)" = ${shellQuote(own)} ]; then`,
-      `    rm -f ${file}; if [ -e ${file} ]; then r=EXISTS; else r=REMOVED; fi`,
+      sh`r=${R_TAKEN}`,
+      sh`find ${guard} -prune -type d -mmin +${ABANDONED_GUARD_MINUTES} -exec rmdir {} + 2>/dev/null`,
+      sh`if [ ! -e ${file} ]; then r=REMOVED`,
+      sh`elif mkdir ${guard} 2>/dev/null; then`,
+      sh`  if [ "$(cat ${file} 2>/dev/null)" = ${own} ]; then`,
+      sh`    rm -f ${file}; if [ -e ${file} ]; then r=EXISTS; else r=REMOVED; fi`,
       '  fi',
-      `  rmdir ${guard}`,
+      sh`  rmdir ${guard}`,
       'fi',
       'echo "$r"',
     ].join('\n');
@@ -306,22 +310,23 @@ export class Lock {
    * is created only when `createIfMissing`. Prints ACQUIRED, TAKEN, or BUSY while another swap runs.
    */
   private swapCommand(expected: string, { createIfMissing }: { createIfMissing: boolean }): string {
-    const file = shellQuote(this.lockFile);
-    const guard = shellQuote(`${this.lockFile}.takeover`);
-    const tmp = shellQuote(this.tempFile());
+    const file = this.lockFile;
+    const guard = `${this.lockFile}.takeover`;
+    const tmp = this.tempFile();
+    const create = createIfMissing ? sh`ln ${tmp} ${file} 2>/dev/null && r=${R_ACQUIRED}` : ':';
     return [
-      `r=${BUSY}`,
-      `if cat > ${tmp}; then`,
-      `  find ${guard} -prune -type d -mmin +${ABANDONED_GUARD_MINUTES} -exec rmdir {} + 2>/dev/null`,
-      `  if mkdir ${guard} 2>/dev/null; then`,
-      `    r=${TAKEN}`,
-      `    if [ ! -e ${file} ]; then ${createIfMissing ? `ln ${tmp} ${file} 2>/dev/null && r=${ACQUIRED}` : ':'}`,
-      `    elif [ "$(cat ${file} 2>/dev/null)" = ${shellQuote(expected)} ]; then mv -f ${tmp} ${file} && r=${ACQUIRED}`,
+      sh`r=${R_BUSY}`,
+      sh`if cat > ${tmp}; then`,
+      sh`  find ${guard} -prune -type d -mmin +${ABANDONED_GUARD_MINUTES} -exec rmdir {} + 2>/dev/null`,
+      sh`  if mkdir ${guard} 2>/dev/null; then`,
+      sh`    r=${R_TAKEN}`,
+      sh`    if [ ! -e ${file} ]; then ${raw(create)}`,
+      sh`    elif [ "$(cat ${file} 2>/dev/null)" = ${expected} ]; then mv -f ${tmp} ${file} && r=${R_ACQUIRED}`,
       '    fi',
-      `    rmdir ${guard}`,
+      sh`    rmdir ${guard}`,
       '  fi',
       'fi',
-      `rm -f ${tmp}`,
+      sh`rm -f ${tmp}`,
       'echo "$r"',
     ].join('\n');
   }

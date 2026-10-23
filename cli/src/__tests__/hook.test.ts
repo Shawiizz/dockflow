@@ -134,13 +134,13 @@ describe('remoteEnvPrefix', () => {
   });
 
   it('exports each variable, quoted', () => {
-    expect(remoteEnvPrefix({ DOCKFLOW_ROLLED_BACK_TO: '1.0.3' })).toBe("export DOCKFLOW_ROLLED_BACK_TO='1.0.3'; ");
+    expect(remoteEnvPrefix({ DOCKFLOW_ROLLED_BACK_TO: '1.0.3' })).toBe("export 'DOCKFLOW_ROLLED_BACK_TO'='1.0.3'; ");
   });
 
   it('an error message with quotes and operators stays one inert value', () => {
     const prefix = remoteEnvPrefix({ DOCKFLOW_ERROR: "can't reach host && rm -rf /" });
 
-    expect(prefix).toBe("export DOCKFLOW_ERROR='can'\\''t reach host && rm -rf /'; ");
+    expect(prefix).toBe("export 'DOCKFLOW_ERROR'='can'\\''t reach host && rm -rf /'; ");
   });
 });
 

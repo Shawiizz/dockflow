@@ -47,8 +47,8 @@ describe('distributeAll', () => {
 describe('tagSameContentCommand', () => {
   it('looks among the images of the same repository and tags the first of the same content', () => {
     const command = tagSameContentCommand('registry.example:5000/web:2', 'abc', 'docker');
-    expect(command).toContain("docker images -q --no-trunc 'registry.example:5000/web'");
-    expect(command).toContain("= 'abc' ] && exec docker tag \"$id\" 'registry.example:5000/web:2'");
+    expect(command).toContain("'docker' images -q --no-trunc 'registry.example:5000/web'");
+    expect(command).toContain("= 'abc' ] && exec 'docker' tag \"$id\" 'registry.example:5000/web:2'");
     expect(command.endsWith('done; exit 1')).toBe(true);
   });
 });

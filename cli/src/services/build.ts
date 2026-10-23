@@ -7,7 +7,7 @@ import { resolve, join, } from 'path';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { loadFromString } from './compose';
 import type { SSHKeyConnection } from '../types';
-import { sshExec, shellQuote } from '../utils/ssh';
+import { raw, sh, sshExec } from '../utils/ssh';
 import { printDim, printRaw, printSuccess, printWarning, createTaskLog } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { createTar, type TarEntry } from '../utils/tar';
@@ -380,13 +380,13 @@ function buildGitAuthEnv(): string {
     ? `PRIVATE-TOKEN: ${token}`
     : `Authorization: Bearer ${token}`;
 
-  const qHeader = shellQuote(header);
-  return `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='http.extraHeader' GIT_CONFIG_VALUE_0=${qHeader} `;
+  return sh`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='http.extraHeader' GIT_CONFIG_VALUE_0=${header} `;
 }
 
 /**
  * The shell script of a remote build, sent on stdin: build arg values are exported inside it and
- * passed by name, so they never appear on a command line of the build node.
+ * passed by name, so they never appear on a command line of the build node. `rest` is shell the
+ * caller built with `sh`: the flags, tag and context of the build.
  */
 export function remoteBuildScript(engine: string, args: Readonly<Record<string, string>>, rest: string): string {
   const names = Object.keys(args);
@@ -395,9 +395,9 @@ export function remoteBuildScript(engine: string, args: Readonly<Record<string, 
     throw new DeployError(`Build arg names must be letters, digits and _: ${invalid.join(', ')}`, ErrorCode.VALIDATION_FAILED);
   }
   return [
-    ...names.map((name) => `export ${name}=${shellQuote(args[name])}`),
+    ...names.map((name) => sh`export ${name}=${args[name]}`),
     // never pushed, shipped with `save`: its id must follow its content (see buildEnv)
-    `BUILDX_NO_DEFAULT_ATTESTATIONS=1 exec ${engine} build${names.map((name) => ` --build-arg ${name}`).join('')} ${rest} 2>&1`,
+    sh`BUILDX_NO_DEFAULT_ATTESTATIONS=1 exec ${engine} build${raw(names.map((name) => sh` --build-arg ${name}`).join(''))} ${raw(rest)} 2>&1`,
     '',
   ].join('\n');
 }
@@ -448,14 +448,12 @@ export async function buildRemote(
     }
 
     const authEnv = buildGitAuthEnv();
-    const qBranch = shellQuote(params.branch);
-    const qRepoUrl = shellQuote(repoUrl);
-    const qTmpDir = shellQuote(tmpDir);
 
     printDim(`Cloning repo on remote (${params.branch})...`);
     const cloneResult = await sshExec(
       connection,
-      `${authEnv}GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --branch ${qBranch} --single-branch ${qRepoUrl} ${qTmpDir} 2>&1`,
+      // authEnv is built by buildGitAuthEnv with sh: the token is quoted there
+      sh`${raw(authEnv)}GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --branch ${params.branch} --single-branch ${repoUrl} ${tmpDir} 2>&1`,
     );
     if (cloneResult.exitCode !== 0) {
       const output = (cloneResult.stderr.trim() || cloneResult.stdout.trim())
@@ -469,8 +467,7 @@ export async function buildRemote(
 
     // building whatever the branch HEAD happens to be would silently deploy different code
     // than the version claims
-    const qCommitSha = shellQuote(commitSha);
-    const checkoutResult = await sshExec(connection, `git -C ${qTmpDir} checkout ${qCommitSha} 2>&1`);
+    const checkoutResult = await sshExec(connection, sh`git -C ${tmpDir} checkout ${commitSha} 2>&1`);
     if (checkoutResult.exitCode !== 0) {
       throw new DeployError(
         `Remote checkout of commit ${commitSha.slice(0, 12)} failed: ${checkoutResult.stdout.trim() || checkoutResult.stderr.trim()}`,
@@ -504,14 +501,11 @@ export async function buildRemote(
       const relContext = posixRelative(params.projectRoot, target.context);
       const remoteContext = `${tmpDir}/${relContext}`;
 
-      const qDockerfile = shellQuote(`${remoteContext}/${relDockerfile}`);
-      const qTag = shellQuote(target.tag);
-      const qContext = shellQuote(remoteContext);
-
+      const remoteDockerfile = `${remoteContext}/${relDockerfile}`;
       const remoteEngine = target.engine || 'docker';
 
       const buildResult = await sshExec(connection, 'sh -s', {
-        stdin: remoteBuildScript(remoteEngine, target.args ?? {}, `-f ${qDockerfile} -t ${qTag} ${qContext}`),
+        stdin: remoteBuildScript(remoteEngine, target.args ?? {}, sh`-f ${remoteDockerfile} -t ${target.tag} ${remoteContext}`),
       });
 
       if (buildResult.exitCode !== 0) {
@@ -528,6 +522,6 @@ export async function buildRemote(
 
     return { images, durationMs: Date.now() - startTime };
   } finally {
-    await sshExec(connection, `rm -rf ${shellQuote(tmpDir)}`).catch(() => {});
+    await sshExec(connection, sh`rm -rf ${tmpDir}`).catch(() => {});
   }
 }

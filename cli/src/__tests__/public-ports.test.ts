@@ -112,10 +112,10 @@ services:
 describe('recordCommand', () => {
   it('records through sudo, or straight as root, and says when the node has no filter', () => {
     const command = recordCommand('shop-production', [anyone(80)], 'deploy');
-    expect(command).toContain("sudo -n /usr/local/sbin/dockflow-public-ports set 'shop-production' '80/tcp'");
+    expect(command).toContain("sudo -n '/usr/local/sbin/dockflow-public-ports' set 'shop-production' '80/tcp'");
     expect(command).toContain('echo off');
     expect(command).toContain('echo missing');
-    expect(recordCommand('shop-production', [], 'root')).toContain("then /usr/local/sbin/dockflow-public-ports set 'shop-production';");
+    expect(recordCommand('shop-production', [], 'root')).toContain("then '/usr/local/sbin/dockflow-public-ports' set 'shop-production';");
   });
 });
 

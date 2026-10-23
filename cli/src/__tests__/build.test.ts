@@ -251,7 +251,7 @@ describe('remoteBuildScript', () => {
   it('passes build args by name, their values only in the script', () => {
     const script = remoteBuildScript('docker', { NPM_TOKEN: secret }, "-f 'Dockerfile' -t 'shop-web:1' '.'");
     const command = script.split('\n').find((line) => line.includes(' build '));
-    expect(command).toBe("BUILDX_NO_DEFAULT_ATTESTATIONS=1 exec docker build --build-arg NPM_TOKEN -f 'Dockerfile' -t 'shop-web:1' '.' 2>&1");
+    expect(command).toBe("BUILDX_NO_DEFAULT_ATTESTATIONS=1 exec 'docker' build --build-arg 'NPM_TOKEN' -f 'Dockerfile' -t 'shop-web:1' '.' 2>&1");
     expect(command).not.toContain('s3cr');
   });
 

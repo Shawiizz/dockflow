@@ -5,7 +5,7 @@
 import type { SSHKeyConnection } from '../../types';
 import { ok, err, type Result } from '../../types/result';
 import { DeployError, ErrorCode } from '../../utils/errors';
-import { shellQuote, sshExec } from '../../utils/ssh';
+import { raw, sh, sshExec } from '../../utils/ssh';
 import { realClock, type SwarmClock } from './clock';
 import { ConvergenceError, waitForConvergence } from './convergence';
 import { checkInternalHealth } from './health';
@@ -158,7 +158,7 @@ export class SwarmStack {
   async getServices(stackName: string): Promise<ServiceInfo[]> {
     const stdout = await runDockerQuery(
       this.conn,
-      `docker stack services ${shellQuote(stackName)} --format '{{.Name}}|{{.Image}}|{{.Replicas}}|{{.Ports}}'`,
+      sh`docker stack services ${stackName} --format '{{.Name}}|{{.Image}}|{{.Replicas}}|{{.Ports}}'`,
       'docker stack services',
     );
     return (stdout ?? '')
@@ -174,13 +174,13 @@ export class SwarmStack {
 
   async scaleService(stackName: string, service: string, replicas: number, options: { detach?: boolean } = {}): Promise<void> {
     const fullName = `${stackName}_${service}`;
-    const result = await sshExec(this.conn, `${waiting('docker service scale', options.detach)} ${shellQuote(fullName)}=${replicas}`);
+    const result = await sshExec(this.conn, sh`${raw(waiting('docker service scale', options.detach))} ${fullName}=${replicas}`);
     if (result.exitCode !== 0) throw serviceCommandError(result, service, `Failed to scale ${service}`);
   }
 
   async rollbackService(stackName: string, service: string): Promise<void> {
     const fullName = `${stackName}_${service}`;
-    const result = await sshExec(this.conn, `${waiting('docker service rollback')} ${shellQuote(fullName)}`);
+    const result = await sshExec(this.conn, sh`${raw(waiting('docker service rollback'))} ${fullName}`);
     if (result.exitCode !== 0) throw serviceCommandError(result, service, `Failed to rollback ${service}`);
   }
 
@@ -193,7 +193,7 @@ export class SwarmStack {
     const update = waiting('docker service update --force', options.detach);
     if (service) {
       const fullName = `${stackName}_${service}`;
-      const r = await sshExec(this.conn, `${update} ${shellQuote(fullName)}`);
+      const r = await sshExec(this.conn, sh`${raw(update)} ${fullName}`);
       if (r.exitCode !== 0) throw serviceCommandError(r, service, `Failed to restart ${service}`);
       return;
     }
@@ -204,7 +204,7 @@ export class SwarmStack {
     }
 
     const cmd = services
-      .map((s) => `${update} ${shellQuote(`${stackName}_${s.name}`)}`)
+      .map((s) => sh`${raw(update)} ${`${stackName}_${s.name}`}`)
       .join(' && ');
     const r = await sshExec(this.conn, cmd);
     if (r.exitCode !== 0) throw serviceCommandError(r, stackName, 'Some services failed to restart');
@@ -213,7 +213,7 @@ export class SwarmStack {
   async getMetadata(stackName: string): Promise<StackMetadata | null> {
     const result = await sshExec(
       this.conn,
-      `cat ${shellQuote(`${DOCKFLOW_STACKS_DIR}/${stackName}/current/metadata.json`)} 2>/dev/null`,
+      sh`cat ${`${DOCKFLOW_STACKS_DIR}/${stackName}/current/metadata.json`} 2>/dev/null`,
     );
     if (result.exitCode !== 0 || !result.stdout.trim()) return null;
     try {
@@ -226,7 +226,7 @@ export class SwarmStack {
   async getContainers(stackName: string): Promise<SwarmContainerInfo[]> {
     const stdout = await runDockerQuery(
       this.conn,
-      `docker ps --filter ${shellQuote(`label=com.docker.stack.namespace=${stackName}`)} --format '{{.ID}}|{{.Names}}|{{.Status}}|{{.Ports}}'`,
+      sh`docker ps --filter ${`label=com.docker.stack.namespace=${stackName}`} --format '{{.ID}}|{{.Names}}|{{.Status}}|{{.Ports}}'`,
       'docker ps',
     );
     return (stdout ?? '')
@@ -242,7 +242,7 @@ export class SwarmStack {
   async getTasks(stackName: string): Promise<SwarmTaskInfo[]> {
     const stdout = await runDockerQuery(
       this.conn,
-      `docker stack ps ${shellQuote(stackName)} --format '{{.ID}}|{{.Name}}|{{.Image}}|{{.Node}}|{{.DesiredState}}|{{.CurrentState}}|{{.Error}}' --no-trunc`,
+      sh`docker stack ps ${stackName} --format '{{.ID}}|{{.Name}}|{{.Image}}|{{.Node}}|{{.DesiredState}}|{{.CurrentState}}|{{.Error}}' --no-trunc`,
       'docker stack ps',
     );
     return (stdout ?? '')
@@ -256,9 +256,9 @@ export class SwarmStack {
   }
 }
 
-/** The Docker CLI waits for the service to converge, forever when no node can take its tasks. */
+/** The Docker CLI waits for the service to converge, forever when no node can take its tasks. `command` is the code's own docker command. */
 function waiting(command: string, detach?: boolean): string {
-  return detach ? `${command} --detach` : `timeout ${CONVERGENCE_TIMEOUT_S} ${command}`;
+  return detach ? sh`${raw(command)} --detach` : sh`timeout ${CONVERGENCE_TIMEOUT_S} ${raw(command)}`;
 }
 
 const TIMED_OUT = 124;

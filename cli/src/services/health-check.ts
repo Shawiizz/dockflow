@@ -4,7 +4,7 @@
  */
 
 import type { SSHKeyConnection } from '../types';
-import { sshExec } from '../utils/ssh';
+import { raw, sh, sshExec } from '../utils/ssh';
 import { printDebug, printDim, printWarning, createSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { HealthCheckConfig, HealthCheckEndpoint } from '../utils/config';
@@ -81,15 +81,9 @@ export class HealthCheck {
     const retries = endpoint.retries ?? 3;
     const retryDelay = (endpoint.retry_delay ?? 5) * 1000;
 
-    const curlFlags = [
-      '-4', '-s', '-o', '/dev/null', '-w', '%{http_code}',
-      '--max-time', String(timeoutS),
-      '-X', method,
-    ];
-    if (endpoint.validate_certs === false) curlFlags.push('-k');
-    // single-quoted so the remote shell expands nothing in the URL
-    const safeUrl = endpoint.url.replace(/'/g, "'\\''");
-    const cmd = `curl ${curlFlags.join(' ')} '${safeUrl}'`;
+    // the remote shell expands nothing in the URL: sh quotes it
+    const insecure = raw(endpoint.validate_certs === false ? ' -k' : '');
+    const cmd = sh`curl -4 -s -o /dev/null -w %{http_code} --max-time ${timeoutS} -X ${method}${insecure} ${endpoint.url}`;
 
     let lastError = '';
 

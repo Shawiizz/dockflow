@@ -18,7 +18,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs
 import { join } from 'path';
 import { tmpdir } from 'os';
 import type { SSHKeyConnection } from '../types';
-import { shellQuote, sshExec } from '../utils/ssh';
+import { raw, sh, sshExec } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase, HooksConfig } from '../utils/config';
@@ -199,8 +199,8 @@ export function remoteHookProgram(opts: {
     `trap 'rm -f "$tmp"' EXIT`,
     'cat > "$tmp"',
     'chmod 700 "$tmp"',
-    `cd "${opts.stackDir}" 2>/dev/null || cd /tmp`,
-    `${remoteEnvPrefix(opts.env)}timeout ${opts.timeoutS} ${runner}"$tmp" < /dev/null 2>&1`,
+    sh`cd ${opts.stackDir} 2>/dev/null || cd /tmp`,
+    sh`${raw(remoteEnvPrefix(opts.env))}timeout ${opts.timeoutS} ${raw(runner)}"$tmp" < /dev/null 2>&1`,
   ].join('\n');
 }
 
@@ -255,12 +255,12 @@ interface EntryRunContext {
 /**
  * Shell statements exporting `env` to everything that follows on the line.
  *
- * Keys come from Dockflow itself; values are quoted, so an error message full
+ * Keys come from Dockflow itself; keys and values are both quoted, so an error message full
  * of quotes and operators stays inert.
  */
 export function remoteEnvPrefix(env: Record<string, string>): string {
   return Object.entries(env)
-    .map(([key, value]) => `export ${key}=${shellQuote(value)}; `)
+    .map(([key, value]) => sh`export ${key}=${value}; `)
     .join('');
 }
 

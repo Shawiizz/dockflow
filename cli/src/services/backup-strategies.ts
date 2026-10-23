@@ -9,7 +9,7 @@
 import { posix } from 'path';
 import type { BackupAccessoryConfig, BackupDbType } from '../utils/config';
 import { ConfigError, ValidationError } from '../utils/errors';
-import { shellQuote } from '../utils/ssh';
+import { raw, sh } from '../utils/ssh';
 import { DOCKFLOW_BACKUPS_DIR } from '../constants';
 
 export interface MountInfo {
@@ -177,7 +177,14 @@ export function recordedIntegrity(
   return compression === 'gzip' ? 'gzip' : 'opaque';
 }
 
-/** The dump script run by `sh -c` in the service container; stdout is the backup. */
+/**
+ * The dump script run by `sh -c` in the service container; stdout is the backup.
+ *
+ * It is the container's own program, passed to `docker exec` as one quoted value, and its text is
+ * written here, `${...}` expansions included, for the container's shell to expand. The only
+ * configured text in it is shell on purpose: `dump_options` (flags such as `--exclude-table='a b'`)
+ * and `dump_command`, which the container's shell reads as the user wrote them.
+ */
 export function buildDumpScript(config: BackupAccessoryConfig, compression: 'gzip' | 'none'): string {
   const type = config.type;
   if (type === 'volume') throw new ConfigError('Backup type volume has no dump script');
@@ -189,7 +196,7 @@ export function buildDumpScript(config: BackupAccessoryConfig, compression: 'gzi
   // the trailer follows a dump that succeeded, so the dump cannot be exec'd
   const trailer = integrityOf(config, compression) === 'trailer';
   const exec = trailer ? '' : 'exec ';
-  const end = trailer ? ` && printf '%s\\n' '${DUMP_TRAILER}'` : '';
+  const end = trailer ? sh` && printf '%s\\n' ${DUMP_TRAILER}` : '';
   switch (type) {
     case 'postgres': {
       // --clean: a restore replaces what the dump holds instead of adding its rows to the live ones;
@@ -209,7 +216,7 @@ export function buildDumpScript(config: BackupAccessoryConfig, compression: 'gzi
   }
 }
 
-/** The restore script run by `sh -c` in the service container; the backup arrives on stdin. */
+/** The restore script run by `sh -c` in the service container; the backup arrives on stdin. Same rules as the dump script for `restore_options` and `restore_command`. */
 export function buildRestoreScript(config: BackupAccessoryConfig): string {
   const type = config.type;
   if (type === 'volume') throw new ConfigError('Backup type volume has no restore script');
@@ -259,13 +266,13 @@ export function stripRefusalMarker(stderr: string): string {
  * pipeline reports gzip's alone, and a dump that dies midway becomes a CRC-valid truncated archive.
  */
 export function buildCapturePipeline(producer: string, remotePath: string, gzip: boolean): string {
-  const dir = shellQuote(posix.dirname(remotePath));
-  const file = shellQuote(remotePath);
-  if (!gzip) return `umask 077 && mkdir -p ${dir} && ${producer} > ${file}`;
-  const rc = shellQuote(`${remotePath}.rc`);
+  const dir = posix.dirname(remotePath);
+  // `producer` is a command the caller built with `sh`
+  if (!gzip) return sh`umask 077 && mkdir -p ${dir} && ${raw(producer)} > ${remotePath}`;
+  const rc = `${remotePath}.rc`;
   return (
-    `umask 077 && mkdir -p ${dir} && { ${producer}; echo "$?" > ${rc}; } | gzip -c > ${file}; z=$?; ` +
-    `rc=$(cat ${rc} 2>/dev/null); rm -f ${rc}; [ "\${rc:-255}" -eq 0 ] || exit "\${rc:-255}"; exit "$z"`
+    sh`umask 077 && mkdir -p ${dir} && { ${raw(producer)}; echo "$?" > ${rc}; } | gzip -c > ${remotePath}; z=$?; ` +
+    sh`rc=$(cat ${rc} 2>/dev/null); rm -f ${rc}; [ "\${rc:-255}" -eq 0 ] || exit "\${rc:-255}"; exit "$z"`
   );
 }
 
@@ -290,7 +297,7 @@ export function previousDirName(id8: string): string {
 /** Phase 1 of a volume restore: extract stdin beside the data; nothing of the current contents is touched. */
 export function buildExtractScript(mountDir: string, id8: string): string {
   return [
-    `set -e; d=${shellQuote(mountDir)}; new="$d/${restoreDirName(id8)}"`,
+    sh`set -e; d=${mountDir}; new="$d"/${restoreDirName(id8)}`,
     'rm -rf "$new"; mkdir "$new"',
     'tar xf - -C "$new"',
   ].join('\n');
@@ -302,7 +309,7 @@ export function buildExtractScript(mountDir: string, id8: string): string {
  */
 export function buildSwapScript(mountDir: string, id8: string): string {
   return [
-    `set -e; d=${shellQuote(mountDir)}; new="$d/${restoreDirName(id8)}"; old="$d/${previousDirName(id8)}"`,
+    sh`set -e; d=${mountDir}; new="$d"/${restoreDirName(id8)}; old="$d"/${previousDirName(id8)}`,
     'rm -rf "$old"; mkdir "$old"',
     'for e in "$d"/* "$d"/.[!.]* "$d"/..?*; do [ -e "$e" ] || [ -L "$e" ] || continue; case "$e" in "$new"|"$old") continue;; esac; mv "$e" "$old/"; done',
     'for e in "$new"/* "$new"/.[!.]* "$new"/..?*; do [ -e "$e" ] || [ -L "$e" ] || continue; mv "$e" "$d/"; done',
@@ -312,7 +319,7 @@ export function buildSwapScript(mountDir: string, id8: string): string {
 
 /** Removes what a failed extraction left beside the data. */
 export function buildDiscardScript(mountDir: string, id8: string): string {
-  return `d=${shellQuote(mountDir)}; rm -rf "$d/${restoreDirName(id8)}"`;
+  return sh`d=${mountDir}; rm -rf "$d"/${restoreDirName(id8)}`;
 }
 
 export function sanitizePathName(mountPath: string): string {
@@ -326,7 +333,7 @@ export function sanitizePathName(mountPath: string): string {
  * runs only the existence and non-empty check.
  */
 export function buildVerifyScript(remotePath: string, compression: 'gzip' | 'none', integrity: ArchiveIntegrity): string {
-  const lines = [`f=${shellQuote(remotePath)}`, `[ -s "$f" ] || { echo 'the file is missing or empty'; exit 1; }`];
+  const lines = [sh`f=${remotePath}`, `[ -s "$f" ] || { echo 'the file is missing or empty'; exit 1; }`];
   switch (integrity) {
     case 'tar':
       lines.push(
@@ -355,7 +362,7 @@ export function buildVerifyScript(remotePath: string, compression: 'gzip' | 'non
       );
       break;
     case 'trailer':
-      lines.push(`[ "$(tail -n 1 "$f")" = '${DUMP_TRAILER}' ] || { echo 'the dump has no integrity marker'; exit 1; }`);
+      lines.push(sh`[ "$(tail -n 1 "$f")" = ${DUMP_TRAILER} ] || { echo 'the dump has no integrity marker'; exit 1; }`);
       break;
     case 'opaque':
       break;

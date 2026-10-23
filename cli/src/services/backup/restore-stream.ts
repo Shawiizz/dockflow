@@ -5,7 +5,7 @@
 
 import type { ClusterNode, SSHKeyConnection } from '../../types';
 import { BackupError, ErrorCode } from '../../utils/errors';
-import { shellQuote, sshExec, sshExecChannelUnbuffered } from '../../utils/ssh';
+import { raw, sh, sshExec, sshExecChannelUnbuffered } from '../../utils/ssh';
 import { printDebug } from '../../utils/output';
 
 const STDERR_CAP = 64 * 1024;
@@ -41,10 +41,9 @@ export async function streamInto(
   sink: SSHKeyConnection,
   command: string,
 ): Promise<{ exitCode: number; stderr: string }> {
-  const path = shellQuote(file);
-  const reader = gunzip ? `gunzip -c ${path}` : `cat ${path}`;
+  const reader = gunzip ? sh`gunzip -c ${file}` : sh`cat ${file}`;
   if (source.connection.host === sink.host && source.connection.port === sink.port) {
-    const result = await sshExec(sink, `${reader} | ${command}`);
+    const result = await sshExec(sink, sh`${raw(reader)} | ${raw(command)}`);
     return { exitCode: result.exitCode, stderr: result.stderr };
   }
 

@@ -965,7 +965,7 @@ describe('Backup.restore of volumes', () => {
     const error = failure(await restore());
     expect(error.message).toBe('Restore of db failed while extracting bind uploads: tar: invalid magic; nothing was changed');
     expect(nodes.commands().some((command) => command.includes('.dockflow-old-'))).toBe(false);
-    const discards = nodes.commands('worker').filter((command) => helper(command) && !command.includes('tar xf') && command.includes('rm -rf "$d/.dockflow-restore-'));
+    const discards = nodes.commands('worker').filter((command) => helper(command) && !command.includes('tar xf') && command.includes('rm -rf "$d"/') && command.includes('.dockflow-restore-'));
     expect(discards).toHaveLength(2);
   });
 

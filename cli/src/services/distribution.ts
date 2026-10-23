@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { createGzip } from 'node:zlib';
 import { Readable } from 'node:stream';
 import type { SSHKeyConnection } from '../types';
-import { sshExec, sshExecChannel, sshExecChannelUnbuffered, shellQuote } from '../utils/ssh';
+import { raw, sh, sshExec, sshExecChannel, sshExecChannelUnbuffered, type ShellValue } from '../utils/ssh';
 import { printDebug, printDim, printSuccess, printWarning, createTimedSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { parseImageRef } from './compose';
@@ -23,11 +23,11 @@ export interface DistributionTarget {
 const TRANSFER_MAX_RETRIES = 2;
 
 function importCommand(runtime: ContainerRuntime): string {
-  return `gunzip | ${runtime} load`;
+  return sh`gunzip | ${runtime} load`;
 }
 
 function saveCommand(image: string, runtime: ContainerRuntime): string {
-  return `${runtime} save ${shellQuote(image)} | gzip -1`;
+  return sh`${runtime} save ${image} | gzip -1`;
 }
 
 /**
@@ -39,9 +39,9 @@ export const IMAGE_CONTENT_FORMAT =
   '{{json .Config.WorkingDir}} {{json .Config.User}} {{json .Config.ExposedPorts}} {{json .Config.Volumes}} ' +
   '{{json .Config.Labels}} {{json .Config.StopSignal}} {{json .Config.Healthcheck}} {{json .Os}} {{json .Architecture}}';
 
-/** The sha256 of an image's content, as the remote shell prints it. */
-function contentKeyPipeline(ref: string, runtime: ContainerRuntime): string {
-  return `${runtime} image inspect --format ${shellQuote(IMAGE_CONTENT_FORMAT)} ${ref} 2>/dev/null | sha256sum | cut -d' ' -f1`;
+/** The sha256 of an image's content, as the remote shell prints it; `ref` is quoted unless it is `raw`. */
+function contentKeyPipeline(ref: ShellValue, runtime: ContainerRuntime): string {
+  return sh`${runtime} image inspect --format ${IMAGE_CONTENT_FORMAT} ${ref} 2>/dev/null | sha256sum | cut -d' ' -f1`;
 }
 
 /** The content key of an image on this machine; empty when the engine does not know it. */
@@ -54,7 +54,7 @@ export async function getLocalContentKey(image: string, runtime: ContainerRuntim
 
 /** The content key of an image on a node; empty when the node does not hold it. */
 export async function getRemoteContentKey(connection: SSHKeyConnection, image: string, runtime: ContainerRuntime = 'docker'): Promise<string> {
-  const result = await sshExec(connection, `${runtime} image inspect ${shellQuote(image)} >/dev/null 2>&1 && ${contentKeyPipeline(shellQuote(image), runtime)}`);
+  const result = await sshExec(connection, sh`${runtime} image inspect ${image} >/dev/null 2>&1 && ${raw(contentKeyPipeline(image, runtime))}`);
   return result.exitCode === 0 ? result.stdout.trim() : '';
 }
 
@@ -64,10 +64,12 @@ export async function getRemoteContentKey(connection: SSHKeyConnection, image: s
  */
 export function tagSameContentCommand(image: string, key: string, runtime: ContainerRuntime): string {
   const { name } = parseImageRef(image);
+  // "$id" is the loop variable of the script itself, not a value
+  const idKey = contentKeyPipeline(raw('"$id"'), runtime);
   return (
-    `for id in $(${runtime} images -q --no-trunc ${shellQuote(name)} 2>/dev/null | sort -u); do ` +
+    sh`for id in $(${runtime} images -q --no-trunc ${name} 2>/dev/null | sort -u); do ` +
     'id=${id#sha256:}; ' +
-    `[ "$(${contentKeyPipeline('"$id"', runtime)})" = ${shellQuote(key)} ] && exec ${runtime} tag "$id" ${shellQuote(image)}; ` +
+    sh`[ "$(${raw(idKey)})" = ${key} ] && exec ${runtime} tag "$id" ${image}; ` +
     'done; exit 1'
   );
 }
@@ -347,7 +349,7 @@ export async function registryLogin(
 
   const result = await sshExec(
     connection,
-    `${engine} login ${shellQuote(config.url)} -u ${shellQuote(config.username)} --password-stdin`,
+    sh`${engine} login ${config.url} -u ${config.username} --password-stdin`,
     { stdin: `${config.password}\n` },
   );
 
