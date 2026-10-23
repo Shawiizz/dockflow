@@ -168,7 +168,7 @@ const lock = createLock(conn, stackName, config.lock?.stale_threshold_minutes);
 No class. The file is a namespace of top-level `export function` declarations, imported via `import * as`.
 
 ```ts
-// cli/src/services/compose.ts
+// cli/src/services/compose/ (index.ts re-exports the public functions of its modules)
 export function renderTemplates(...) { /* ... */ }
 export function updateImageTags(...) { /* ... */ }
 export function injectTraefikLabels(...) { /* ... */ }
@@ -182,7 +182,7 @@ import * as Compose from '../services/compose';
 Compose.updateImageTags(parsed, { web: 'app:1.2.3' });
 ```
 
-Current modules: `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts`.
+Current modules: `compose/`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts`.
 
 ### Why no more `*Service`?
 

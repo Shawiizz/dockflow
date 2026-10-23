@@ -125,7 +125,7 @@ A command run in a container exits with the container's own code through `ExecEx
 | Shape | Suffix | Examples | Import style |
 |---|---|---|---|
 | Stateful class (wraps a connection / holds state) | no suffix | `SwarmStack`, `SwarmContainers`, `SwarmProxy`, `Audit`, `Lock`, `Release`, `Metrics`, `Backup`, `HealthCheck` | `new SwarmStack(conn)` |
-| Pure module (stateless free functions) | no class | `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts`, `plugin.ts` | `import * as Compose from '../services/compose'` |
+| Pure module (stateless free functions) | no class | `compose/`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts`, `plugin.ts` | `import * as Compose from '../services/compose'` |
 
 **Rules:**
 - Never append `Service` to anything new. The word is too vague — if the class wraps state, drop the suffix; if it's just functions, make it a module.
@@ -150,7 +150,7 @@ A command run in a container exits with the container's own code through `ExecEx
 Each stateful class exposes a matching factory (`createLock`, `createBackup`, …) where construction needs defaults from config.
 
 **Pure modules** (`cli/src/services/*.ts`, imported via `import * as`):
-- `compose.ts` — template rendering (Nunjucks), YAML load/serialize, Swarm/accessory deploy config injection, Traefik label injection, image tag updates
+- `compose/` — one module, its `index.ts` re-exporting the public API: `templates.ts` (Nunjucks rendering), `yaml.ts` (load/serialize), `images.ts` (image tags, registry), `deploy-defaults.ts` (Swarm/accessory deploy config), `traefik.ts` (label injection, route checks), `selection.ts` (service filters, external networks/volumes), `types.ts`
 - `build.ts` — local/remote Docker/Podman image builds (parses compose YAML, assembles tar contexts in memory)
 - `distribution.ts` — image distribution (SSH pipe for Docker/Podman), registry login/push
 - `hook.ts` — pre/post build/deploy hooks (local via `Bun.spawn`, remote via SSH)

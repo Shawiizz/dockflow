@@ -8,7 +8,7 @@ import { withCliVersion } from '../version.js';
 const isYaml = (path: string): boolean => /\.ya?ml$/.test(path);
 const basename = (path: string): string => path.split('/').pop() ?? path;
 
-/** The names a Dockflow template can start from: the render context of a deploy (services/compose.ts) */
+/** The names a Dockflow template can start from: the render context of a deploy (services/compose/templates.ts) */
 const RENDER_VARIABLES = ['env', 'version', 'branch', 'project_name', 'config', 'current', 'servers', 'cluster'];
 
 describe('get_examples', () => {
