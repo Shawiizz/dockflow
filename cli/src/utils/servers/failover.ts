@@ -2,7 +2,7 @@
  * Manager failover: which manager of an environment can take Swarm commands now.
  */
 
-import { sshExec } from '../ssh';
+import { sh, sshExec } from '../ssh';
 import { printError, printSuccess, printWarning } from '../output';
 import type { SSHKeyConnection, ResolvedServer } from '../../types';
 import { getFullConnectionInfo } from './resolver';
@@ -18,7 +18,7 @@ export type ManagerStatus = 'leader' | 'reachable' | 'unready' | 'unreachable';
 export async function checkManagerStatus(connection: SSHKeyConnection): Promise<ManagerStatus> {
   try {
     const result = await sshExec(connection,
-      'docker info --format "{{.Swarm.ControlAvailable}}" 2>/dev/null || echo "error"'
+      sh`docker info --format "{{.Swarm.ControlAvailable}}" 2>/dev/null || echo "error"`
     );
 
     if (result.exitCode !== 0 || result.stdout.trim() === 'error') {
@@ -28,7 +28,7 @@ export async function checkManagerStatus(connection: SSHKeyConnection): Promise<
     if (result.stdout.trim().toLowerCase() !== 'true') return 'unready';
 
     const leaderCheck = await sshExec(connection,
-      'docker node inspect self --format "{{.ManagerStatus.Leader}}" 2>/dev/null || echo "false"'
+      sh`docker node inspect self --format "{{.ManagerStatus.Leader}}" 2>/dev/null || echo "false"`
     );
     return leaderCheck.stdout.trim().toLowerCase() === 'true' ? 'leader' : 'reachable';
   } catch {
