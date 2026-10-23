@@ -1269,6 +1269,15 @@ export function getExternalNetworks(compose: ParsedCompose): string[] {
   return externalNames(compose.networks);
 }
 
+/**
+ * The external networks Dockflow creates before a deploy. The default network of one of the
+ * project's stacks is left out: that stack's deploy creates it, and fails if it already exists.
+ */
+export function externalNetworksToCreate(compose: ParsedCompose, appStackName: string): string[] {
+  const createdByTheirStack = new Set([`${appStackName}_default`, `${appStackName}-accessories_default`]);
+  return getExternalNetworks(compose).filter((name) => !createdByTheirStack.has(name));
+}
+
 export function getExternalVolumes(compose: ParsedCompose): string[] {
   return externalNames(compose.volumes);
 }

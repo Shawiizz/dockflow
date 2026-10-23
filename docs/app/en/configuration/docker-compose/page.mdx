@@ -212,9 +212,25 @@ networks:
 
 This is useful when multiple independent stacks need to communicate over a shared overlay network. Dockflow creates the network with `--driver overlay --attachable` so any stack can attach to it.
 
-<Callout type="info">
-  For communication between an app stack and its accessories stack within the same project, you don't need an external network. Use the Swarm DNS name directly: `{{ project_name }}-{{ env }}-accessories_servicename`.
-</Callout>
+To reach the accessories from the app, attach the app's services to the accessories stack's
+default network, declared as external. A service only resolves the names of the networks it is on:
+
+```yaml
+services:
+  app:
+    networks:
+      - default
+      - accessories
+
+networks:
+  accessories:
+    external: true
+    name: "{{ project_name }}-{{ env }}-accessories_default"
+```
+
+The app then reaches an accessory by its service name, such as `db`. Dockflow does not create
+this network itself: the accessories stack, deployed before the app, creates it, and would fail if
+it already existed. The same holds for the app stack's own `<project>-<env>_default`.
 
 ## Placement Constraints
 

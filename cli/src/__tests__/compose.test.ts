@@ -13,6 +13,7 @@ import {
   filterServices,
   syncNonTargetedImageTags,
   getExternalNetworks,
+  externalNetworksToCreate,
   getExternalVolumes,
   hasServices,
   getImages,
@@ -781,5 +782,26 @@ describe('registryWithoutCredentials', () => {
 describe('accessoriesDigest', () => {
   it('is the sha256 of the serialized compose, in hex', () => {
     expect(accessoriesDigest('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  });
+});
+
+describe('externalNetworksToCreate', () => {
+  it('leaves the default networks of the project\'s stacks to the stack deploys that create them', () => {
+    const compose = makeCompose(`services: {}
+networks:
+  accessories:
+    external: true
+    name: shop-production-accessories_default
+  own:
+    external: true
+    name: shop-production_default
+  public:
+    external: true
+    name: traefik-public
+  other:
+    external: true
+    name: billing-production_default
+`);
+    expect(externalNetworksToCreate(compose, 'shop-production')).toEqual(['traefik-public', 'billing-production_default']);
   });
 });

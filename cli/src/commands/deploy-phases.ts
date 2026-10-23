@@ -574,11 +574,11 @@ export function accessoriesKey(): string {
 
 export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> {
   const mainCompose = Compose.loadFromString(ctx.composeContent, 'docker-compose.yml');
-  const networks = new Set(Compose.getExternalNetworks(mainCompose));
+  const networks = new Set(Compose.externalNetworksToCreate(mainCompose, ctx.stackName));
 
   const accessoriesContent = ctx.rendered.get(accessoriesKey());
   if (accessoriesContent) {
-    for (const n of Compose.getExternalNetworks(Compose.loadFromString(accessoriesContent, 'accessories.yml'))) networks.add(n);
+    for (const n of Compose.externalNetworksToCreate(Compose.loadFromString(accessoriesContent, 'accessories.yml'), ctx.stackName)) networks.add(n);
   }
 
   if (networks.size === 0) return;

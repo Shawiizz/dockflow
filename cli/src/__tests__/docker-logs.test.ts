@@ -174,3 +174,33 @@ describe('tasksToFollow', () => {
     expect(tasksToFollow(tasks).map((task) => task.id)).toEqual(['web.1', 'migrate.1']);
   });
 });
+
+describe('parseDockerLogLines on docker service logs --timestamps as Docker 29 prints it', () => {
+  // recorded on a single-node Swarm: timestamp, then `<task>@<node> |`, then the message
+  const recorded = [
+    '2026-10-23T06:32:08.896584350Z dockflow-check-logs.2.79rszl1p2zrj0nelrc7cydd90@manager-1    | line 1',
+    '2026-10-23T06:32:08.905926859Z dockflow-check-logs.1.e8klzxmi0ox9d3kjmrrzk7qou@manager-1    | a | b',
+    '2026-10-23T06:32:08.905930571Z dockflow-check-logs.1.e8klzxmi0ox9d3kjmrrzk7qou@manager-1    | 2020-01-01T00:00:00Z fake-timestamp',
+    '2026-10-23T06:32:08.905934276Z dockflow-check-logs.1.e8klzxmi0ox9d3kjmrrzk7qou@manager-1    | ',
+    '2026-10-23T06:32:08.896584350Z dockflow-check-logs.2.79rszl1p2zrj@manager-1    | line 1',
+  ].join('\n');
+
+  it('keeps each message whole, even one holding a pipe or looking like a timestamp', () => {
+    const lines = parseDockerLogLines(recorded, 'dockflow-check-logs');
+    expect(lines.map((line) => line.message)).toEqual(['line 1', 'a | b', '2020-01-01T00:00:00Z fake-timestamp', '', 'line 1']);
+    expect(lines.map((line) => line.timestamp)).toEqual([
+      '2026-10-23T06:32:08.896584350Z',
+      '2026-10-23T06:32:08.905926859Z',
+      '2026-10-23T06:32:08.905930571Z',
+      '2026-10-23T06:32:08.905934276Z',
+      '2026-10-23T06:32:08.896584350Z',
+    ]);
+    expect(lines.map((line) => line.instance)).toEqual([
+      'dockflow-check-logs.2',
+      'dockflow-check-logs.1',
+      'dockflow-check-logs.1',
+      'dockflow-check-logs.1',
+      'dockflow-check-logs.2',
+    ]);
+  });
+});

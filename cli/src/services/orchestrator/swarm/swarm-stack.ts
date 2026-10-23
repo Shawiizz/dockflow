@@ -57,7 +57,7 @@ export class SwarmStackBackend implements StackBackend {
   async deploy(input: StackDeployInput): Promise<Result<void, DeployError>> {
     try {
       // 1. Create external networks + volumes (always from the full compose)
-      const networks = Compose.getExternalNetworks(input.compose);
+      const networks = Compose.externalNetworksToCreate(input.compose, input.stackName);
       const volumes = Compose.getExternalVolumes(input.compose);
       await this.ops.createExternalResources(networks, volumes);
 
@@ -100,7 +100,7 @@ export class SwarmStackBackend implements StackBackend {
     try {
       // Accessories already have injectAccessoriesDefaults applied by caller.
       const content = Compose.serialize(input.compose);
-      await this.ops.createExternalResources(Compose.getExternalNetworks(input.compose), Compose.getExternalVolumes(input.compose));
+      await this.ops.createExternalResources(Compose.externalNetworksToCreate(input.compose, input.stackName), Compose.getExternalVolumes(input.compose));
       const deployed = await this.ops.deployAccessories(input.stackName, input.accessoryPath, content, { force: input.force });
       return ok({ deployed });
     } catch (e) {
