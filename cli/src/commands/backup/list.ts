@@ -4,7 +4,7 @@
  */
 
 import type { Command } from 'commander';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { printIntro, printInfo, printBlank, printJSON, printRaw, printDim, colors, formatRelativeTime } from '../../utils/output';
 import { withErrorHandler } from '../../utils/errors';
 import { createBackup, type BackupListEntry } from '../../services/backup';
@@ -23,7 +23,7 @@ export function registerBackupListCommand(program: Command): void {
       service: string | undefined,
       options: { json?: boolean; server?: string; node?: string }
     ) => {
-      const { connection } = validateEnv(env, options.server);
+      const { connection } = await resolveEnv(env, options.server);
 
       let entries: BackupListEntry[];
       let unreachable;

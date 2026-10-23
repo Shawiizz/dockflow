@@ -4,7 +4,7 @@
  */
 
 import type { Command } from 'commander';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { printIntro, printOutro, printInfo, printBlank, printDim, printJSON, createSpinner } from '../../utils/output';
 import { BackupError, CLIError, ValidationError, withErrorHandler } from '../../utils/errors';
 import { createBackup } from '../../services/backup';
@@ -37,7 +37,7 @@ export function registerBackupCreateCommand(program: Command): void {
         printBlank();
       }
 
-      const { connection } = validateEnv(env, options.server);
+      const { connection } = await resolveEnv(env, options.server);
       const { backupConfig, compression, source } = requireBackupConfig(service);
       const stackName = resolveBackupStack(env, source);
       const backupService = createBackup(connection, stackName, getBackupNodes(env));

@@ -40,7 +40,7 @@ beforeEach(() => {
   exitCode = undefined;
   errors = [];
   spies.push(
-    spyOn(validation, 'validateEnv').mockReturnValue({ connection } as never),
+    spyOn(validation, 'resolveEnv').mockResolvedValue({ connection } as never),
     spyOn(config, 'loadConfig').mockReturnValue({ project_name: 'shop' } as never),
     spyOn(config, 'getStackName').mockReturnValue('shop-production'),
     spyOn(backupUtils, 'getBackupNodes').mockReturnValue([]),

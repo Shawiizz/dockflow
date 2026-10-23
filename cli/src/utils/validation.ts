@@ -227,8 +227,8 @@ export function validateEnv(env: string, serverName?: string, choice: ServerChoi
  * `validateEnv` for a command that talks to Swarm: with several managers and none named, the one
  * that takes Swarm commands now (the leader first), so a manager down does not stop the command.
  */
-export async function resolveEnv(env: string, serverName?: string): Promise<EnvironmentContext> {
-  const ctx = validateEnv(env, serverName);
+export async function resolveEnv(env: string, serverName?: string, choice: ServerChoice = {}): Promise<EnvironmentContext> {
+  const ctx = validateEnv(env, serverName, choice);
   if (serverName) return ctx;
 
   const managers = getManagersForEnvironment(ctx.env);
@@ -261,5 +261,5 @@ export function withResolvedEnv<A extends unknown[]>(
   return (env: string, ...args: A) => fn(resolveEnvironmentPrefix(env), ...args);
 }
 
-// Re-export for CLI commands that need all node connections after validateEnv()
+// Re-export for CLI commands that need all node connections after resolveEnv()
 export { getAllNodeConnections, getAllNodes };

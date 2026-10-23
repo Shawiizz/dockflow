@@ -4,7 +4,7 @@
  */
 
 import type { Command } from 'commander';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { confirmPrompt } from '../../utils/prompts';
 import { loadConfig } from '../../utils/config';
 import { printIntro, printOutro, printInfo, printWarning, printBlank, printRaw, colors, createSpinner, formatBytes } from '../../utils/output';
@@ -29,7 +29,7 @@ export function registerBackupPruneCommand(program: Command): void {
       printIntro(`Prune Backups (${env})`);
       printBlank();
 
-      const { connection } = validateEnv(env, options.server);
+      const { connection } = await resolveEnv(env, options.server);
 
       const retentionCount = parseRetention(options.keep, loadConfig()?.backup?.retention_count ?? 10);
 

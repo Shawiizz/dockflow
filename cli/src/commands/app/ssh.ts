@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { sshShell, sshExecStream } from '../../utils/ssh';
 import { printInfo, printBlank } from '../../utils/output';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { ConnectionError, ExecExitError, withServicesRequired } from '../../utils/errors';
 
 export function registerSshCommand(program: Command): void {
@@ -15,7 +15,7 @@ export function registerSshCommand(program: Command): void {
     .helpGroup('Operate')
     .option('-s, --server <name>', 'Target server, workers included (defaults to the first manager)')
     .action(withServicesRequired(withResolvedEnv(async (env: string, commandParts: string[], options: { server?: string }) => {
-      const { connection, serverName } = validateEnv(env, options.server, { anyServer: true });
+      const { connection, serverName } = await resolveEnv(env, options.server, { anyServer: true });
       
       // If command is provided, execute it and return
       if (commandParts && commandParts.length > 0) {

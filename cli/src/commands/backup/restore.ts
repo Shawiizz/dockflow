@@ -4,7 +4,7 @@
  */
 
 import type { Command } from 'commander';
-import { validateEnv, withResolvedEnv } from '../../utils/validation';
+import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { getStackName, loadConfig } from '../../utils/config';
 import { createEnvLock } from '../../services/lock';
 import { withDeployLock } from '../with-lock';
@@ -38,7 +38,7 @@ export function registerBackupRestoreCommand(program: Command): void {
       printIntro(`Restore - ${service} (${env})`);
       printBlank();
 
-      const { connection } = validateEnv(env, options.server);
+      const { connection } = await resolveEnv(env, options.server);
       const { backupConfig, source } = requireBackupConfig(service);
       const stackName = resolveBackupStack(env, source);
       const backupService = createBackup(connection, stackName, getBackupNodes(env));
