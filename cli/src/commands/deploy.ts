@@ -86,28 +86,134 @@ function buildConnection(env: string, server: ResolvedServer): SSHKeyConnection 
   return { host, port, user, privateKey, password: password || undefined, hostKey };
 }
 
+/** The env and version given on the command line, or read from the CI when the env is missing. */
+function targetFromArgsOrCI(rawEnv: string | undefined, rawVersion: string | undefined): { env: string; version: string | undefined } {
+  if (rawEnv) return { env: rawEnv, version: rawVersion };
+  const ci = detectCIEnvironment();
+  if (!ci) {
+    throw new ConfigError(
+      'Environment is required',
+      'Usage: dockflow deploy <env> [version]\nIn CI, environment and version are auto-detected from git tag/branch.',
+    );
+  }
+  const params = resolveDeployParams(ci);
+  const version = rawVersion ?? params.version;
+  printInfo(`CI detected (${ci.provider}): deploying to ${params.env} with version ${version}`);
+  return { env: params.env, version };
+}
+
+type Deployment = NonNullable<ReturnType<typeof resolveDeploymentForEnvironment>>;
+
+/** The manager to deploy through: the one --server names, else the active one when there are several. */
+async function chooseManager(env: string, deployment: Deployment, options: Partial<DeployOptions>): Promise<{ manager: ResolvedServer; unavailableManagers: string[] }> {
+  const { managers, workers } = deployment;
+  let manager = deployment.manager;
+
+  if (options.server) {
+    const chosen = chooseServer(env, [...managers, ...workers], options.server, {}, () => true);
+    if ('type' in chosen) throw new ConfigError(chosen.message, chosen.suggestion);
+    manager = managers.find((m) => m.name === chosen.name) ?? manager;
+    return { manager, unavailableManagers: [] };
+  }
+  if (managers.length <= 1 || options.failover === false) return { manager, unavailableManagers: [] };
+
+  const managerSpinner = createSpinner();
+  managerSpinner.start(`Checking ${managers.length} managers for active leader...`);
+  const activeResult = await findActiveManager(env, managers, { verbose: !!options.debug });
+  if (!activeResult) {
+    managerSpinner.fail('No reachable managers found');
+    throw new ConnectionError('All managers are unreachable. Cannot deploy.', `Managers tried: ${managers.map((m) => `${m.name} (${m.host})`).join(', ')}`);
+  }
+  manager = activeResult.manager;
+  if (activeResult.failedManagers.length > 0) {
+    managerSpinner.warn(`Using ${manager.name} (${activeResult.status}). Unreachable: ${activeResult.failedManagers.join(', ')}`);
+  } else {
+    managerSpinner.succeed(`Using ${manager.name} (${activeResult.status === 'leader' ? 'leader' : 'active manager'})`);
+  }
+  return { manager, unavailableManagers: activeResult.unavailable };
+}
+
+function buildCluster(env: string, manager: ResolvedServer, managers: ResolvedServer[], workers: ResolvedServer[], unavailableManagers: string[]) {
+  const managerNode: ClusterNode = {
+    connection: buildConnection(env, manager),
+    name: manager.name,
+  };
+  const workerNodes: ClusterNode[] = workers.map((w) => ({
+    connection: buildConnection(env, w),
+    name: w.name,
+  }));
+  const otherManagerNodes: ClusterNode[] = [];
+  for (const m of managers) {
+    // a manager found down cannot run tasks: it gets no image or upload
+    if (m.name === manager.name || unavailableManagers.includes(m.name)) continue;
+    try { otherManagerNodes.push({ connection: buildConnection(env, m), name: m.name }); }
+    catch { printWarning(`History sync: no SSH key for ${m.name}`); }
+  }
+  return { manager: managerNode, workers: workerNodes, otherManagers: otherManagerNodes };
+}
+
+/** The version after the latest deployed one, or 1.0.0 for a first deploy. */
+async function nextVersion(managerConn: SSHKeyConnection, stackName: string): Promise<string> {
+  const versionSpinner = createSpinner();
+  versionSpinner.start('Fetching latest deployed version...');
+  let latestVersion: string | null;
+  try {
+    latestVersion = await new Release(managerConn).latestVersion(stackName);
+  } catch (e) {
+    // starting over at 1.0.0 would overwrite a release that exists
+    versionSpinner.fail('Could not read the deployed versions');
+    throw e;
+  }
+  if (!latestVersion) {
+    versionSpinner.info('No previous deployment found, starting at 1.0.0');
+    return '1.0.0';
+  }
+  const deployVersion = incrementVersion(latestVersion);
+  versionSpinner.succeed(`Latest version: ${latestVersion} → New version: ${deployVersion}`);
+  return deployVersion;
+}
+
+/** Checks of the rendered compose files that hold before anything is built, dry runs included. */
+function checkRenderedCompose(config: DeployContext['config'], env: string, stackName: string, rendered: Map<string, string>, composeContent: string, only: string | undefined): void {
+  // proxy.routes name services of both compose files
+  if (config.proxy?.enabled && config.proxy.routes?.length && !config.no_services) {
+    const accessories = rendered.get(accessoriesKey());
+    const problems = Compose.checkProxyRoutes(
+      config.proxy, env, stackName,
+      Compose.loadFromString(composeContent, 'docker-compose.yml'),
+      accessories ? Compose.loadFromString(accessories, 'accessories.yml') : null,
+    );
+    if (problems.length > 0) {
+      throw new DeployError(
+        `Traefik cannot serve proxy.routes as configured:\n  ${problems.join('\n  ')}`,
+        ErrorCode.VALIDATION_FAILED,
+        'Fix proxy.routes in .dockflow/config.yml.',
+      );
+    }
+  }
+
+  // --only names services of the app (no_services has no Docker services)
+  if (only && !config.no_services) {
+    const compose = Compose.loadFromString(composeContent, 'docker-compose.yml');
+    const available = Object.keys(compose.services);
+    const filterSet = only.split(',').map((s) => s.trim()).filter(Boolean);
+    const unknown = filterSet.filter(s => !available.includes(s));
+    if (unknown.length > 0) {
+      throw new DeployError(
+        `Unknown service(s): ${unknown.join(', ')}. Available: ${available.join(', ')}`,
+        ErrorCode.VALIDATION_FAILED,
+        'Use the exact service names defined in your docker-compose file.',
+      );
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Setup — resolve env, config, connections, version, render templates
 // ---------------------------------------------------------------------------
 
 async function resolveSetup(rawEnv: string | undefined, rawVersion: string | undefined, options: Partial<DeployOptions>) {
-  let env = rawEnv;
-  let version = rawVersion;
-
-  if (!env) {
-    const ci = detectCIEnvironment();
-    if (ci) {
-      const params = resolveDeployParams(ci);
-      env = params.env;
-      version = version ?? params.version;
-      printInfo(`CI detected (${ci.provider}): deploying to ${env} with version ${version}`);
-    } else {
-      throw new ConfigError(
-        'Environment is required',
-        'Usage: dockflow deploy <env> [version]\nIn CI, environment and version are auto-detected from git tag/branch.',
-      );
-    }
-  }
+  let { env, version } = targetFromArgsOrCI(rawEnv, rawVersion);
 
   loadSecrets();
 
@@ -136,76 +242,12 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     );
   }
 
-  let { manager, managers, workers } = deployment;
-  let unavailableManagers: string[] = [];
+  const { managers, workers } = deployment;
+  const { manager, unavailableManagers } = await chooseManager(env, deployment, options);
+  const cluster = buildCluster(env, manager, managers, workers, unavailableManagers);
 
-  if (options.server) {
-    const chosen = chooseServer(env, [...managers, ...workers], options.server, {}, () => true);
-    if ('type' in chosen) throw new ConfigError(chosen.message, chosen.suggestion);
-    manager = managers.find((m) => m.name === chosen.name) ?? manager;
-  }
-
-  // Multi-manager failover
-  if (managers.length > 1 && options.failover !== false && !options.server) {
-    const managerSpinner = createSpinner();
-    managerSpinner.start(`Checking ${managers.length} managers for active leader...`);
-    const activeResult = await findActiveManager(env, managers, { verbose: !!options.debug });
-    if (!activeResult) {
-      managerSpinner.fail('No reachable managers found');
-      throw new ConnectionError('All managers are unreachable. Cannot deploy.', `Managers tried: ${managers.map((m) => `${m.name} (${m.host})`).join(', ')}`);
-    }
-    manager = activeResult.manager;
-    unavailableManagers = activeResult.unavailable;
-    if (activeResult.failedManagers.length > 0) {
-      managerSpinner.warn(`Using ${manager.name} (${activeResult.status}). Unreachable: ${activeResult.failedManagers.join(', ')}`);
-    } else {
-      managerSpinner.succeed(`Using ${manager.name} (${activeResult.status === 'leader' ? 'leader' : 'active manager'})`);
-    }
-  }
-
-  // Build cluster
-  const managerNode: ClusterNode = {
-    connection: buildConnection(env, manager),
-    name: manager.name,
-  };
-  const workerNodes: ClusterNode[] = workers.map((w) => ({
-    connection: buildConnection(env, w),
-    name: w.name,
-  }));
-  const otherManagerNodes: ClusterNode[] = [];
-  for (const m of managers) {
-    // a manager found down cannot run tasks: it gets no image or upload
-    if (m.name === manager.name || unavailableManagers.includes(m.name)) continue;
-    try { otherManagerNodes.push({ connection: buildConnection(env, m), name: m.name }); }
-    catch { printWarning(`History sync: no SSH key for ${m.name}`); }
-  }
-  const cluster = { manager: managerNode, workers: workerNodes, otherManagers: otherManagerNodes };
-
-  // Version resolution
   const branchName = options.branch || getCurrentBranch();
-  let deployVersion: string;
-
-  if (version) {
-    deployVersion = version;
-  } else {
-    const versionSpinner = createSpinner();
-    versionSpinner.start('Fetching latest deployed version...');
-    let latestVersion: string | null;
-    try {
-      latestVersion = await new Release(cluster.manager.connection).latestVersion(`${config.project_name}-${env}`);
-    } catch (e) {
-      // starting over at 1.0.0 would overwrite a release that exists
-      versionSpinner.fail('Could not read the deployed versions');
-      throw e;
-    }
-    if (latestVersion) {
-      deployVersion = incrementVersion(latestVersion);
-      versionSpinner.succeed(`Latest version: ${latestVersion} → New version: ${deployVersion}`);
-    } else {
-      deployVersion = '1.0.0';
-      versionSpinner.info('No previous deployment found, starting at 1.0.0');
-    }
-  }
+  const deployVersion = version ?? await nextVersion(cluster.manager.connection, `${config.project_name}-${env}`);
 
   const stackName = `${config.project_name}-${env}`;
   assertReleaseName(stackName, 'stack');
@@ -232,38 +274,7 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
   const pluginsLoaded = await Plugin.loadConfigWithPlugins({ rendered, fallback: config, projectRoot, projectContext: renderContext });
   config = pluginsLoaded.config;
 
-  // proxy.routes name services of both compose files: check them before anything is built,
-  // dry runs included
-  if (config.proxy?.enabled && config.proxy.routes?.length && !config.no_services) {
-    const accessories = rendered.get(accessoriesKey());
-    const problems = Compose.checkProxyRoutes(
-      config.proxy, env, stackName,
-      Compose.loadFromString(composeContent, 'docker-compose.yml'),
-      accessories ? Compose.loadFromString(accessories, 'accessories.yml') : null,
-    );
-    if (problems.length > 0) {
-      throw new DeployError(
-        `Traefik cannot serve proxy.routes as configured:\n  ${problems.join('\n  ')}`,
-        ErrorCode.VALIDATION_FAILED,
-        'Fix proxy.routes in .dockflow/config.yml.',
-      );
-    }
-  }
-
-  // Validate --only service names before anything else, dry runs included (no_services has no Docker services)
-  if (options.only && !config.no_services) {
-    const compose = Compose.loadFromString(composeContent, 'docker-compose.yml');
-    const available = Object.keys(compose.services);
-    const filterSet = options.only.split(',').map((s) => s.trim()).filter(Boolean);
-    const unknown = filterSet.filter(s => !available.includes(s));
-    if (unknown.length > 0) {
-      throw new DeployError(
-        `Unknown service(s): ${unknown.join(', ')}. Available: ${available.join(', ')}`,
-        ErrorCode.VALIDATION_FAILED,
-        'Use the exact service names defined in your docker-compose file.',
-      );
-    }
-  }
+  checkRenderedCompose(config, env, stackName, rendered, composeContent, options.only);
 
   // Build context
   const managerConn = cluster.manager.connection;
