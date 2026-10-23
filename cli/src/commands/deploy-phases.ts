@@ -31,7 +31,7 @@ import * as Hook from '../services/hook';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S, DOCKFLOW_UPLOAD_BACKUPS_DIR } from '../constants';
 import type { StackDeployInput } from '../services/swarm/types';
 import type { SwarmStack } from '../services/swarm/stack';
-import { ConvergenceError } from '../services/swarm/stack-ops';
+import { ConvergenceError } from '../services/swarm/convergence';
 import type { DockflowConfig, HealthCheckConfig, UploadItem } from '../utils/config';
 import type { DeployContext } from './deploy-context';
 
@@ -702,12 +702,10 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
   const { compose: accessoriesCompose, routed } = accessories;
   if (routed) await ensureProxy(ctx);
 
-  const accessoriesRelPath = accessoriesKey();
   const result = await ctx.swarm.deployAccessory({
     stackName: ctx.stackName,
     env: ctx.env,
     compose: accessoriesCompose,
-    accessoryPath: accessoriesRelPath,
     force: ctx.forceAccessories,
     proxy: ctx.config.proxy,
   });

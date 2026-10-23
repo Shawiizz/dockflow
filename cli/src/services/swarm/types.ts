@@ -62,8 +62,6 @@ export interface AccessoryDeployInput {
   stackName: string;
   env: string;
   compose: ParsedCompose;
-  /** Path of the accessories compose file in the project. */
-  accessoryPath: string;
   /** Skip change detection and deploy even if the content hasn't changed. */
   force?: boolean;
   proxy?: ProxyConfig;

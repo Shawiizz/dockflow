@@ -3,7 +3,9 @@ import { createHash } from 'crypto';
 import { convergenceError } from '../commands/deploy-phases';
 import { accessoriesDigest, loadFromString, serialize } from '../services/compose';
 import { SwarmStack } from '../services/swarm/stack';
-import { failedTasksByService, stackDeployFailure, type SwarmClock } from '../services/swarm/stack-ops';
+import type { SwarmClock } from '../services/swarm/clock';
+import { failedTasksByService } from '../services/swarm/convergence';
+import { stackDeployFailure } from '../services/swarm/stack-deploy';
 import type { SSHExecResult } from '../types';
 import { DeployError, ErrorCode } from '../utils/errors';
 import * as output from '../utils/output';
@@ -344,7 +346,7 @@ describe('SwarmStack.redeploy', () => {
 
 describe('SwarmStack.deployAccessory', () => {
   const accessories = () => loadFromString('services:\n  db:\n    image: db:1\n');
-  const input = (force?: boolean) => ({ stackName: STACK, env: 'production', compose: accessories(), accessoryPath: 'accessories.yml', force });
+  const input = (force?: boolean) => ({ stackName: STACK, env: 'production', compose: accessories(), force });
   const hash = createHash('sha256').update(serialize(accessories())).digest('hex');
   const hashFile = `/var/lib/dockflow/accessories/${STACK}/.hash`;
   const accessoriesStack = `${STACK}-accessories`;

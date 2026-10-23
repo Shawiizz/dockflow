@@ -1,17 +1,15 @@
 /**
- * Swarm stack backend.
- *
- * Implements SwarmStack for Docker Swarm. Deploy mechanics live in the
- * helper (SwarmStackOps); inspection, health, and lifecycle commands are
- * direct SSH calls.
+ * A Swarm stack on a manager: its deploy, convergence and health, and the commands on its services.
  */
 
 import type { SSHKeyConnection } from '../../types';
 import { ok, err, type Result } from '../../types/result';
 import { DeployError, ErrorCode } from '../../utils/errors';
 import { shellQuote, sshExec } from '../../utils/ssh';
-import { printDebug, createTimedSpinner } from '../../utils/output';
-import { ConvergenceError, realClock, SwarmStackOps, type SwarmClock } from './stack-ops';
+import { realClock, type SwarmClock } from './clock';
+import { ConvergenceError, waitForConvergence } from './convergence';
+import { checkInternalHealth } from './health';
+import { createExternalResources, deployAccessories, deployStack, readAccessoriesDigest, removeStackAndWait } from './stack-deploy';
 import { runDockerQuery } from './docker';
 import * as Compose from '../compose';
 import { CONVERGENCE_TIMEOUT_S, DOCKFLOW_STACKS_DIR } from '../../constants';
@@ -35,27 +33,26 @@ export interface SwarmTaskInfo {
 }
 
 export class SwarmStack {
-  private readonly ops: SwarmStackOps;
   private readonly renders = new Map<string, string>();
+  /** the manager's clock when the last stack deploy started: the convergence judges update states by it */
+  private deployStartedAt: number | null = null;
 
   constructor(
     private readonly conn: SSHKeyConnection,
     private readonly clock: SwarmClock = realClock,
-  ) {
-    this.ops = new SwarmStackOps(conn, clock);
-  }
+  ) {}
 
   async deploy(input: StackDeployInput): Promise<Result<void, DeployError>> {
     try {
       // 1. Create external networks + volumes (always from the full compose)
       const networks = Compose.externalNetworksToCreate(input.compose, input.stackName);
       const volumes = Compose.getExternalVolumes(input.compose);
-      await this.ops.createExternalResources(networks, volumes);
+      await createExternalResources(this.conn, networks, volumes);
 
       // 2. When --services filter is set, only those services are deployed, and
       //    prune is disabled so other running services are left untouched.
       const prune = !input.servicesFilter?.length;
-      await this.ops.deployStack(input.stackName, this.render(input), { prune, withRegistryAuth: true });
+      this.deployStartedAt = await deployStack(this.conn, this.clock, input.stackName, this.render(input), { prune, withRegistryAuth: true });
       return ok(undefined);
     } catch (e) {
       return err(toDeployError(e));
@@ -91,8 +88,8 @@ export class SwarmStack {
     try {
       // Accessories already have injectAccessoriesDefaults applied by caller.
       const content = Compose.serialize(input.compose);
-      await this.ops.createExternalResources(Compose.externalNetworksToCreate(input.compose, input.stackName), Compose.getExternalVolumes(input.compose));
-      const deployed = await this.ops.deployAccessories(input.stackName, input.accessoryPath, content, { force: input.force });
+      await createExternalResources(this.conn, Compose.externalNetworksToCreate(input.compose, input.stackName), Compose.getExternalVolumes(input.compose));
+      const deployed = await deployAccessories(this.conn, this.clock, input.stackName, content, { force: input.force });
       return ok({ deployed });
     } catch (e) {
       return err(toDeployError(e));
@@ -100,12 +97,12 @@ export class SwarmStack {
   }
 
   accessoriesDigest(stackName: string): Promise<string | null> {
-    return this.ops.readAccessoriesDigest(stackName);
+    return readAccessoriesDigest(this.conn, stackName);
   }
 
   async redeploy(stackName: string, rawContent: string): Promise<Result<void, DeployError>> {
     try {
-      await this.ops.deployStack(stackName, rawContent);
+      this.deployStartedAt = await deployStack(this.conn, this.clock, stackName, rawContent);
       return ok(undefined);
     } catch (e) {
       return err(toDeployError(e));
@@ -119,10 +116,11 @@ export class SwarmStack {
     servicesFilter?: string[],
   ): Promise<ConvergenceResult> {
     try {
-      await this.ops.waitConvergence(stackName, {
+      await waitForConvergence(this.conn, this.clock, stackName, {
         timeout: timeoutSeconds,
         interval: intervalSeconds,
         servicesFilter,
+        deployStartedAt: this.deployStartedAt,
       });
       return { converged: true, rolledBack: false, timedOut: false };
     } catch (e) {
@@ -132,153 +130,18 @@ export class SwarmStack {
     }
   }
 
-  async checkInternalHealth(
+  checkInternalHealth(
     stackName: string,
     timeoutSeconds: number,
     intervalSeconds: number,
     servicesFilter?: string[],
     deployStartedAt?: Date,
   ): Promise<InternalHealthResult> {
-    const timeout = timeoutSeconds * 1000;
-    const interval = intervalSeconds * 1000;
-    const deadline = this.clock.now() + timeout;
-
-    const spinner = createTimedSpinner();
-    spinner.start(`Checking Swarm health (timeout: ${timeoutSeconds}s)...`);
-
-    let lastUnhealthy: string[] = [];
-
-    while (this.clock.now() < deadline) {
-      const result = await this.pollHealth(stackName, servicesFilter, deployStartedAt);
-
-      if (result.rolledBack.length > 0) {
-        spinner.fail(`Swarm auto-rolled back: ${result.rolledBack.join(', ')}`);
-        return {
-          healthy: false,
-          rolledBack: true,
-          failedService: result.rolledBack[0],
-          message: `Swarm auto-rolled back: ${result.rolledBack.join(', ')}`,
-        };
-      }
-
-      if (result.unhealthy.length === 0) {
-        spinner.succeed(`All services healthy: ${result.healthy.join(', ')}`);
-        return { healthy: true, rolledBack: false };
-      }
-
-      lastUnhealthy = result.unhealthy;
-      printDebug(`Health: healthy=[${result.healthy.join(', ')}] unhealthy=[${result.unhealthy.join(', ')}]`);
-      spinner.update(`Checking Swarm health: ${result.unhealthy.length} unhealthy`);
-      await this.clock.sleep(interval);
-    }
-
-    spinner.fail(`Health check timeout after ${timeoutSeconds}s`);
-
-    if (lastUnhealthy.length > 0) {
-      return {
-        healthy: false,
-        rolledBack: false,
-        failedService: lastUnhealthy[0],
-        message: `Health check timeout after ${timeoutSeconds}s. Unhealthy services: ${lastUnhealthy.join(', ')}`,
-      };
-    }
-
-    return { healthy: true, rolledBack: false };
-  }
-
-  private async pollHealth(
-    stackName: string,
-    servicesFilter?: string[],
-    deployStartedAt?: Date,
-  ): Promise<{ healthy: string[]; unhealthy: string[]; rolledBack: string[] }> {
-    const listResult = await sshExec(
-      this.conn,
-      `docker stack services ${shellQuote(stackName)} --format '{{.Name}}' 2>/dev/null || echo ""`,
-    );
-
-    let serviceNames = listResult.stdout.trim().split('\n').filter(Boolean);
-    if (servicesFilter?.length) {
-      const filterSet = new Set(servicesFilter.map(s => `${stackName}_${s}`));
-      serviceNames = serviceNames.filter(s => filterSet.has(s));
-    }
-    if (serviceNames.length === 0) {
-      return { healthy: [], unhealthy: [], rolledBack: [] };
-    }
-
-    const results = await Promise.all(
-      serviceNames.map((serviceName) => this.checkServiceHealth(serviceName, deployStartedAt)),
-    );
-
-    const healthy: string[] = [];
-    const unhealthy: string[] = [];
-    const rolledBack: string[] = [];
-
-    for (const r of results) {
-      switch (r.status) {
-        case 'healthy':
-          healthy.push(r.name);
-          break;
-        case 'rolled_back':
-          rolledBack.push(r.name);
-          break;
-        default:
-          unhealthy.push(r.name);
-          break;
-      }
-    }
-
-    return { healthy, unhealthy, rolledBack };
-  }
-
-  private async checkServiceHealth(
-    serviceName: string,
-    deployStartedAt?: Date,
-  ): Promise<{ name: string; status: 'healthy' | 'unhealthy' | 'rolled_back' }> {
-    // Check for rollback — fetch both state and completion timestamp in one call
-    const inspectResult = await sshExec(
-      this.conn,
-      `docker service inspect ${shellQuote(serviceName)} --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}|{{.UpdateStatus.CompletedAt}}{{end}}' 2>/dev/null`,
-    );
-    const raw = inspectResult.stdout.trim();
-    if (raw) {
-      const [state, completedAtStr] = raw.split('|');
-      const updateState = state.trim().toLowerCase();
-
-      if (updateState === 'rollback_started') {
-        // Actively rolling back right now — always a failure
-        return { name: serviceName, status: 'rolled_back' };
-      }
-
-      if (updateState === 'rollback_completed') {
-        // Only flag if the rollback finished after this deploy started.
-        // A stale rollback_completed from a previous deploy means the service
-        // is running fine on the rolled-back image — not our problem.
-        if (!deployStartedAt) {
-          return { name: serviceName, status: 'rolled_back' };
-        }
-        const completedAt = completedAtStr?.trim() ? new Date(completedAtStr.trim()) : null;
-        if (!completedAt || isNaN(completedAt.getTime()) || completedAt >= deployStartedAt) {
-          return { name: serviceName, status: 'rolled_back' };
-        }
-      }
-    }
-
-    // Check task states
-    const psResult = await sshExec(
-      this.conn,
-      `docker service ps ${shellQuote(serviceName)} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,
-    );
-    const tasks = psResult.stdout.trim().split('\n').filter(Boolean);
-    if (tasks.length === 0) {
-      return { name: serviceName, status: 'unhealthy' };
-    }
-
-    const allRunning = tasks.every((t) => t.trim().toLowerCase().startsWith('running'));
-    return { name: serviceName, status: allRunning ? 'healthy' : 'unhealthy' };
+    return checkInternalHealth(this.conn, this.clock, stackName, timeoutSeconds, intervalSeconds, servicesFilter, deployStartedAt);
   }
 
   async removeStack(stackName: string): Promise<void> {
-    await this.ops.removeStackAndWait(stackName);
+    await removeStackAndWait(this.conn, this.clock, stackName);
   }
 
   async listStacks(): Promise<StackInfo[]> {
@@ -360,11 +223,6 @@ export class SwarmStack {
       return null;
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Inspection methods outside the SwarmStack interface, used by `dockflow ps` and
-  // `dockflow diagnose`: containers on nodes, task scheduling.
-  // ---------------------------------------------------------------------------
 
   async getContainers(stackName: string): Promise<SwarmContainerInfo[]> {
     const stdout = await runDockerQuery(

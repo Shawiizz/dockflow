@@ -3,7 +3,8 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { analyzeTaskError } from '../commands/app/diagnose';
 import { SwarmStack } from '../services/swarm/stack';
-import { stackDeployFailure, SwarmStackOps, type SwarmClock } from '../services/swarm/stack-ops';
+import type { SwarmClock } from '../services/swarm/clock';
+import { deployStack, stackDeployFailure } from '../services/swarm/stack-deploy';
 import { dockerQueryError } from '../services/swarm/docker';
 import type { SSHExecResult } from '../types';
 import { DeployError, ErrorCode } from '../utils/errors';
@@ -199,7 +200,7 @@ describe('a failed docker stack deploy', () => {
     it(`reports the cause of ${name}`, async () => {
       scriptSsh([[/^docker stack deploy /, { exitCode: index.cases[name].exitCode, stderr: recorded(name) }]]);
 
-      const failure = await new SwarmStackOps(conn, new FakeClock()).deployStack(STACK, 'services: {}\n').catch((error) => error);
+      const failure = await deployStack(conn, new FakeClock(), STACK, 'services: {}\n').catch((error) => error);
 
       expect(failure).toBeInstanceOf(DeployError);
       expect(failure.message).toBe(`docker stack deploy failed (exit ${index.cases[name].exitCode}): ${stackDeployFailure(recorded(name))}`);
