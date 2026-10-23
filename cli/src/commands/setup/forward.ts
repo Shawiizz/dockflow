@@ -4,7 +4,7 @@
  */
 
 import { readFileSync } from 'fs';
-import { shellQuote } from '../../utils/ssh';
+import { sh } from '../../utils/ssh';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import type { SetupOptions } from './types';
 
@@ -18,7 +18,7 @@ export function buildForwardFlags(
   remote: { host: string; port: number },
 ): string[] {
   const flags: string[] = [];
-  const quote = shellQuote;
+  const quote = (value: string): string => sh`${value}`;
 
   if (options.skipDockerInstall) flags.push('--skip-docker-install');
   if (options.nginx) flags.push('--nginx');
@@ -69,20 +69,21 @@ export function verifiedDownloadCommand(
   binaryName: string,
   dest: string,
 ): string {
-  const binaryUrl = shellQuote(buildBinaryDownloadUrl(releaseLatestUrl, version, binaryName));
-  const sumsUrl = shellQuote(buildBinaryDownloadUrl(releaseLatestUrl, version, 'SHA256SUMS'));
+  const binaryUrl = buildBinaryDownloadUrl(releaseLatestUrl, version, binaryName);
+  const sumsUrl = buildBinaryDownloadUrl(releaseLatestUrl, version, 'SHA256SUMS');
   return [
     'set -e',
-    `f=${shellQuote(dest)}; s=${shellQuote(`${dest}.sha256sums`)}; verified=`,
+    sh`f=${dest}; s=${`${dest}.sha256sums`}; verified=`,
     // whatever stops the program, a binary that was not verified goes
     `trap 'rm -f "$s"; [ -n "$verified" ] || rm -f "$f"' EXIT`,
     'rm -f "$f" "$s"',
-    `curl -fsSL ${binaryUrl} -o "$f"`,
-    `curl -fsSL ${sumsUrl} -o "$s"`,
-    `expected=$(awk -v name=${shellQuote(binaryName)} '$2 == name || $2 == "*" name { print $1 }' "$s")`,
+    sh`curl -fsSL ${binaryUrl} -o "$f"`,
+    sh`curl -fsSL ${sumsUrl} -o "$s"`,
+    sh`expected=$(awk -v name=${binaryName} '$2 == name || $2 == "*" name { print $1 }' "$s")`,
     `actual=$(sha256sum "$f" | cut -d' ' -f1)`,
     'if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then',
-    `  echo "SHA-256 of ${binaryName} does not match the release: expected \${expected:-nothing}, got $actual" >&2`,
+    // the name is its own token between the two halves of the message
+    sh`  echo "SHA-256 of "${binaryName}" does not match the release: expected \${expected:-nothing}, got $actual" >&2`,
     '  exit 1',
     'fi',
     'chmod +x "$f"',
@@ -116,7 +117,7 @@ export function tempDirFrom(stdout: string): string | null {
 }
 
 export function removeDirCommand(dir: string): string {
-  return `rm -rf -- ${shellQuote(dir)}`;
+  return sh`rm -rf -- ${dir}`;
 }
 
 /**
@@ -126,8 +127,8 @@ export function removeDirCommand(dir: string): string {
 export function installUploadCommand(dir: string, sha256: string): string {
   return [
     'set -e',
-    `cd ${shellQuote(dir)}`,
-    `if ! printf '%s  %s\\n' ${shellQuote(sha256)} dockflow.part | sha256sum -c --status -; then`,
+    sh`cd ${dir}`,
+    sh`if ! printf '%s  %s\\n' ${sha256} dockflow.part | sha256sum -c --status -; then`,
     '  rm -f dockflow.part',
     '  echo "SHA-256 of the uploaded binary does not match the local build" >&2',
     '  exit 1',

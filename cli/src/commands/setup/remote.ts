@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import { join, resolve } from 'path';
 import { Client as SSHClient } from 'ssh2';
 import { printIntro, printOutro, printSection, printError, printInfo, printBlank, printDim, createSpinner } from '../../utils/output';
-import { sshExec, sshExecChannel, executeInteractiveSSH, shellQuote, presentedHostKey } from '../../utils/ssh';
+import { sshExec, sshExecChannel, executeInteractiveSSH, presentedHostKey, raw, sh } from '../../utils/ssh';
 import { hostKeyCheck } from '../../utils/host-key';
 import { CLIError, ConnectionError, ErrorCode } from '../../utils/errors';
 import type { ConnectionInfo, SSHExecResult } from '../../types';
@@ -85,7 +85,7 @@ export async function makeTempDir(conn: ConnectionInfo, exec: Exec = sshExec): P
  * command line, local or remote.
  */
 export async function writePasswordFile(conn: ConnectionInfo, path: string, password: string, open: typeof sshExecChannel = sshExecChannel): Promise<void> {
-  const { stream, done } = await open(conn, `umask 077 && cat > ${shellQuote(path)}`);
+  const { stream, done } = await open(conn, sh`umask 077 && cat > ${path}`);
   stream.end(password);
   const result = await done;
   if (result.exitCode !== 0) {
@@ -397,7 +397,7 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
     }
 
     const expectedVersion = expectedBinaryVersion(DOCKFLOW_VERSION, opts.dev === true);
-    const version = await sshExec(conn, `${shellQuote(remotePath)} --version`);
+    const version = await sshExec(conn, sh`${remotePath} --version`);
     if (version.exitCode !== 0 || (expectedVersion !== null && !printsVersion(version.stdout, expectedVersion))) {
       throw new CLIError(
         `The Dockflow binary on ${opts.host} prints ${version.stdout.split(/\r?\n/)[0]?.trim() || 'no version'}, expected ${expectedVersion ?? 'a version'}`,
@@ -414,16 +414,17 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
     // root runs the binary directly (sudo may not exist on minimal systems); other users go
     // through sudo
     const flags = [...(opts.forwardFlags ?? [])];
-    if (conn.hostKey) flags.push('--host-key', shellQuote(conn.hostKey));
+    if (conn.hostKey) flags.push('--host-key', sh`${conn.hostKey}`);
     if (opts.deployPassword) {
       const passwordFile = `${dir}/deploy-password`;
       await writePasswordFile(conn, passwordFile, opts.deployPassword);
-      flags.push('--password-file', shellQuote(passwordFile));
+      flags.push('--password-file', sh`${passwordFile}`);
     }
     const sudoPrefix = opts.user === 'root' ? '' : 'sudo ';
+    // every flag is a literal or a value already quoted by sh (buildForwardFlags and the pushes above)
     const remoteCmd = flags.length
-      ? `${sudoPrefix}${shellQuote(remotePath)} setup ${flags.join(' ')}`
-      : `${sudoPrefix}${shellQuote(remotePath)} setup`;
+      ? sh`${raw(sudoPrefix)}${remotePath} setup ${raw(flags.join(' '))}`
+      : sh`${raw(sudoPrefix)}${remotePath} setup`;
     exitCode = await executeInteractiveSSH(conn, remoteCmd);
 
     printBlank();

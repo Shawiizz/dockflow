@@ -6,13 +6,14 @@ import { spawnSync } from 'child_process';
 import * as os from 'os';
 import * as fs from 'fs';
 import { printSection, printInfo, printSuccess, printError, printWarning, printBlank, printRaw, colors } from '../../utils/output';
+import { sh } from '../../utils/ssh';
 import { REQUIRED_DEPENDENCIES, OPTIONAL_DEPENDENCIES } from './constants';
 import type { Dependency, DependencyCheckResult } from './types';
 
 type PackageManager = 'apt' | 'yum' | 'dnf' | 'pacman' | 'zypper' | 'apk';
 
 export function commandExists(command: string): boolean {
-  const result = spawnSync('sh', ['-c', `command -v ${command}`], {
+  const result = spawnSync('sh', ['-c', sh`command -v ${command}`], {
     encoding: 'utf-8',
     stdio: ['pipe', 'pipe', 'pipe']
   });

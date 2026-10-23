@@ -4,7 +4,7 @@
  */
 
 import { printDim, printInfo, printWarning } from '../../utils/output';
-import { sshExec, shellQuote } from '../../utils/ssh';
+import { sh, sshExec } from '../../utils/ssh';
 import { DeployError, ErrorCode } from '../../utils/errors';
 import * as Compose from '../../services/compose';
 import * as PublicPorts from '../../services/public-ports';
@@ -33,7 +33,7 @@ export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> 
   for (const name of networks) {
     if (existing.has(name)) continue;
     printDim(`Creating overlay network: ${name}`);
-    const r = await sshExec(ctx.cluster.manager.connection, `docker network create --driver overlay --attachable ${shellQuote(name)}`);
+    const r = await sshExec(ctx.cluster.manager.connection, sh`docker network create --driver overlay --attachable ${name}`);
     if (r.exitCode !== 0) throw new DeployError(
       `Failed to create overlay network '${name}': ${r.stderr.trim() || `exit ${r.exitCode}`}`,
       ErrorCode.DEPLOY_FAILED,

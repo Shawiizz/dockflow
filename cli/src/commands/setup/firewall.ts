@@ -3,7 +3,7 @@
  */
 
 import { createSpinner, printDim } from '../../utils/output';
-import { sshExec } from '../../utils/ssh';
+import { raw, sh, sshExec } from '../../utils/ssh';
 import type { SSHKeyConnection } from '../../types';
 
 export interface PortDefinition {
@@ -21,17 +21,17 @@ export type FirewallTool = 'ufw' | 'firewalld' | 'iptables';
 export function openPortCommands(tool: FirewallTool, ports: readonly PortDefinition[]): string[] {
   switch (tool) {
     case 'ufw':
-      return [...ports.map(({ port, protocol }) => `sudo -n ufw allow ${port}/${protocol}`), 'sudo -n ufw reload'];
+      return [...ports.map(({ port, protocol }) => sh`sudo -n ufw allow ${`${port}/${protocol}`}`), 'sudo -n ufw reload'];
     case 'firewalld':
       return [
-        ...ports.map(({ port, protocol }) => `sudo -n firewall-cmd --permanent --add-port=${port}/${protocol}`),
+        ...ports.map(({ port, protocol }) => sh`sudo -n firewall-cmd --permanent --add-port=${`${port}/${protocol}`}`),
         'sudo -n firewall-cmd --reload',
       ];
     case 'iptables':
       // checked first, so running setup again does not stack duplicate rules
       return ports.map(({ port, protocol }) => {
-        const rule = `INPUT -p ${protocol} --dport ${port} -j ACCEPT`;
-        return `sudo -n iptables -C ${rule} 2>/dev/null || sudo -n iptables -I ${rule}`;
+        const rule = raw(sh`INPUT -p ${protocol} --dport ${port} -j ACCEPT`);
+        return sh`sudo -n iptables -C ${rule} 2>/dev/null || sudo -n iptables -I ${rule}`;
       });
   }
 }
@@ -39,7 +39,7 @@ export function openPortCommands(tool: FirewallTool, ports: readonly PortDefinit
 /** ufw and firewall-cmd live in /usr/sbin, which a regular user's PATH lacks on some distributions */
 async function detectFirewall(connection: SSHKeyConnection): Promise<FirewallTool> {
   const has = async (tool: string) =>
-    (await sshExec(connection, `PATH="$PATH:/usr/sbin:/sbin" command -v ${tool}`)).stdout.trim() !== '';
+    (await sshExec(connection, sh`PATH="$PATH:/usr/sbin:/sbin" command -v ${tool}`)).stdout.trim() !== '';
   if (await has('ufw')) return 'ufw';
   if (await has('firewall-cmd')) return 'firewalld';
   return 'iptables';

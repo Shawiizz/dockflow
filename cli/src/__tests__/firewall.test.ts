@@ -39,38 +39,38 @@ beforeEach(() => {
 
 describe('openPortCommands', () => {
   it('opens each port with ufw, then reloads it', () => {
-    expect(openPortCommands('ufw', PORTS)).toEqual(['sudo -n ufw allow 2377/tcp', 'sudo -n ufw allow 4789/udp', 'sudo -n ufw reload']);
+    expect(openPortCommands('ufw', PORTS)).toEqual(["sudo -n ufw allow '2377/tcp'", "sudo -n ufw allow '4789/udp'", 'sudo -n ufw reload']);
   });
 
   it('adds permanent firewalld ports, then reloads', () => {
     expect(openPortCommands('firewalld', PORTS)).toEqual([
-      'sudo -n firewall-cmd --permanent --add-port=2377/tcp',
-      'sudo -n firewall-cmd --permanent --add-port=4789/udp',
+      "sudo -n firewall-cmd --permanent --add-port='2377/tcp'",
+      "sudo -n firewall-cmd --permanent --add-port='4789/udp'",
       'sudo -n firewall-cmd --reload',
     ]);
   });
 
   it('inserts an iptables rule only when it is not there yet', () => {
     expect(openPortCommands('iptables', PORTS)[0]).toBe(
-      'sudo -n iptables -C INPUT -p tcp --dport 2377 -j ACCEPT 2>/dev/null || sudo -n iptables -I INPUT -p tcp --dport 2377 -j ACCEPT',
+      "sudo -n iptables -C INPUT -p 'tcp' --dport 2377 -j ACCEPT 2>/dev/null || sudo -n iptables -I INPUT -p 'tcp' --dport 2377 -j ACCEPT",
     );
   });
 });
 
 describe('openPorts', () => {
   it('opens the ports with the firewall the host has', async () => {
-    sshResponses = (cmd) => (cmd.endsWith('command -v ufw') ? okResult('/usr/sbin/ufw\n') : undefined);
+    sshResponses = (cmd) => (cmd.endsWith("command -v 'ufw'") ? okResult('/usr/sbin/ufw\n') : undefined);
     expect(await openPorts(CONNECTION, 'manager', PORTS)).toBe(true);
-    expect(executedCommands.slice(1)).toEqual(['sudo -n ufw allow 2377/tcp', 'sudo -n ufw allow 4789/udp', 'sudo -n ufw reload']);
+    expect(executedCommands.slice(1)).toEqual(["sudo -n ufw allow '2377/tcp'", "sudo -n ufw allow '4789/udp'", 'sudo -n ufw reload']);
   });
 
   it('reports a command sudo refused instead of claiming the ports are open', async () => {
     sshResponses = (cmd) => {
-      if (cmd.endsWith('command -v ufw')) return okResult('/usr/sbin/ufw\n');
+      if (cmd.endsWith("command -v 'ufw'")) return okResult('/usr/sbin/ufw\n');
       if (cmd.startsWith('sudo -n')) return { stdout: '', stderr: 'sudo: a password is required\n', exitCode: 1 };
       return undefined;
     };
     expect(await openPorts(CONNECTION, 'manager', PORTS)).toBe(false);
-    expect(executedCommands.filter((cmd) => cmd.startsWith('sudo -n'))).toEqual(['sudo -n ufw allow 2377/tcp']);
+    expect(executedCommands.filter((cmd) => cmd.startsWith('sudo -n'))).toEqual(["sudo -n ufw allow '2377/tcp'"]);
   });
 });

@@ -8,11 +8,13 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import { printSection, printInfo, printSuccess, printWarning, printDim, printBlank } from '../../utils/output';
 import { CLIError, ErrorCode } from '../../utils/errors';
+import { raw, sh } from '../../utils/ssh';
 import { commandExists, detectPackageManager, getDistroName } from './dependencies';
 import { configurePublicPorts } from './public-ports';
 import type { HostConfig } from './types';
 
 export const DOCKFLOW_BASE_DIR = '/var/lib/dockflow';
+const DOCKER_INSTALL_URL = 'https://get.docker.com';
 
 /** Package name for nginx per package manager (same everywhere today). */
 export function nginxPackageFor(_pm: string): string {
@@ -104,9 +106,9 @@ function installDocker(): void {
   printInfo(`Installing Docker via get.docker.com (${getDistroName()})...`);
 
   const downloader = commandExists('curl')
-    ? 'curl -fsSL https://get.docker.com'
+    ? sh`curl -fsSL ${DOCKER_INSTALL_URL}`
     : commandExists('wget')
-      ? 'wget -qO- https://get.docker.com'
+      ? sh`wget -qO- ${DOCKER_INSTALL_URL}`
       : null;
 
   if (!downloader) {
@@ -117,7 +119,7 @@ function installDocker(): void {
     );
   }
 
-  const install = run(['sh', '-c', `${downloader} | sh`]);
+  const install = run(['sh', '-c', sh`${raw(downloader)} | sh`]);
   if (!install.ok || !commandExists('docker')) {
     throw new CLIError(
       'Docker installation failed',

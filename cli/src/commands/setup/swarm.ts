@@ -11,7 +11,7 @@ import {
   getServerPrivateKey,
   getAvailableEnvironments
 } from '../../utils/servers';
-import { sshExec, shellQuote } from '../../utils/ssh';
+import { raw, sh, sshExec } from '../../utils/ssh';
 import { loadSecrets } from '../../utils/secrets';
 import { openPorts } from './firewall';
 import type { SSHKeyConnection, ResolvedServer } from '../../types';
@@ -45,8 +45,8 @@ export function swarmAddress(server: ResolvedServer): string {
 /** `docker swarm join` for a worker; an IPv6 manager address is bracketed. */
 export function swarmJoinCommand(joinToken: string, managerAddress: string, advertiseAddress?: string): string {
   const manager = managerAddress.includes(':') ? `[${managerAddress}]` : managerAddress;
-  const advertise = advertiseAddress ? ` --advertise-addr ${shellQuote(advertiseAddress)}` : '';
-  return `docker swarm join --token ${shellQuote(joinToken)}${advertise} ${shellQuote(`${manager}:2377`)}`;
+  const advertise = advertiseAddress ? sh` --advertise-addr ${advertiseAddress}` : '';
+  return sh`docker swarm join --token ${joinToken}${raw(advertise)} ${`${manager}:2377`}`;
 }
 
 /**
@@ -119,7 +119,7 @@ export async function initializeSwarm(
     }
 
     const initResult = await sshExec(connection,
-      `docker swarm init --advertise-addr ${shellQuote(internalIp)} 2>&1`
+      sh`docker swarm init --advertise-addr ${internalIp} 2>&1`
     );
 
     if (initResult.exitCode !== 0) {

@@ -9,7 +9,7 @@ import { pipeline } from 'stream/promises';
 import { printDim, printWarning, formatBytes, createSpinner } from '../../utils/output';
 import { walkDir } from '../../utils/fs';
 import { packDirToTarGz, buildExcludeFilter } from '../../utils/tar';
-import { sshExec, sshExecChannel, shellQuote } from '../../utils/ssh';
+import { sh, sshExec, sshExecChannel } from '../../utils/ssh';
 import { DeployError, ErrorCode } from '../../utils/errors';
 import { DOCKFLOW_UPLOAD_BACKUPS_DIR } from '../../constants';
 import type { SSHKeyConnection } from '../../types';
@@ -44,7 +44,7 @@ async function streamDirToHost(
   onProgress?: (bytesProcessed: number) => void,
   onExtracting?: () => void,
 ): Promise<void> {
-  const extractCmd = compress ? `tar xzf - -C '${destBase}'` : `tar xf - -C '${destBase}'`;
+  const extractCmd = compress ? sh`tar xzf - -C ${destBase}` : sh`tar xf - -C ${destBase}`;
   const { stream, done } = await sshExecChannel(conn, extractCmd);
   await pipeline(packDirToTarGz(srcDir, excludePatterns, onProgress, compress), stream as unknown as NodeJS.WritableStream);
   onExtracting?.();
@@ -84,7 +84,7 @@ export async function checkUploadPermissions(ctx: DeployContext): Promise<void> 
     '}';
 
   const checks = filtered
-    .map(u => `check_path ${shellQuote(u.dest)} ${shellQuote(uploadName(u))}`)
+    .map(u => sh`check_path ${u.dest} ${uploadName(u)}`)
     .join('\n');
 
   const script =
@@ -157,10 +157,10 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         const { name, conn } = hostState;
         const backupPath = dirBackupPath(backupBaseDir, destBase);
 
-        await sshExec(conn, `mkdir -p '${dirname(backupPath)}'`);
+        await sshExec(conn, sh`mkdir -p ${dirname(backupPath)}`);
         const backupResult = await sshExec(conn,
-          `if [ -d '${destBase}' ] && [ -n "$(ls -A '${destBase}' 2>/dev/null)" ]; then ` +
-          `tar czf '${backupPath}' -C '${destBase}' . 2>/dev/null && echo backed_up; ` +
+          sh`if [ -d ${destBase} ] && [ -n "$(ls -A ${destBase} 2>/dev/null)" ]; then ` +
+          sh`tar czf ${backupPath} -C ${destBase} . 2>/dev/null && echo backed_up; ` +
           `else echo missing; fi`,
         );
         if (backupResult.stdout.trim() === 'backed_up') {
@@ -169,7 +169,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
           hostState.createdDirs.push(destBase);
         }
 
-        const mkdirResult = await sshExec(conn, `mkdir -p '${destBase}'`);
+        const mkdirResult = await sshExec(conn, sh`mkdir -p ${destBase}`);
         if (mkdirResult.exitCode !== 0) {
           throw new DeployError(
             `upload: cannot create ${destBase} on ${name}: ${mkdirResult.stderr.trim() || `exit ${mkdirResult.exitCode}`}`,
@@ -204,16 +204,16 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
           () => spinner.update(`upload: unpacking on ${name}...`),
         );
         spinner.succeed(`upload: ${uploadName(upload)}/ -> ${name}:${destBase}/ done`);
-        if (upload.permissions) await sshExec(conn, `chmod -R ${upload.permissions} '${destBase}'`);
-        if (upload.owner) await sshExec(conn, `chown -R ${upload.owner} '${destBase}'`);
+        if (upload.permissions) await sshExec(conn, sh`chmod -R ${upload.permissions} ${destBase}`);
+        if (upload.owner) await sshExec(conn, sh`chown -R ${upload.owner} ${destBase}`);
       } else {
         // multiple hosts: stream independently to each host in parallel, no RAM buffer
         printDim(`upload: ${uploadName(upload)}/ -> ${destBase}/${compressFlag} [${plan.hosts.length} hosts]`);
         await Promise.all(plan.hosts.map(async ({ name, conn }) => {
           await streamDirToHost(srcAbs, excludePatterns, name, conn, destBase, compress);
           printDim(`  upload: -> ${name}:${destBase}/ done`);
-          if (upload.permissions) await sshExec(conn, `chmod -R ${upload.permissions} '${destBase}'`);
-          if (upload.owner) await sshExec(conn, `chown -R ${upload.owner} '${destBase}'`);
+          if (upload.permissions) await sshExec(conn, sh`chmod -R ${upload.permissions} ${destBase}`);
+          if (upload.owner) await sshExec(conn, sh`chown -R ${upload.owner} ${destBase}`);
         }));
       }
     } else {
@@ -223,7 +223,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
       const fileContent = renderedText !== undefined ? Buffer.from(renderedText) : readFileSync(srcAbs);
 
       await Promise.all(plan.hosts.map(async ({ name, conn }) => {
-        const r = await sshExec(conn, `mkdir -p '${dirname(destPath)}' '${dirname(backupPath)}'`);
+        const r = await sshExec(conn, sh`mkdir -p ${dirname(destPath)} ${dirname(backupPath)}`);
         if (r.exitCode !== 0) throw new DeployError(
           `upload: cannot create ${dirname(destPath)} on ${name}: ${r.stderr.trim() || `exit ${r.exitCode}`}`,
           ErrorCode.DEPLOY_FAILED,
@@ -235,7 +235,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         const { name, conn } = hostState;
 
         const backupResult = await sshExec(conn,
-          `if test -f '${destPath}'; then cp '${destPath}' '${backupPath}' && echo existed; else echo missing; fi`,
+          sh`if test -f ${destPath}; then cp ${destPath} ${backupPath} && echo existed; else echo missing; fi`,
         );
         if (backupResult.stdout.trim() === 'existed') {
           hostState.backedUp.push(destPath);
@@ -243,7 +243,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
           hostState.created.push(destPath);
         }
 
-        const result = await sshExec(conn, `cat > ${shellQuote(destPath)}`, { stdin: fileContent });
+        const result = await sshExec(conn, sh`cat > ${destPath}`, { stdin: fileContent });
         if (result.exitCode !== 0) {
           const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
           throw new DeployError(
@@ -254,14 +254,14 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         }
 
         if (upload.permissions) {
-          const r = await sshExec(conn, `chmod ${upload.permissions} '${destPath}'`);
+          const r = await sshExec(conn, sh`chmod ${upload.permissions} ${destPath}`);
           if (r.exitCode !== 0) throw new DeployError(
             `upload: chmod ${upload.permissions} failed on ${destPath} (${name}): ${r.stderr.trim() || `exit ${r.exitCode}`}`,
             ErrorCode.DEPLOY_FAILED,
           );
         }
         if (upload.owner) {
-          const r = await sshExec(conn, `chown ${upload.owner} '${destPath}'`);
+          const r = await sshExec(conn, sh`chown ${upload.owner} ${destPath}`);
           if (r.exitCode !== 0) throw new DeployError(
             `upload: chown ${upload.owner} failed on ${destPath} (${name}): ${r.stderr.trim() || `exit ${r.exitCode}`}`,
             ErrorCode.DEPLOY_FAILED,
