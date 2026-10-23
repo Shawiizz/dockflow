@@ -85,7 +85,8 @@ export function getServerHostKey(env: string, serverName: string): string | unde
 /**
  * Layers a server's variables: `env.all`, `env.<tag>`, the server's own `env`, then the CI
  * variables `<ENV>_<VAR>` and `<ENV>_<SERVER>_<VAR>`, each layer overriding the one before.
- * Connection settings (host, user, key, password...) are never taken as variables.
+ * Connection settings (host, user, key, password...) are never taken as variables, and another
+ * server's `<ENV>_<OTHER>_<VAR>` belong to that server only.
  */
 export function mergeEnvVars(
   config: ServersConfig,
@@ -111,6 +112,10 @@ export function mergeEnvVars(
   const serverKey = serverNameToEnvKey(serverName);
 
   const connectionSettings = ['CONNECTION', 'HOST', 'USER', 'PORT', 'SSH_PRIVATE_KEY', 'PASSWORD', 'HOST_KEY'];
+  // without this, another server's connection and key would reach this one as WORKER_1_CONNECTION...
+  const otherServers = Object.entries(config.servers ?? {})
+    .filter(([name, server]) => name !== serverName && server.tags?.includes(tag))
+    .map(([name]) => `${serverNameToEnvKey(name)}_`);
   const globalVars: EnvVars = {};
   const serverVars: EnvVars = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -121,7 +126,9 @@ export function mergeEnvVars(
       continue;
     }
     const globalMatch = key.match(new RegExp(`^${envUpper}_([A-Z][A-Z0-9_]*)$`));
-    if (globalMatch && !connectionSettings.includes(globalMatch[1])) globalVars[globalMatch[1]] = value;
+    if (!globalMatch || connectionSettings.includes(globalMatch[1])) continue;
+    if (otherServers.some((prefix) => globalMatch[1].startsWith(prefix))) continue;
+    globalVars[globalMatch[1]] = value;
   }
   // the server's own variables win, whatever order process.env lists them in
   Object.assign(result, globalVars, serverVars);

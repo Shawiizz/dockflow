@@ -141,6 +141,16 @@ describe('mergeEnvVars', () => {
     expect(mergeEnvVars(emptyConfig, 'production', 'main', undefined).DB_URL).toBe('from-server');
   });
 
+  it("another server's CI vars, its connection and key included, stay with that server", () => {
+    const config = { servers: { main: { tags: ['production'] }, worker_1: { tags: ['production'] } } } as unknown as ServersConfig;
+    setEnv('PRODUCTION_WORKER_1_CONNECTION', 'secret');
+    setEnv('PRODUCTION_WORKER_1_SSH_PRIVATE_KEY', 'secret');
+    setEnv('PRODUCTION_WORKER_1_DB_URL', 'for-worker-1');
+    setEnv('PRODUCTION_DB_URL', 'for-all');
+    expect(mergeEnvVars(config, 'production', 'main', undefined)).toEqual({ DB_URL: 'for-all' });
+    expect(mergeEnvVars(config, 'production', 'worker_1', undefined)).toEqual({ DB_URL: 'for-worker-1' });
+  });
+
   it('connection-related vars are never merged into app env', () => {
     setEnv('PRODUCTION_CONNECTION', 'xxx');
     setEnv('PRODUCTION_HOST', 'xxx');

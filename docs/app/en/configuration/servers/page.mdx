@@ -140,6 +140,8 @@ PRODUCTION_DATABASE_URL=postgres://secret:5432/db
 PRODUCTION_MAIN_SERVER_DATABASE_URL=postgres://primary:5432/db
 ```
 
+A secret whose name starts with a server of the environment (`PRODUCTION_MAIN_SERVER_…`) belongs to that server only: the other servers never see it, its connection and key included.
+
 In `.env.dockflow`, a multi-line value such as a private key goes between quotes, and runs up to
 the line that ends with the closing quote:
 
