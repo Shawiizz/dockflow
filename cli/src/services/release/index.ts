@@ -18,277 +18,38 @@
  */
 
 import { randomBytes } from 'crypto';
-import { parseAllDocuments } from 'yaml';
-import type { SSHKeyConnection } from '../types';
-import { shellQuote } from '../utils/ssh';
-import { sshShell, type RemoteShell } from '../utils/remote-shell';
-import { printDebug, printInfo, printWarning } from '../utils/output';
-import { DeployError, ErrorCode } from '../utils/errors';
-import { DOCKFLOW_STACKS_DIR, RELEASE_STACK_FILE } from '../constants';
-import { parseImageRef } from './compose';
-import type { SwarmStack } from './swarm/stack';
-import type { DockflowConfig } from '../utils/config';
+import type { SSHKeyConnection } from '../../types';
+import { shellQuote } from '../../utils/ssh';
+import { sshShell, type RemoteShell } from '../../utils/remote-shell';
+import { printDebug, printInfo, printWarning } from '../../utils/output';
+import { DeployError, ErrorCode } from '../../utils/errors';
+import { DOCKFLOW_STACKS_DIR, RELEASE_STACK_FILE } from '../../constants';
+import type { SwarmStack } from '../swarm/stack';
+import type { DockflowConfig } from '../../utils/config';
+import {
+  BACKUP_PREFIX,
+  COMPOSE_FILE,
+  CURRENT_LINK,
+  METADATA_FILE,
+  RELEASE_FILES,
+  TEMP_PREFIX,
+  type ReleaseMetadata,
+} from './layout';
+import { assertReleaseName, parseMetadata, parseReleaseList, selectRetention, selectRollbackTarget } from './selection';
+import { computeOrphanImages, extractComposeImages, missingImagesCommand, removeImagesCommand, sweepStaleTags } from './images';
+
+export type { ReleaseMetadata } from './layout';
+export { assertReleaseName, parseReleaseList, releaseEpoch, selectRetention, selectRollbackTarget } from './selection';
+export {
+  builtRepositories,
+  computeOrphanImages,
+  computeStaleTags,
+  extractComposeImages,
+  missingImagesCommand,
+  removeImagesCommand,
+} from './images';
 
 const DEFAULT_KEEP_RELEASES = 3;
-const COMPOSE_FILE = 'docker-compose.yml';
-const METADATA_FILE = 'metadata.json';
-const RELEASE_FILES = [COMPOSE_FILE, RELEASE_STACK_FILE, METADATA_FILE];
-const CURRENT_LINK = 'current';
-/** a release being written, renamed into place once complete */
-const TEMP_PREFIX = '.tmp-';
-/** the previous files of a version being redeployed, put back if that redeploy fails */
-const BACKUP_PREFIX = '.previous-';
-
-export interface ReleaseMetadata {
-  project_name: string;
-  version: string;
-  env: string;
-  timestamp: string;
-  epoch: number;
-  performer: string;
-  branch: string;
-  /** digest of the accessories compose running when the release was made; absent from older releases and when there are no accessories */
-  accessories_digest?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Pure helpers — release logic without SSH, unit-tested in __tests__/release.test.ts
-// ---------------------------------------------------------------------------
-
-/**
- * Stack names and versions become paths under `rm -rf`: each must be one plain path segment (no
- * `/`, no control character, not hidden, and a version cannot shadow `current`).
- */
-export function assertReleaseName(value: string, kind: 'stack' | 'version'): void {
-  let plain = value !== '' && !value.startsWith('.') && !value.includes('/');
-  for (const char of value) {
-    const code = char.charCodeAt(0);
-    if (code < 0x20 || code === 0x7f) plain = false;
-  }
-  if (kind === 'version' && value === CURRENT_LINK) plain = false;
-  if (plain) return;
-  const shown = JSON.stringify(value);
-  if (kind === 'version') {
-    throw new DeployError(
-      `Version ${shown} cannot be used as a release directory name`,
-      ErrorCode.DEPLOY_FAILED,
-      'Use a version without `/` or control characters that does not start with `.` and is not `current`.',
-    );
-  }
-  throw new DeployError(
-    `Stack name ${shown} cannot be used as a directory name`,
-    ErrorCode.DEPLOY_FAILED,
-    'Use a project name and environment without `/` or control characters that do not start with `.`.',
-  );
-}
-
-function compareText(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-/** newest first: epoch descending, then version descending */
-function newestFirst(list: readonly ReleaseMetadata[]): ReleaseMetadata[] {
-  return [...list].sort((a, b) => b.epoch - a.epoch || compareText(b.version, a.version));
-}
-
-/**
- * Parse the output of the release listing command (one `<directory>\t<metadata JSON>` per line)
- * into ReleaseMetadata entries, newest first. A directory whose metadata is unreadable or names
- * another version is reported through `onCorrupted` and left out: its name is what prune deletes.
- */
-export function parseReleaseList(stdout: string, onCorrupted?: (directory: string) => void): ReleaseMetadata[] {
-  const releases: ReleaseMetadata[] = [];
-  for (const line of stdout.split('\n')) {
-    if (!line.trim()) continue;
-    const tab = line.indexOf('\t');
-    const directory = tab >= 0 ? line.slice(0, tab) : line;
-    const metadata = tab >= 0 ? parseMetadata(line.slice(tab + 1)) : null;
-    if (metadata && metadata.version === directory) {
-      releases.push(metadata);
-    } else {
-      onCorrupted?.(directory);
-    }
-  }
-  return newestFirst(releases);
-}
-
-function parseMetadata(text: string): ReleaseMetadata | null {
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    return null;
-  }
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
-  const metadata = value as ReleaseMetadata;
-  if (typeof metadata.version !== 'string' || metadata.version === '') return null;
-  if (typeof metadata.epoch === 'number') return metadata;
-  return { ...metadata, epoch: Number(metadata.epoch) || 0 };
-}
-
-/**
- * The epoch of a new release: the time it is deployed, but always after every stored release, which
- * another machine may have written with its clock ahead of this one. Deploys are serialized by the
- * deploy lock, so the history, ordered by epoch, keeps the order of the deploys.
- */
-export function releaseEpoch(now: Date, stored: readonly ReleaseMetadata[]): number {
-  return stored.reduce((epoch, release) => Math.max(epoch, release.epoch + 1), Math.floor(now.getTime() / 1000));
-}
-
-/** The newest `keep` releases, plus current when it is older; everything else is removed. */
-export function selectRetention(
-  list: readonly ReleaseMetadata[],
-  current: string | null,
-  keep: number,
-): { kept: ReleaseMetadata[]; removed: ReleaseMetadata[] } {
-  const sorted = newestFirst(list);
-  const kept = sorted.slice(0, Math.max(0, keep));
-  if (current !== null && !kept.some((r) => r.version === current)) {
-    const currentRelease = sorted.find((r) => r.version === current);
-    if (currentRelease) kept.push(currentRelease);
-  }
-  const keptVersions = new Set(kept.map((r) => r.version));
-  return { kept, removed: sorted.filter((r) => !keptVersions.has(r.version)) };
-}
-
-/**
- * The newest release strictly older than current, so a second rollback goes further back. With the
- * failed version known, the newest release other than it. Without a current record, the newest is
- * skipped (it is what runs).
- */
-export function selectRollbackTarget(
-  list: readonly ReleaseMetadata[],
-  current: string | null,
-  failedVersion?: string | null,
-): ReleaseMetadata | null {
-  const sorted = newestFirst(list);
-  if (failedVersion) return sorted.find((r) => r.version !== failedVersion) ?? null;
-  const index = sorted.findIndex((r) => r.version === current);
-  return index === -1 ? (sorted[1] ?? null) : (sorted[index + 1] ?? null);
-}
-
-/**
- * The images of the services of one or more compose documents (several files read one after the
- * other are separated by `---`). Only `services.*.image`: an `image:` in a comment or a label is
- * not an image. An unreadable document contributes nothing. With `builtOnly`, only the services
- * with a `build` section: the images Dockflow builds and distributes itself.
- */
-export function extractComposeImages(yamlText: string, builtOnly = false): string[] {
-  const images: string[] = [];
-  for (const doc of parseAllDocuments(yamlText)) {
-    if (doc.errors.length > 0) continue;
-    let value: unknown;
-    try {
-      value = doc.toJS({ maxAliasCount: 1000 });
-    } catch {
-      continue;
-    }
-    const services = isRecord(value) ? value.services : undefined;
-    if (!isRecord(services)) continue;
-    for (const service of Object.values(services)) {
-      const image = isRecord(service) ? service.image : undefined;
-      if (builtOnly && !(isRecord(service) && hasBuildSection(service))) continue;
-      if (typeof image === 'string' && image !== '' && !images.includes(image)) images.push(image);
-    }
-  }
-  return images;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function hasBuildSection(service: Record<string, unknown>): boolean {
-  const build = service.build;
-  return typeof build === 'string' ? build !== '' : isRecord(build);
-}
-
-/** Prints, one per line, the images among `images` the node does not have. */
-export function missingImagesCommand(images: string[]): string {
-  return `for img in ${images.map(shellQuote).join(' ')}; do docker image inspect "$img" >/dev/null 2>&1 || echo "$img"; done`;
-}
-
-/**
- * Removes the images, and the stopped containers that keep them. `ancestor=` matches by image id,
- * which a kept release shares when its build came from the same cache: a running container is
- * never removed, and `docker rmi` of a shared id only drops the tag.
- */
-export function removeImagesCommand(images: string[]): string {
-  return (
-    `for img in ${images.map(shellQuote).join(' ')}; do ` +
-      `ids=$(docker ps -a --filter "ancestor=$img" --filter status=exited --filter status=created --filter status=dead -q 2>/dev/null); ` +
-      `[ -n "$ids" ] && docker rm $ids 2>/dev/null; ` +
-      `timeout 60 docker rmi "$img" 2>/dev/null; ` +
-    `done; true`
-  );
-}
-
-/**
- * Compute which images from removed releases can be deleted: anything not used
- * by a running stack, not referenced by a kept release, and not tagged :latest.
- * Returns a deduplicated list.
- */
-export function computeOrphanImages(
-  runningImagesOutput: string,
-  keptComposeYaml: string,
-  removedComposeYaml: string,
-): string[] {
-  const protectedImages = new Set(runningImagesOutput.trim().split('\n').filter(Boolean));
-  for (const img of extractComposeImages(keptComposeYaml)) {
-    protectedImages.add(img);
-  }
-
-  const orphans: string[] = [];
-  for (const img of extractComposeImages(removedComposeYaml)) {
-    if (!protectedImages.has(img) && !img.endsWith(':latest')) {
-      orphans.push(img);
-    }
-  }
-  return [...new Set(orphans)];
-}
-
-/** The repositories Dockflow names for the images it builds: `<image>-<env>`. */
-export function builtRepositories(composeYaml: string, env: string): string[] {
-  const names = extractComposeImages(composeYaml, true).map((image) => parseImageRef(image).name);
-  return [...new Set(names.filter((name) => name.endsWith(`-${env}`)))];
-}
-
-/** How many of the documents are compose files with services: a release whose file was unreadable is missing from the count. */
-function countComposeDocuments(yamlText: string): number {
-  let count = 0;
-  for (const doc of parseAllDocuments(yamlText)) {
-    if (doc.errors.length > 0) continue;
-    const value = doc.toJS({ maxAliasCount: 1000 }) as unknown;
-    if (isRecord(value) && isRecord(value.services)) count++;
-  }
-  return count;
-}
-
-function withoutDigest(image: string): string {
-  return image.replace(/@sha256:[0-9a-f]+$/, '');
-}
-
-/**
- * The `repository:tag` of `docker images` output that belong to `repositories` and that nothing
- * refers to: not `inUse` (the images of the kept releases and of the running services), never
- * `:latest`, never an untagged image.
- */
-export function computeStaleTags(
-  localImages: string,
-  repositories: ReadonlySet<string>,
-  inUse: Iterable<string>,
-): string[] {
-  const used = new Set([...inUse].map(withoutDigest));
-  const stale = new Set<string>();
-  for (const line of localImages.split('\n')) {
-    const ref = line.trim();
-    if (!ref) continue;
-    const { name, tag } = parseImageRef(ref);
-    if (!repositories.has(name) || tag === undefined || tag === 'latest' || tag === '<none>' || used.has(ref)) continue;
-    stale.add(ref);
-  }
-  return [...stale];
-}
 
 function failure(result: { stderr: string; exitCode: number }): string {
   return result.stderr.trim() || `exit ${result.exitCode}`;
@@ -679,7 +440,7 @@ export class Release {
       printDebug(`Removed ${orphanImages.length} orphaned image(s)`);
     }
 
-    await this.sweepStaleTags(kept, keptResult.stdout, removeResult.stdout, runningResult.stdout, orphanImages, [this.shell, ...otherNodes]).catch((error: unknown) =>
+    await sweepStaleTags(kept, keptResult.stdout, removeResult.stdout, runningResult.stdout, orphanImages, [this.shell, ...otherNodes]).catch((error: unknown) =>
       printDebug(`Image tag sweep failed: ${error instanceof Error ? error.message : String(error)}`),
     );
 
@@ -694,42 +455,6 @@ export class Release {
     printInfo(`Cleaned up ${removed.length} old release(s)`);
   }
 
-  /**
-   * Removes, on every node, the `<image>-<env>:<tag>` tags of the project that no kept release and
-   * no running service refers to: failed deploys and releases cleaned before leave them behind.
-   * Nothing is swept unless every kept release was read, since an unread one would look unused.
-   */
-  private async sweepStaleTags(
-    kept: readonly ReleaseMetadata[],
-    keptCompose: string,
-    removedCompose: string,
-    runningImages: string,
-    alreadyRemoved: readonly string[],
-    nodes: readonly RemoteShell[],
-  ): Promise<void> {
-    const env = kept[0]?.env;
-    if (!env || countComposeDocuments(keptCompose) < kept.length) return;
-
-    const repositories = new Set([...builtRepositories(keptCompose, env), ...builtRepositories(removedCompose, env)]);
-    if (repositories.size === 0) return;
-    const lines = (text: string) => text.split('\n').map((line) => line.trim()).filter(Boolean);
-    const referenced = [...extractComposeImages(keptCompose), ...lines(runningImages), ...alreadyRemoved];
-
-    const swept = await Promise.allSettled(
-      nodes.map(async (node) => {
-        const [images, containers] = await Promise.all([
-          node.run(`docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null`),
-          node.run(`docker ps --format '{{.Image}}' 2>/dev/null`),
-        ]);
-        if (images.exitCode !== 0 || containers.exitCode !== 0) return 0;
-        const stale = computeStaleTags(images.stdout, repositories, [...referenced, ...lines(containers.stdout)]);
-        if (stale.length > 0) await node.run(removeImagesCommand(stale));
-        return stale.length;
-      }),
-    );
-    const count = swept.reduce((total, outcome) => total + (outcome.status === 'fulfilled' ? outcome.value : 0), 0);
-    if (count > 0) printDebug(`Removed ${count} unreferenced image tag(s)`);
-  }
 
   /** Puts back the files a same-version create kept aside (only complete copies are kept aside). */
   private async restoreReplaced(stackName: string, version: string): Promise<void> {
