@@ -50,7 +50,7 @@ export async function startWebServer(port: number): Promise<void> {
   const embeddedAssets = await loadEmbeddedAssets();
   const hasEmbeddedUI = embeddedAssets !== null && embeddedAssets.size > 0;
   const hasDiskUI = existsSync(join(uiDistPath, 'index.html'));
-  
+
   Bun.serve({
     port,
     // The API is unauthenticated (deploy routes + SSH/exec WebSockets), so it
@@ -70,7 +70,7 @@ export async function startWebServer(port: number): Promise<void> {
       if (pathname.startsWith('/api/')) {
         return handleApiRoutes(req);
       }
-      
+
       if (pathname.startsWith('/ws/ssh/')) {
         const serverName = parseSSHServerName(pathname);
         if (!serverName) {
@@ -95,18 +95,18 @@ export async function startWebServer(port: number): Promise<void> {
         if (success) return undefined as unknown as Response;
         return new Response('WebSocket upgrade failed', { status: 400 });
       }
-      
+
       if (hasEmbeddedUI && embeddedAssets) {
         const assetPath = pathname === '/' ? '/index.html' : pathname;
         const embeddedPath = embeddedAssets.get(assetPath);
-        
+
         if (embeddedPath) {
           const file = Bun.file(embeddedPath);
           return new Response(file, {
             headers: { 'Content-Type': getMimeType(assetPath) },
           });
         }
-        
+
         // SPA fallback - serve index.html for unknown routes
         const indexPath = embeddedAssets.get('/index.html');
         if (indexPath) {
@@ -115,7 +115,7 @@ export async function startWebServer(port: number): Promise<void> {
           });
         }
       }
-      
+
       if (hasDiskUI) {
         // Resolve within the dist dir and reject anything that escapes it,
         // so a crafted path (e.g. /../../etc/passwd) cannot read outside.
@@ -139,7 +139,7 @@ export async function startWebServer(port: number): Promise<void> {
           });
         }
       }
-      
+
       return new Response(getNoUIHTML(), {
         status: 200,
         headers: { 'Content-Type': 'text/html' },
@@ -152,7 +152,7 @@ export async function startWebServer(port: number): Promise<void> {
 
 function getMimeType(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase();
-  
+
   const mimeTypes: Record<string, string> = {
     html: 'text/html',
     css: 'text/css',
@@ -169,7 +169,7 @@ function getMimeType(filePath: string): string {
     ttf: 'font/ttf',
     eot: 'application/vnd.ms-fontobject',
   };
-  
+
   return mimeTypes[ext || ''] || 'application/octet-stream';
 }
 

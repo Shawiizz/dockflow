@@ -20,7 +20,6 @@ export function registerPsCommand(program: Command): void {
       const { stackName, connection, serverName } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName, tasks: options.tasks });
 
-
       const swarm = new SwarmStack(connection);
 
       printInfo(`Stack: ${stackName}`);

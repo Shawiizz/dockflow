@@ -78,4 +78,3 @@ export function getCommitSha(): string {
   }
   return 'unknown';
 }
-

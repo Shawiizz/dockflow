@@ -16,7 +16,7 @@ export function registerSshCommand(program: Command): void {
     .option('-s, --server <name>', 'Target server, workers included (defaults to the first manager)')
     .action(withServicesRequired(withResolvedEnv(async (env: string, commandParts: string[], options: { server?: string }) => {
       const { connection, serverName } = await resolveEnv(env, options.server, { anyServer: true });
-      
+
       if (commandParts && commandParts.length > 0) {
         const command = commandParts.join(' ');
         printInfo(`Executing on ${env} server (${serverName}): ${command}`);

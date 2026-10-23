@@ -28,7 +28,7 @@ export function getCISecret(env: string, serverName: string | null, varName: str
       return serverSpecific;
     }
   }
-  
+
   return process.env[`${envUpper}_${varName}`];
 }
 

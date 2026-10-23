@@ -24,6 +24,7 @@ import { DeployError, ErrorCode } from '../utils/errors';
 import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase, HooksConfig } from '../utils/config';
 import { DOCKFLOW_STACKS_DIR } from '../constants';
 import type { RenderedFiles } from './compose';
+import { toPosix } from '../utils/fs';
 
 export type { HookPhase };
 
@@ -265,7 +266,7 @@ export function remoteEnvPrefix(env: Record<string, string>): string {
 
 /** Read a script entry, preferring the Nunjucks-rendered content when there is one. */
 function readScript(entry: ResolvedHookEntry, rc: EntryRunContext): string {
-  const relPath = entry.value.replace(/\\/g, '/');
+  const relPath = toPosix(entry.value);
   const fromRender = rc.rendered?.get(relPath);
   if (fromRender !== undefined) return fromRender;
 

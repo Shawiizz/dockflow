@@ -468,4 +468,3 @@ services:
     expect(record(compose.raw['x-secret']).mode).toBe(400);
   });
 });
-

@@ -10,6 +10,7 @@ import * as Compose from '../../services/compose';
 import * as PublicPorts from '../../services/public-ports';
 import type { DeployContext } from '../deploy-context';
 import { accessoriesKey } from './accessories';
+import { activeNodes } from './shared';
 
 export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> {
   const mainCompose = Compose.loadFromString(ctx.composeContent, 'docker-compose.yml');
@@ -49,7 +50,7 @@ export async function applyPublicPorts(ctx: DeployContext): Promise<void> {
   if (ctx.config.no_services) return;
 
   const rules = PublicPorts.publicPortRules(ctx.config);
-  const nodes = [ctx.cluster.manager, ...ctx.cluster.otherManagers, ...ctx.cluster.workers];
+  const nodes = activeNodes(ctx.cluster);
   const outcomes = await Promise.allSettled(
     nodes.map((node) => sshExec(node.connection, PublicPorts.recordCommand(ctx.stackName, rules, node.connection.user))),
   );

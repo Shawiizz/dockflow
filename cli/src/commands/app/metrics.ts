@@ -31,7 +31,6 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
-
 function displaySummary(summary: MetricsSummary, stackName: string): void {
   printBlank();
   printSection(`Deployment Metrics: ${stackName}`);
@@ -97,7 +96,7 @@ function displayHistory(metrics: DeploymentMetric[]): void {
     printDim('No deployment history found');
     return;
   }
-  
+
   printBlank();
   printRaw(
     colors.dim('TIMESTAMP'.padEnd(22)) +
@@ -107,11 +106,11 @@ function displayHistory(metrics: DeploymentMetric[]): void {
     colors.dim('PERFORMER')
   );
   printSeparator(80);
-  
-  const sorted = [...metrics].sort((a, b) => 
+
+  const sorted = [...metrics].sort((a, b) =>
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
-  
+
   for (const m of sorted) {
     const time = new Date(m.timestamp).toLocaleString('en-GB', {
       day: '2-digit',
@@ -120,7 +119,7 @@ function displayHistory(metrics: DeploymentMetric[]): void {
       hour: '2-digit',
       minute: '2-digit',
     });
-    
+
     printRaw(
       colors.dim(time.padEnd(22)) +
       colors.info(m.version.padEnd(18)) +
@@ -141,8 +140,8 @@ export function registerMetricsCommand(program: Command): void {
     .option('-n, --lines <number>', 'Number of history entries to show', '20')
     .option('-j, --json', 'Output as JSON')
     .option('--prune', 'Remove old metrics (keep last 1000)')
-    .action(withErrorHandler(withResolvedEnv(async (env: string, options: { 
-      server?: string; 
+    .action(withErrorHandler(withResolvedEnv(async (env: string, options: {
+      server?: string;
       history?: boolean;
       lines?: string;
       json?: boolean;
@@ -166,7 +165,7 @@ export function registerMetricsCommand(program: Command): void {
       const limit = options.history ? parseInt(options.lines || '20', 10) : 1000;
       const found = await readFromFirstNode(nodes, (node) => new Metrics(node.connection).fetch(stackName, limit), (data) => data.length === 0);
       const metricsData = found?.value ?? [];
-      
+
       if (metricsData.length === 0) {
         printBlank();
         printWarning(`No metrics found for ${stackName}`);
@@ -192,7 +191,7 @@ export function registerMetricsCommand(program: Command): void {
         printDim(`Showing last ${metricsData.length} deployments`);
         return;
       }
-      
+
       const summary = calculateMetricsSummary(metricsData);
       displaySummary(summary, stackName);
     })));

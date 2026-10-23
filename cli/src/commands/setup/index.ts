@@ -213,7 +213,7 @@ export function registerSetupCommand(program: Command): void {
         const keys = listSSHKeys();
         if (keys.length > 0) {
           printBlank();
-        printInfo('Available keys:');
+          printInfo('Available keys:');
           keys.forEach((k, i) => printRaw(`  ${i + 1}) ${k}`));
           const keyIdxStr = await prompt('Select key number', '1');
           const keyIdx = parseInt(keyIdxStr, 10) - 1;

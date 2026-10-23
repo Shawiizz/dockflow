@@ -30,13 +30,13 @@ function parseServicesOutput(output: string): ServiceInfo[] {
 
 function formatReplicas(replicas: string): string {
   if (!replicas) return colors.dim('-');
-  
+
   const [current, desired] = replicas.split('/').map(s => parseInt(s.trim(), 10));
-  
+
   if (isNaN(current) || isNaN(desired)) {
     return colors.dim(replicas);
   }
-  
+
   if (current === desired && current > 0) {
     return colors.success(`● ${replicas}`);
   }
@@ -83,7 +83,7 @@ export function registerAccessoriesListCommand(program: Command): void {
 
         const format = '{{.Name}}\t{{.Mode}}\t{{.Replicas}}\t{{.Image}}\t{{.Ports}}';
         const listCmd = `docker stack services ${stackName} --format "${format}"`;
-        
+
         const result = await sshExec(connection, listCmd);
 
         if (result.exitCode !== 0) {
@@ -107,10 +107,10 @@ export function registerAccessoriesListCommand(program: Command): void {
 
         for (const service of services) {
           const serviceName = service.name.replace(`${stackName}_`, '');
-          const imageShort = service.image.length > 32 
-            ? service.image.substring(0, 29) + '...' 
+          const imageShort = service.image.length > 32
+            ? service.image.substring(0, 29) + '...'
             : service.image;
-          
+
           printRaw(
             `  ${colors.info(serviceName.padEnd(28))} ` +
             `${formatReplicas(service.replicas).padEnd(25)} ` +
@@ -121,10 +121,10 @@ export function registerAccessoriesListCommand(program: Command): void {
 
         printBlank();
 
-        const volumesResult = await sshExec(connection, 
+        const volumesResult = await sshExec(connection,
           `docker volume ls --filter "label=com.docker.stack.namespace=${stackName}" --format "{{.Name}}"`
         );
-        
+
         if (volumesResult.stdout.trim()) {
           printSection('Volumes');
           for (const vol of volumesResult.stdout.trim().split('\n').filter(Boolean)) {

@@ -9,19 +9,19 @@ function getConfig(): ServersConfig | null {
 }
 import { parseConnectionString } from '../connection-parser';
 import { printWarning } from '../output';
-import type { 
-  ServersConfig, 
-  ServerConfig, 
-  ResolvedServer, 
+import type {
+  ServersConfig,
+  ServerConfig,
+  ResolvedServer,
   ResolvedDeployment,
   EnvVars,
   SSHKeyConnection,
   ServerRole,
 } from '../../types';
 import { SERVER_DEFAULTS } from '../../types/servers';
-import { 
-  getCISecret, 
-  serverNameToEnvKey, 
+import {
+  getCISecret,
+  serverNameToEnvKey,
   mergeEnvVars,
   getServerPrivateKey,
   getServerPassword,
@@ -57,7 +57,7 @@ function resolveConnection(
   if (!host) {
     return null;
   }
-  
+
   return {
     host,
     user: userFromCI ?? serverConfig.user ?? defaults.user,
@@ -71,14 +71,14 @@ export function resolveServersForEnvironment(environment: string): ResolvedServe
   if (!config) {
     return [];
   }
-  
+
   const defaults = {
     user: config.defaults?.user ?? SERVER_DEFAULTS.user,
     port: config.defaults?.port ?? SERVER_DEFAULTS.port,
   };
-  
+
   const resolvedServers: ResolvedServer[] = [];
-  
+
   for (const [serverName, serverConfig] of Object.entries(config.servers)) {
     if (!serverConfig.tags.includes(environment)) {
       continue;
@@ -106,7 +106,7 @@ export function resolveServersForEnvironment(environment: string): ResolvedServe
       tags: serverConfig.tags,
     });
   }
-  
+
   return resolvedServers;
 }
 
@@ -116,7 +116,7 @@ export function resolveServerByName(serverName: string, environment: string): Re
   if (!config) {
     return null;
   }
-  
+
   const serverConfig = config.servers[serverName];
   if (!serverConfig) {
     return null;
@@ -125,19 +125,19 @@ export function resolveServerByName(serverName: string, environment: string): Re
   if (!serverConfig.tags.includes(environment)) {
     return null;
   }
-  
+
   const defaults = {
     user: config.defaults?.user ?? SERVER_DEFAULTS.user,
     port: config.defaults?.port ?? SERVER_DEFAULTS.port,
   };
-  
+
   const connection = resolveConnection(environment, serverName, serverConfig, defaults);
   if (!connection) {
     return null;
   }
-  
+
   const envVars = mergeEnvVars(config, environment, serverName, serverConfig.env);
-  
+
   return {
     name: serverName,
     role: serverConfig.role ?? 'manager',
@@ -170,9 +170,9 @@ export function resolveDeploymentForEnvironment(environment: string): ResolvedDe
   if (managers.length === 0) {
     return null;
   }
-  
+
   const workers = getWorkersForEnvironment(environment);
-  
+
   return {
     manager: managers[0],
     managers,
@@ -187,14 +187,14 @@ export function getAvailableEnvironments(): string[] {
   if (!config) {
     return [];
   }
-  
+
   const tags = new Set<string>();
   for (const serverConfig of Object.values(config.servers)) {
     for (const tag of serverConfig.tags) {
       tags.add(tag);
     }
   }
-  
+
   return Array.from(tags).sort();
 }
 
@@ -203,7 +203,7 @@ export function getServerNamesForEnvironment(environment: string): string[] {
   if (!config) {
     return [];
   }
-  
+
   return Object.entries(config.servers)
     .filter(([_, serverConfig]) => serverConfig.tags.includes(environment))
     .map(([name]) => name);
@@ -215,14 +215,14 @@ export function getFullConnectionInfo(env: string, serverName: string): SSHKeyCo
   if (!server) {
     return null;
   }
-  
+
   const privateKey = getServerPrivateKey(env, serverName);
   if (!privateKey) {
     return null;
   }
-  
+
   const password = getServerPassword(env, serverName);
-  
+
   return {
     host: server.host,
     port: server.port,
@@ -281,14 +281,14 @@ export function getEnvVarsForEnvironment(environment: string): EnvVars {
   }
 
   const result: EnvVars = {};
-  
+
   if (config.env?.all) {
     Object.assign(result, config.env.all);
   }
-  
+
   if (config.env?.[environment]) {
     Object.assign(result, config.env[environment]);
   }
-  
+
   return result;
 }

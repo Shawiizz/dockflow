@@ -4,7 +4,7 @@
  */
 
 import { readFileSync, existsSync, statSync } from 'fs';
-import { resolve, relative, dirname, basename } from 'path';
+import { resolve, dirname, basename } from 'path';
 import { pipeline } from 'stream/promises';
 import { printDim, printWarning, formatBytes, createSpinner } from '../../utils/output';
 import { walkDir } from '../../utils/fs';
@@ -20,6 +20,7 @@ import {
   dirBackupPath, fileBackupPath, filterUploads, resolveFileDestPath, uploadName, uploadOwnedDir,
 } from './upload-paths';
 import type { UploadRollbackPlan } from './upload-paths';
+import { posixRelative } from '../../utils/fs';
 
 const UPLOAD_CONCURRENCY = 8;
 
@@ -139,7 +140,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
   for (const upload of filtered) {
 
     const srcAbs = resolve(ctx.projectRoot, upload.src);
-    const srcRel = relative(ctx.projectRoot, srcAbs).replace(/\\/g, '/');
+    const srcRel = posixRelative(ctx.projectRoot, srcAbs);
     // a plugin's rendered file exists only in memory, never on disk
     const inMemory = ctx.rendered.has(srcRel);
     if (!inMemory && !existsSync(srcAbs)) {
@@ -186,7 +187,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
         const { name, conn } = plan.hosts[0];
         const isExcluded = buildExcludeFilter(excludePatterns);
         const totalBytes = walkDir(srcAbs)
-          .filter(f => !isExcluded(relative(srcAbs, f).replace(/\\/g, '/')))
+          .filter(f => !isExcluded(posixRelative(srcAbs, f)))
           .reduce((sum, f) => sum + statSync(f).size, 0);
         const totalStr = formatBytes(totalBytes);
         const spinner = createSpinner();

@@ -17,7 +17,7 @@ interface AuditEntry {
 function parseAuditLine(line: string): AuditEntry | null {
   const parts = line.split(' | ');
   if (parts.length < 4) return null;
-  
+
   return {
     timestamp: parts[0]?.trim() || '',
     action: parts[1]?.trim() || '',
@@ -35,10 +35,10 @@ function formatAuditEntry(entry: AuditEntry): string {
     'LOCKED': colors.info,
     'UNLOCKED': colors.info,
   };
-  
+
   const colorFn = actionColors[entry.action] || colors.bold;
   const actionPadded = entry.action.padEnd(10);
-  
+
   return `${colors.dim(entry.timestamp)} ${colorFn(actionPadded)} ${colors.info(entry.version.padEnd(20))} ${entry.performer}${entry.message ? colors.dim(' - ' + entry.message) : ''}`;
 }
 

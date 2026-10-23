@@ -3,7 +3,7 @@
  * memory, with the rendered template overrides, and pipes it to `docker build -`.
  */
 
-import { resolve, join, relative } from 'path';
+import { resolve, join, } from 'path';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { loadFromString } from './compose';
 import type { SSHKeyConnection } from '../types';
@@ -12,6 +12,7 @@ import { printDim, printRaw, printSuccess, printWarning, createTaskLog } from '.
 import { DeployError, ErrorCode } from '../utils/errors';
 import { createTar, type TarEntry } from '../utils/tar';
 import { parseDockerignore } from '../utils/dockerignore';
+import { posixRelative, toPosix } from '../utils/fs';
 
 export interface BuildTarget {
   /** Relative path used for `-f` flag (path within the tar) */
@@ -55,7 +56,7 @@ function collectEntries(
 
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
-    const relPath = relative(contextDir, full).replace(/\\/g, '/');
+    const relPath = posixRelative(contextDir, full);
 
     if (!shouldInclude(relPath)) continue;
 
@@ -94,7 +95,7 @@ async function buildContextTar(target: BuildTarget): Promise<Buffer> {
     }
   }
 
-  const dockerfilePath = target.dockerfile.replace(/\\/g, '/');
+  const dockerfilePath = toPosix(target.dockerfile);
   const hasDockerfile = entries.some(e => e.path === dockerfilePath);
   if (!hasDockerfile) {
     if (overrides?.has(dockerfilePath)) {
@@ -117,14 +118,14 @@ export function getOverridesForTarget(
   projectRoot: string,
 ): Map<string, string> {
   const overrides = new Map<string, string>();
-  const contextRel = relative(projectRoot, target.context).replace(/\\/g, '/');
+  const contextRel = posixRelative(projectRoot, target.context);
   // An empty contextRel means the context is the project root, the common `context: ../..`
   // case. Rendered paths are then already relative to it and there is no prefix to strip —
   // testing against `contextRel + '/'` would reject every one of them.
   const contextPrefix = contextRel === '' ? '' : `${contextRel}/`;
 
   for (const [relPath, content] of rendered) {
-    const normalized = relPath.replace(/\\/g, '/');
+    const normalized = toPosix(relPath);
     if (!normalized.startsWith(contextPrefix)) continue;
 
     overrides.set(normalized.slice(contextPrefix.length), content);
@@ -133,10 +134,10 @@ export function getOverridesForTarget(
   // `dockerfile:` is resolved from the compose file's directory, so the name handed to
   // `-f` rarely matches the Dockerfile's path inside the context. Key the rendered content
   // under that name too; when the two coincide this rewrites the same entry.
-  const dockerfileProjectRel = relative(projectRoot, target.dockerfileAbsPath).replace(/\\/g, '/');
+  const dockerfileProjectRel = posixRelative(projectRoot, target.dockerfileAbsPath);
   const renderedDockerfile = rendered.get(dockerfileProjectRel);
   if (renderedDockerfile) {
-    overrides.set(target.dockerfile.replace(/\\/g, '/'), renderedDockerfile);
+    overrides.set(toPosix(target.dockerfile), renderedDockerfile);
   }
 
   return overrides;
@@ -499,8 +500,8 @@ export async function buildRemote(
     const images: string[] = [];
 
     for (const target of targets) {
-      const relDockerfile = relative(target.context, target.dockerfileAbsPath).replace(/\\/g, '/');
-      const relContext = relative(params.projectRoot, target.context).replace(/\\/g, '/');
+      const relDockerfile = posixRelative(target.context, target.dockerfileAbsPath);
+      const relContext = posixRelative(params.projectRoot, target.context);
       const remoteContext = `${tmpDir}/${relContext}`;
 
       const qDockerfile = shellQuote(`${remoteContext}/${relDockerfile}`);

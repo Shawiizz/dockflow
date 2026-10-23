@@ -19,7 +19,6 @@ import {
   SOCKET_PROXY_IMAGE,
 } from '../../constants';
 
-
 const CONFIG_HASH_LABEL = 'dockflow.config-hash';
 const TRAEFIK_SERVICE = `${TRAEFIK_STACK_NAME}_traefik`;
 const SERVICE_PORTS_FORMAT = '{{.Spec.Name}}|{{range .Endpoint.Ports}}{{.PublishedPort}}/{{.Protocol}}/{{.PublishMode}} {{end}}';

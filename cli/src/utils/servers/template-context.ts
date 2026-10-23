@@ -3,11 +3,11 @@
  * `servers` (all of the environment, by name) and `cluster` (sizes and hosts of managers and workers).
  */
 
-import type { 
-  ResolvedServer, 
-  SafeServer, 
-  CurrentServer, 
-  TemplateContext 
+import type {
+  ResolvedServer,
+  SafeServer,
+  CurrentServer,
+  TemplateContext
 } from '../../types';
 import { resolveServersForEnvironment } from './resolver';
 
@@ -17,7 +17,7 @@ function toSafeServer(server: ResolvedServer): SafeServer {
   for (const [key, value] of Object.entries(server.env)) {
     lowerEnv[key.toLowerCase()] = value;
   }
-  
+
   return {
     name: server.name,
     role: server.role,
@@ -35,29 +35,29 @@ export function buildTemplateContext(
   currentServerName: string
 ): TemplateContext | null {
   const allServers = resolveServersForEnvironment(environment);
-  
+
   if (allServers.length === 0) {
     return null;
   }
-  
+
   const currentResolved = allServers.find(s => s.name === currentServerName);
   if (!currentResolved) {
     return null;
   }
-  
+
   const current: CurrentServer = {
     ...toSafeServer(currentResolved),
     is_current: true,
   };
-  
+
   const servers: Record<string, SafeServer> = {};
   for (const server of allServers) {
     servers[server.name] = toSafeServer(server);
   }
-  
+
   const managers = allServers.filter(s => s.role === 'manager');
   const workers = allServers.filter(s => s.role === 'worker');
-  
+
   const cluster = {
     size: allServers.length,
     manager_count: managers.length,
@@ -65,7 +65,7 @@ export function buildTemplateContext(
     managers: managers.map(m => m.host),
     workers: workers.map(w => w.host),
   };
-  
+
   return {
     current,
     servers,

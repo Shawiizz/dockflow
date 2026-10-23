@@ -67,13 +67,13 @@ export function loadSecrets(): void {
     try {
       const content = readFileSync(envFilePath, 'utf-8');
       const secrets = parseDotenv(content);
-      
+
       for (const [key, value] of Object.entries(secrets)) {
         if (value.trim() !== '') {
           process.env[key] = value;
         }
       }
-      
+
       if (detectCIEnvironment()) {
         printBlank();
         printWarning('WARNING: .env.dockflow file detected in CI environment!');
@@ -81,52 +81,52 @@ export function loadSecrets(): void {
         printWarning('Add it to .gitignore: echo ".env.dockflow" >> .gitignore');
         printBlank();
       }
-      
+
       printSuccess(`Loaded secrets from ${envFilePath}`);
       return;
     } catch (error) {
       printError(`Failed to load ${envFilePath}: ${error}`);
     }
   }
-  
+
   const secretsPath = process.env.DOCKFLOW_SECRETS_FILE;
 
   if (secretsPath && existsSync(secretsPath)) {
     try {
       const content = readFileSync(secretsPath, 'utf-8');
       const secrets = JSON.parse(content);
-      
+
       for (const [key, value] of Object.entries(secrets)) {
         if (typeof value === 'string' && value.trim() !== '') {
           process.env[key] = value;
         }
       }
-      
+
       printSuccess(`Loaded secrets from ${secretsPath}`);
       return;
     } catch (error) {
       printError(`Failed to load secrets from ${secretsPath}: ${error}`);
     }
   }
-  
+
   const secretsEnv = process.env.DOCKFLOW_SECRETS;
   if (secretsEnv) {
     try {
       const secrets = JSON.parse(secretsEnv);
-      
+
       for (const [key, value] of Object.entries(secrets)) {
         if (typeof value === 'string' && value.trim() !== '') {
           process.env[key] = value;
         }
       }
-      
+
       printSuccess('Loaded secrets from DOCKFLOW_SECRETS');
       return;
     } catch (error) {
       printError(`Failed to parse DOCKFLOW_SECRETS: ${error}`);
     }
   }
-  
+
 }
 
 /** Loads the secrets before a Commander action runs; goes inside withErrorHandler. */

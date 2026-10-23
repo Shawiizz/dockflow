@@ -154,7 +154,7 @@ export function registerConfigCommand(program: Command): void {
       }
 
       printBlank();
-      
+
       if (config) {
         printSection('Project Configuration');
         printBlank();
@@ -200,7 +200,7 @@ export function registerConfigCommand(program: Command): void {
       printBlank();
       printSection('Environments');
       printBlank();
-      
+
       if (envs.length === 0) {
         printWarning('  No environments configured');
       } else {
@@ -214,7 +214,7 @@ export function registerConfigCommand(program: Command): void {
       printBlank();
       printSection('Configuration Files');
       printBlank();
-      
+
       const { type: layoutType, root, configPath, serversPath, composePath, accessoriesPath } = getLayout();
       const files = layoutType === 'flat' ? [
         { name: 'dockflow.yml', path: configPath },
@@ -293,7 +293,7 @@ export function registerConfigCommand(program: Command): void {
         printBlank();
       }
 
-      const generalErrors = result.errors.filter(e => 
+      const generalErrors = result.errors.filter(e =>
         !e.includes('validation error(s)')
       );
       if (generalErrors.length > 0) {

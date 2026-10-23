@@ -54,7 +54,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
 
   if (userChoice === 0) {
     deployUser = await prompt('New username', 'dockflow');
-    
+
     const userExists = spawnSync('id', [deployUser], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
     if (userExists.status === 0) {
       printWarning(`User '${deployUser}' already exists on this system.`);
@@ -154,7 +154,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
   } else {
     printBlank();
     deployUser = await prompt('Deployment username', 'dockflow');
-    
+
     const existingKeys = listSSHKeys(deployUser);
     const userHome = requireUser(deployUser).home;
     if (existingKeys.length === 0) {
@@ -163,16 +163,16 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
         ErrorCode.CONFIG_NOT_FOUND
       );
     }
-    
+
     printBlank();
     printInfo('Available keys:');
     existingKeys.forEach((k, i) => printRaw(`  ${i + 1}) ${k}`));
     const keyIdxStr = await prompt('Select key number', '1');
     const keyIdx = parseInt(keyIdxStr, 10) - 1;
     privateKeyPath = existingKeys[keyIdx] || existingKeys[0];
-    
+
     deployPassword = await promptAndValidateUserPassword(deployUser);
-    
+
     const privateKey = fs.readFileSync(privateKeyPath, 'utf-8');
     displayConnectionInfo({
       publicHost,
@@ -184,7 +184,7 @@ export async function runInteractiveSetup(options?: { skipDockerInstall?: boolea
       installNginx: false,
       portFilter: true,
     }, privateKey);
-    
+
     return;
   }
 

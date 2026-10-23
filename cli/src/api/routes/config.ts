@@ -10,39 +10,39 @@ export async function handleConfigRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
-  
+
   if (pathname === '/api/config' && method === 'GET') {
     return getConfig();
   }
-  
+
   if (pathname === '/api/config' && method === 'PUT') {
     return updateConfig(req);
   }
-  
+
   if (pathname === '/api/config/servers' && method === 'GET') {
     return getServersConfig();
   }
-  
+
   if (pathname === '/api/config/servers' && method === 'PUT') {
     return updateServersConfig(req);
   }
-  
+
   const rawMatch = pathname.match(/^\/api\/config\/raw\/(.+)$/);
   if (rawMatch && method === 'GET') {
     return getRawConfig(rawMatch[1]);
   }
-  
+
   const rawSaveMatch = pathname.match(/^\/api\/config\/raw\/(.+)$/);
   if (rawSaveMatch && method === 'PUT') {
     return saveRawConfig(rawSaveMatch[1], req);
   }
-  
+
   return errorResponse('Endpoint not found', 404);
 }
 
 async function getConfig(): Promise<Response> {
   const config = loadConfig({ silent: true });
-  
+
   if (!config) {
     return jsonResponse({
       exists: false,
@@ -50,7 +50,7 @@ async function getConfig(): Promise<Response> {
       message: 'No config.yml found. Run "dockflow init" to create one.',
     });
   }
-  
+
   return jsonResponse({
     exists: true,
     config,
@@ -80,7 +80,7 @@ async function updateConfig(req: Request): Promise<Response> {
 
 async function getServersConfig(): Promise<Response> {
   const serversConfig = loadServersConfig();
-  
+
   if (!serversConfig) {
     return jsonResponse({
       exists: false,
@@ -88,7 +88,7 @@ async function getServersConfig(): Promise<Response> {
       message: 'No servers.yml found. Run "dockflow init" to create one.',
     });
   }
-  
+
   return jsonResponse({
     exists: true,
     servers: serversConfig,
@@ -109,7 +109,7 @@ async function updateServersConfig(req: Request): Promise<Response> {
     }
 
     writeServersConfig(body);
-    
+
     return jsonResponse({
       success: true,
       servers: body,
@@ -126,19 +126,19 @@ async function getRawConfig(fileName: string): Promise<Response> {
   // Sanitize filename to prevent directory traversal
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '');
   const allowedFiles = ['config.yml', 'servers.yml'];
-  
+
   if (!allowedFiles.includes(safeName)) {
     return errorResponse('File not allowed', 403);
   }
-  
+
   const filePath = join(getProjectRoot(), '.dockflow', safeName);
-  
+
   if (!existsSync(filePath)) {
     return errorResponse('File not found', 404);
   }
-  
+
   const content = readFileSync(filePath, 'utf-8');
-  
+
   return jsonResponse({
     fileName: safeName,
     content,

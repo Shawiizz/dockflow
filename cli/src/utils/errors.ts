@@ -10,34 +10,34 @@ export enum ErrorCode {
   UNKNOWN = 1,
   INTERRUPTED = 130,
   COMMAND_FAILED = 3,
-  
+
   // Configuration errors (10-19)
   CONFIG_NOT_FOUND = 10,
   CONFIG_INVALID = 11,
   SERVERS_NOT_FOUND = 12,
-  
+
   // Environment errors (20-29)
   ENV_NOT_FOUND = 20,
   NO_SERVERS_FOR_ENV = 21,
-  
+
   // Connection errors (30-39)
   CONNECTION_FAILED = 30,
   SSH_KEY_NOT_FOUND = 31,
   SSH_AUTH_FAILED = 32,
   HOST_KEY_CHANGED = 33,
-  
+
   // Docker errors (40-49)
   DOCKER_NOT_AVAILABLE = 40,
   STACK_NOT_FOUND = 41,
   SERVICE_NOT_FOUND = 42,
   CONTAINER_NOT_FOUND = 43,
-  
+
   // Deployment errors (50-59)
   DEPLOY_FAILED = 50,
   DEPLOY_LOCKED = 51,
   ROLLBACK_FAILED = 52,
   HEALTH_CHECK_FAILED = 53,
-  
+
   // Validation errors (60-69)
   VALIDATION_FAILED = 60,
   INVALID_ARGUMENT = 61,

@@ -6,7 +6,7 @@ import { createReadStream, promises as fsp, readFileSync, type Stats } from 'fs'
 import { isAbsolute, join, relative, resolve, sep } from 'path';
 import type { Readable } from 'stream';
 import { ValidationError } from './errors';
-import { walkDir } from './fs';
+import { posixRelative, toPosix, walkDir } from './fs';
 import { printWarning } from './output';
 
 export interface TarEntry {
@@ -32,7 +32,7 @@ export function createTar(entries: TarEntry[]): Promise<Buffer> {
         : entry.content;
 
       pack.entry({
-        name: entry.path.replace(/\\/g, '/'),
+        name: toPosix(entry.path),
         mode: entry.mode ?? 0o644,
         size: content.length,
       }, content);
@@ -71,7 +71,7 @@ export function packDirToTarGz(
   (async () => {
     let bytesProcessed = 0;
     for (const file of walkDir(srcDir)) {
-      const rel = relative(srcDir, file).replace(/\\/g, '/');
+      const rel = posixRelative(srcDir, file);
       if (isExcluded(rel)) continue;
       const content = readFileSync(file);
       await new Promise<void>((res, rej) =>
@@ -111,7 +111,7 @@ async function packEntry(pack: tar.Pack, path: string, name: string, stat: Stats
   // modes kept, ownership dropped: the container side extracts as its own user
   const common = { name, mode: stat.mode & 0o7777, mtime: stat.mtime };
   if (stat.isSymbolicLink()) {
-    const linkname = (await fsp.readlink(path)).replace(/\\/g, '/');
+    const linkname = toPosix(await fsp.readlink(path));
     await addEntry(pack, { ...common, type: 'symlink', linkname });
   } else if (stat.isDirectory()) {
     await addEntry(pack, { ...common, type: 'directory' });

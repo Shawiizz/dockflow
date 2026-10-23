@@ -45,7 +45,6 @@ export interface LockStatus {
   isStale?: boolean;
 }
 
-
 export interface LockOptions {
   staleThresholdMinutes?: number;
   /** replaces DOCKFLOW_LOCKS_DIR */
@@ -81,7 +80,6 @@ export class LockHeldError extends CLIError {
 function toError(error: unknown): CLIError {
   return CLIError.from(error, ErrorCode.CONNECTION_FAILED);
 }
-
 
 /** A stale takeover is worth saying: the holder's deploy most likely died without releasing it. */
 export function staleTakeoverMessage(holder: LockData | null, minutes: number | null): string {

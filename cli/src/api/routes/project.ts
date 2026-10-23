@@ -10,15 +10,15 @@ export async function handleProjectRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
-  
+
   if (pathname === '/api/project' && method === 'GET') {
     return getProjectInfo();
   }
-  
+
   if (pathname === '/api/project/connection' && method === 'GET') {
     return checkConnection();
   }
-  
+
   return errorResponse('Endpoint not found', 404);
 }
 
@@ -35,7 +35,7 @@ async function getProjectInfo(): Promise<Response> {
   const hasServers = serversConfig !== null;
   const hasDocker = composePath !== null;
   const hasEnvFile = existsSync(join(projectRoot, '.env.dockflow'));
-  
+
   return jsonResponse({
     projectRoot,
     projectName: config?.project_name || basename(projectRoot),
@@ -58,21 +58,21 @@ async function getProjectInfo(): Promise<Response> {
 async function checkConnection(): Promise<Response> {
   const projectRoot = getProjectRoot();
   const envFilePath = join(projectRoot, '.env.dockflow');
-  
+
   const hasEnvFile = existsSync(envFilePath);
-  
-  const hasCISecrets = Object.keys(process.env).some(key => 
+
+  const hasCISecrets = Object.keys(process.env).some(key =>
     key.endsWith('_CONNECTION') || key.endsWith('_SSH_KEY')
   );
-  
+
   const serversConfig = loadServersConfig();
   const serversWithCreds: string[] = [];
   const serversWithoutCreds: string[] = [];
-  
+
   if (serversConfig) {
     const { getServerPrivateKey, getAvailableEnvironments } = await import('../../utils/servers');
     const envs = getAvailableEnvironments();
-    
+
     for (const serverName of Object.keys(serversConfig.servers)) {
       const hasKey = envs.some(env => !!getServerPrivateKey(env, serverName));
       if (hasKey) {
@@ -82,14 +82,14 @@ async function checkConnection(): Promise<Response> {
       }
     }
   }
-  
+
   return jsonResponse({
     hasEnvFile,
     hasCISecrets,
     serversWithCredentials: serversWithCreds,
     serversMissingCredentials: serversWithoutCreds,
     ready: serversWithCreds.length > 0,
-    message: serversWithCreds.length > 0 
+    message: serversWithCreds.length > 0
       ? `Ready to connect to ${serversWithCreds.length} server(s)`
       : 'No connection credentials found. Create .env.dockflow or set CI secrets.',
   });

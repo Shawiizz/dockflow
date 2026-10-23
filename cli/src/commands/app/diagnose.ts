@@ -93,7 +93,6 @@ export function registerDiagnoseCommand(program: Command): void {
       const { stackName, connection, serverName } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName, serverName });
 
-
       printIntro(`Diagnosing: ${stackName}`);
       printBlank();
 

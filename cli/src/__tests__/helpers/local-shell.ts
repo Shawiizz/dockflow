@@ -51,4 +51,3 @@ export class LocalShell implements RemoteShell {
     return { stdout, stderr, exitCode };
   }
 }
-

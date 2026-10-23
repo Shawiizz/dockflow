@@ -8,7 +8,6 @@ import type { BuildTarget } from '../services/build';
 
 const BASE = resolve('/project/.dockflow/docker');
 
-
 // every warning the builder prints goes through these spies, so no test writes to stderr
 let warnings: string[] = [];
 let hints: string[] = [];

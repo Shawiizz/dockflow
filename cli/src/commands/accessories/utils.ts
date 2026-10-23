@@ -17,7 +17,7 @@ export async function validateAccessoriesStack(
   env: string
 ): Promise<StackValidation> {
   const stackName = getAccessoriesStackName(env)!;
-  
+
   const stacks = (await runDockerQuery(connection, `docker stack ls --format '{{.Name}}'`, 'docker stack ls') ?? '')
     .split('\n')
     .map((line) => line.trim())
@@ -42,7 +42,7 @@ export async function requireAccessoriesStack(
   action: string = 'perform this action'
 ): Promise<{ stackName: string; services: string[] }> {
   const validation = await validateAccessoriesStack(connection, env);
-  
+
   if (!validation.exists) {
     throw new DockerError(
       'Accessories not deployed yet',
@@ -59,11 +59,11 @@ export async function validateAccessoryService(
   service: string
 ): Promise<boolean> {
   const fullServiceName = `${stackName}_${service}`;
-  
-  const checkResult = await sshExec(connection, 
+
+  const checkResult = await sshExec(connection,
     `docker service ls --filter "name=${fullServiceName}" --format "{{.Name}}"`
   );
-  
+
   return checkResult.stdout.trim() !== '';
 }
 
@@ -74,16 +74,16 @@ export async function requireAccessoryService(
   service: string
 ): Promise<string> {
   const exists = await validateAccessoryService(connection, stackName, service);
-  
+
   if (!exists) {
-    const servicesResult = await sshExec(connection, 
+    const servicesResult = await sshExec(connection,
       `docker stack services ${stackName} --format "{{.Name}}" | sed 's/${stackName}_//'`
     );
-    
+
     const available = servicesResult.stdout.trim()
       ? `Available accessories: ${servicesResult.stdout.trim().split('\n').join(', ')}`
       : undefined;
-    
+
     throw new DockerError(
       `Accessory '${service}' not found`,
       { code: ErrorCode.SERVICE_NOT_FOUND, suggestion: available }

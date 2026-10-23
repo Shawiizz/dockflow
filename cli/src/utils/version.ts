@@ -36,4 +36,3 @@ export function incrementVersion(version: string): string {
 
   return `${version}-2`;
 }
-

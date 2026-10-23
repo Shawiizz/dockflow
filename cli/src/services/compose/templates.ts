@@ -4,9 +4,9 @@
  */
 
 import { readFileSync, existsSync } from 'fs';
-import { join, relative, dirname } from 'path';
+import { join, dirname } from 'path';
 import nunjucks from 'nunjucks';
-import { walkDir } from '../../utils/fs';
+import { posixRelative, toPosix, walkDir } from '../../utils/fs';
 import { describeInsertedPlaceholders, describeShellPlaceholders, findInsertedPlaceholders, findShellPlaceholders } from '../compose-lint';
 import { findUndefinedEnvReferences, describeUndefinedEnvReferences } from '../template-lint';
 import { getAccessoriesPath, getProjectRoot, getComposePath, getLayout } from '../../utils/config';
@@ -62,7 +62,7 @@ export function renderTemplates(
   let count = 0;
 
   for (const filePath of files) {
-    const relPath = relative(projectRoot, filePath).replace(/\\/g, '/');
+    const relPath = posixRelative(projectRoot, filePath);
 
     // Plugin files are rendered by the plugin expansion, in the plugin's own
     // scope. Rendering them here would turn every `{{ inputs.x }}` into an empty
@@ -85,7 +85,7 @@ export function renderTemplates(
   if (layout.type === 'flat') {
     for (const absPath of [layout.configPath, layout.composePath, layout.accessoriesPath]) {
       if (!absPath) continue;
-      const relPath = relative(projectRoot, absPath).replace(/\\/g, '/');
+      const relPath = posixRelative(projectRoot, absPath);
       if (!relPath.startsWith('.dockflow/')) {
         const content = readFileSync(absPath, 'utf-8');
         rendered.set(relPath, render(relPath, content));
@@ -108,7 +108,7 @@ export function renderTemplates(
     const content = readFileSync(srcPath, 'utf-8');
     const renderedContent = render(src, content);
     lint(src, content);
-    rendered.set(dest.replace(/\\/g, '/'), renderedContent);
+    rendered.set(toPosix(dest), renderedContent);
     printDebug(`Rendered custom template: ${src} → ${dest}`);
   }
 
@@ -184,7 +184,7 @@ export function renderAndResolveCompose(
     );
   }
 
-  const composeRelPath = relative(projectRoot, originalComposePath).replace(/\\/g, '/');
+  const composeRelPath = posixRelative(projectRoot, originalComposePath);
   const composeContent = rendered.get(composeRelPath);
 
   if (composeContent) {
@@ -195,7 +195,7 @@ export function renderAndResolveCompose(
     const accessoriesPath = getAccessoriesPath();
     for (const absPath of [originalComposePath, accessoriesPath]) {
       if (!absPath) continue;
-      const relPath = relative(projectRoot, absPath).replace(/\\/g, '/');
+      const relPath = posixRelative(projectRoot, absPath);
       const content = rendered.get(relPath);
       if (!content) continue;
       for (const line of placeholderWarnings(absPath, content, renderContext, declaredKeys)) {

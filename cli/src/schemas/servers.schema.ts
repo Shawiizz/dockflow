@@ -31,11 +31,11 @@ export const ServerConfigSchema = z.object({
   role: ServerRoleSchema.optional().default('manager').describe(
     'Server role in Swarm cluster (default: manager)'
   ),
-  
+
   host: z.string()
     .optional()
     .describe('Server hostname or IP address (can be overridden by CI secrets)'),
-  
+
   private_host: z.string()
     .refine((address) => !address.includes('/') && isIpOrCidr(address), { message: 'must be an IP address, e.g. 10.0.0.5' })
     .optional()
@@ -49,20 +49,20 @@ export const ServerConfigSchema = z.object({
   )
     .min(1, 'At least one tag is required')
     .describe('Environment tags this server belongs to (e.g., production, staging)'),
-  
+
   user: z.string()
     .min(1)
     .max(32)
     .optional()
     .describe('SSH user (overrides defaults.user)'),
-  
+
   port: z.number()
     .int()
     .min(1)
     .max(65535)
     .optional()
     .describe('SSH port (overrides defaults.port)'),
-  
+
   env: EnvVarsSchema.optional().describe(
     'Server-specific environment variables'
   ),
@@ -74,7 +74,7 @@ export const ServerDefaultsSchema = z.object({
     .max(32, 'Username must be 32 characters or less')
     .default('dockflow')
     .describe('Default SSH user for all servers'),
-  
+
   port: z.number()
     .int()
     .min(1)

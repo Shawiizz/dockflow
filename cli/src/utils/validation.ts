@@ -181,7 +181,7 @@ function toCliError(error: ValidationError): CLIError {
     [ValidationErrorType.NO_SERVERS_FOR_ENV]: ErrorCode.NO_SERVERS_FOR_ENV,
     [ValidationErrorType.CONNECTION_NOT_FOUND]: ErrorCode.SSH_KEY_NOT_FOUND,
   };
-  
+
   return new CLIError(error.message, codeMap[error.type], error.suggestion);
 }
 

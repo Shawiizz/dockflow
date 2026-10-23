@@ -2,11 +2,11 @@
 
 import { jsonResponse, errorResponse } from '../server';
 import { loadServersConfig } from '../../utils/config';
-import { 
-  resolveServersForEnvironment, 
+import {
+  resolveServersForEnvironment,
   getAvailableEnvironments,
   getServerPrivateKey,
-  checkManagerStatus 
+  checkManagerStatus
 } from '../../utils/servers';
 import type { ResolvedServer } from '../../types';
 import { sshExec } from '../../utils/ssh';
@@ -30,47 +30,47 @@ export async function handleServersRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const method = req.method;
-  
+
   if (pathname === '/api/servers' && method === 'GET') {
     return listServers(url);
   }
-  
+
   if (pathname === '/api/servers/environments' && method === 'GET') {
     return listEnvironments();
   }
-  
+
   const statusMatch = pathname.match(/^\/api\/servers\/([^/]+)\/status$/);
   if (statusMatch && method === 'GET') {
     return checkServerStatus(statusMatch[1], url);
   }
-  
+
   const serverMatch = pathname.match(/^\/api\/servers\/([^/]+)$/);
   if (serverMatch && method === 'GET') {
     return getServer(serverMatch[1], url);
   }
-  
+
   return errorResponse('Endpoint not found', 404);
 }
 
 async function listServers(url: URL): Promise<Response> {
   const envFilter = url.searchParams.get('env');
-  
+
   const serversConfig = loadServersConfig();
   if (!serversConfig) {
-    return jsonResponse({ 
-      servers: [], 
+    return jsonResponse({
+      servers: [],
       environments: [],
       message: 'No servers.yml found. Run "dockflow init" to create one.',
     });
   }
-  
+
   const environments = getAvailableEnvironments();
   const allServers: ServerStatus[] = [];
   const seenServers = new Set<string>();
-  
+
   for (const env of environments) {
     if (envFilter && env !== envFilter) continue;
-    
+
     const servers = resolveServersForEnvironment(env);
     for (const server of servers) {
       if (seenServers.has(server.name)) continue;
@@ -78,7 +78,7 @@ async function listServers(url: URL): Promise<Response> {
       allServers.push(toServerStatus(server));
     }
   }
-  
+
   return jsonResponse({
     servers: allServers,
     environments,
@@ -88,7 +88,7 @@ async function listServers(url: URL): Promise<Response> {
 
 async function listEnvironments(): Promise<Response> {
   const environments = getAvailableEnvironments();
-  
+
   return jsonResponse({
     environments,
     total: environments.length,
@@ -100,15 +100,15 @@ async function getServer(serverName: string, url: URL): Promise<Response> {
   if (!serversConfig) {
     return errorResponse('No servers.yml found', 404);
   }
-  
+
   const serverConfig = serversConfig.servers[serverName];
   if (!serverConfig) {
     return errorResponse(`Server "${serverName}" not found`, 404);
   }
-  
+
   const environments = getAvailableEnvironments();
   let resolvedServer: ResolvedServer | null = null;
-  
+
   for (const env of environments) {
     const servers = resolveServersForEnvironment(env);
     const found = servers.find(s => s.name === serverName);
@@ -117,11 +117,11 @@ async function getServer(serverName: string, url: URL): Promise<Response> {
       break;
     }
   }
-  
+
   if (!resolvedServer) {
     return errorResponse(`Could not resolve server "${serverName}"`, 404);
   }
-  
+
   return jsonResponse(toServerStatus(resolvedServer));
 }
 

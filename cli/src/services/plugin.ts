@@ -12,7 +12,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
-import { basename, isAbsolute, join, posix, relative, resolve } from 'path';
+import { basename, isAbsolute, join, posix, resolve } from 'path';
 import nunjucks from 'nunjucks';
 import { parse as parseYaml } from 'yaml';
 import { DOCKFLOW_PLUGIN_INSTANCES_DIR, DOCKFLOW_PLUGINS_DIR } from '../constants';
@@ -21,6 +21,7 @@ import { PLUGIN_NAME_PATTERN, PluginManifestSchema, type PluginManifest } from '
 import { getLayout, HOOK_PHASES, loadConfig } from '../utils/config';
 import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase, PluginUse, UploadItem } from '../utils/config';
 import { ConfigError } from '../utils/errors';
+import { posixRelative, toPosix } from '../utils/fs';
 
 const MANIFEST = 'plugin.yml';
 
@@ -41,7 +42,7 @@ function untagged(value: string): string {
  * plain basename would keep for a file at the project root (`project:app.service`).
  */
 export function pluginBasename(value: unknown): string {
-  return posix.basename(untagged(String(value)).replace(/\\/g, '/'));
+  return posix.basename(toPosix(untagged(String(value))));
 }
 
 // Plugin files see only their inputs: a reference to anything else is a bug in
@@ -67,7 +68,7 @@ export interface PluginSource {
  * elsewhere must not be able to reach `../../.env.dockflow`.
  */
 export function pluginRelPath(relPath: string, where: string): string {
-  const normalized = posix.normalize(relPath.replace(/\\/g, '/'));
+  const normalized = posix.normalize(toPosix(relPath));
   if (isAbsolute(relPath) || normalized === '..' || normalized.startsWith('../')) {
     throw new ConfigError(`${where}: plugin file paths must stay inside the plugin, got "${relPath}"`);
   }
@@ -275,7 +276,7 @@ async function materializeFile(
 
   if (ref.startsWith(FROM_PROJECT)) {
     origin = 'project';
-    relPath = ref.slice(FROM_PROJECT.length).replace(/\\/g, '/');
+    relPath = toPosix(ref.slice(FROM_PROJECT.length));
     const abs = resolve(opts.projectRoot, relPath);
     if (!existsSync(abs) || !statSync(abs).isFile()) {
       throw new ConfigError(`${instance.where}: file not found in the project: ${relPath}`);
@@ -445,7 +446,7 @@ export async function loadConfigWithPlugins(args: {
   projectRoot: string;
   projectContext: Record<string, unknown>;
 }): Promise<{ config: DockflowConfig; pluginSummary: string[] }> {
-  const configRelPath = relative(args.projectRoot, getLayout().configPath).replace(/\\/g, '/');
+  const configRelPath = posixRelative(args.projectRoot, getLayout().configPath);
   // a template that renders an invalid config fails the deploy rather than falling back to the unrendered file
   const config = loadConfig({ content: args.rendered.get(configRelPath), silent: true, strict: true }) ?? args.fallback;
   if (!config.plugins?.length) return { config, pluginSummary: [] };

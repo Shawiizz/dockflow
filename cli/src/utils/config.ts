@@ -111,7 +111,6 @@ export interface LockConfig {
   stale_threshold_minutes?: number;
 }
 
-
 export interface BackupAccessoryConfig {
   type: BackupDbType;
   dump_command?: string;

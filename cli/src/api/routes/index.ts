@@ -19,24 +19,24 @@ import pkg from '../../../package.json';
 export async function handleApiRoutes(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const pathname = url.pathname;
-  
+
   try {
     if (pathname.startsWith('/api/servers')) {
       return await handleServersRoutes(req);
     }
-    
+
     if (pathname.startsWith('/api/services')) {
       return await handleServicesRoutes(req);
     }
-    
+
     if (pathname.startsWith('/api/config')) {
       return await handleConfigRoutes(req);
     }
-    
+
     if (pathname.startsWith('/api/project')) {
       return await handleProjectRoutes(req);
     }
-    
+
     if (pathname.startsWith('/api/operations')) {
       return await handleOperationsRoutes(req);
     }
@@ -74,15 +74,15 @@ export async function handleApiRoutes(req: Request): Promise<Response> {
     }
 
     if (pathname === '/api/health') {
-      return jsonResponse({ 
-        status: 'ok', 
+      return jsonResponse({
+        status: 'ok',
         version: pkg.version,
         timestamp: new Date().toISOString(),
       });
     }
-    
+
     return errorResponse('API endpoint not found', 404);
-    
+
   } catch (error) {
     printDebug('API Error', { error: error instanceof Error ? error.message : String(error) });
     return errorResponse(

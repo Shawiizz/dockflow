@@ -13,7 +13,7 @@ import type { DockflowConfig } from '../../utils/config';
 import type { DeployContext } from '../deploy-context';
 import { detectContainerEngine } from './container-engine';
 import { runDeployHook } from './hooks';
-import { activeNodes } from './shared';
+import { activeNodes, otherNodes } from './shared';
 
 export interface BuildResult {
   images: string[];
@@ -66,7 +66,7 @@ export async function buildAndDistribute(
       engine,
     }));
 
-    const others = [...ctx.cluster.otherManagers, ...ctx.cluster.workers];
+    const others = otherNodes(ctx.cluster);
     if (images.length > 0 && others.length > 0) {
       await Distribution.distributeFromRemote(images, ctx.cluster.manager.connection, others, engine);
     }

@@ -6,7 +6,7 @@
 
 import type { Command } from 'commander';
 import { existsSync, readFileSync } from 'fs';
-import { join, relative, sep } from 'path';
+import { join, } from 'path';
 import { parse as parseYaml } from 'yaml';
 import {
   HOOK_PHASES,
@@ -41,6 +41,7 @@ import {
   findUnknownRootKeys,
   type UnknownKey,
 } from '../schemas';
+import { posixRelative } from '../utils/fs';
 
 /** Warns about keys the schema does not declare: Zod strips them silently, so a typo is ignored without any error. */
 function warnUnknownKeys(filePath: string, finder: (data: unknown) => UnknownKey[]): void {
@@ -224,7 +225,7 @@ async function runValidate(options: ValidateOptions): Promise<void> {
     if (!stackFile) continue;
     const placeholders = findShellPlaceholders(readFileSync(stackFile, 'utf-8'), declaredKeys);
     for (const line of describeShellPlaceholders(placeholders)) {
-      printError(`${relative(projectRoot, stackFile).split(sep).join('/')} ${line}`);
+      printError(`${posixRelative(projectRoot, stackFile)} ${line}`);
     }
     if (placeholders.length > 0) hasErrors = true;
   }

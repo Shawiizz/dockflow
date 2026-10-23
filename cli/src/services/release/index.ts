@@ -448,7 +448,6 @@ export class Release {
     printInfo(`Cleaned up ${removed.length} old release(s)`);
   }
 
-
   /** Puts back the files a same-version create kept aside (only complete copies are kept aside). */
   private async restoreReplaced(stackName: string, version: string): Promise<void> {
     const dir = shellQuote(this.releaseDir(stackName, version));

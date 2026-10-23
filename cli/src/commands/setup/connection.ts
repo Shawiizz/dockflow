@@ -3,7 +3,7 @@
  */
 
 import { printSection, printBlank, printWarning, printError, printInfo, printDim, printRaw, colors } from '../../utils/output';
-import { 
+import {
   generateConnectionString as generateConnString,
   parseConnectionString as parseConnString
 } from '../../utils/connection-parser';

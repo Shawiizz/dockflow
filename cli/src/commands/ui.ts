@@ -18,10 +18,10 @@ interface UIOptions {
 
 async function openBrowser(url: string): Promise<void> {
   const platform = process.platform;
-  
+
   let command: string;
   let args: string[];
-  
+
   if (platform === 'win32') {
     command = 'cmd';
     args = ['/c', 'start', '', url];
@@ -32,12 +32,12 @@ async function openBrowser(url: string): Promise<void> {
     command = 'xdg-open';
     args = [url];
   }
-  
+
   const proc = Bun.spawn([command, ...args], {
     stdout: 'ignore',
     stderr: 'ignore',
   });
-  
+
   await proc.exited;
 }
 
@@ -74,16 +74,16 @@ export function registerUICommand(program: Command): void {
     .option('--no-open', 'Do not open browser automatically')
     .action(withErrorHandler(async (options: UIOptions) => {
       const requestedPort = parseInt(options.port, 10);
-      
+
       printIntro('Dockflow WebUI');
       printBlank();
-      
+
       loadSecrets();
-      
+
       // the project is optional: the UI can open one later
       const projectRoot = getProjectRoot();
       const dockflowDir = join(projectRoot, '.dockflow');
-      
+
       if (existsSync(dockflowDir)) {
         const config = loadConfig({ silent: true });
         if (config) {
@@ -100,23 +100,23 @@ export function registerUICommand(program: Command): void {
       if (port !== requestedPort) {
         printWarning(`Port ${requestedPort} is in use, using ${port} instead`);
       }
-      
+
       const { startWebServer } = await import('../api/server');
       await startWebServer(port);
-      
+
       const url = `http://localhost:${port}`;
-      
+
       printBlank();
       printSuccess(`API server running on port ${port}`);
       printInfo(`Open the UI at ${url}`);
       printBlank();
       printInfo('Press Ctrl+C to stop the server');
       printBlank();
-      
+
       if (options.open) {
         await openBrowser(url);
       }
-      
+
       // keep the process alive
       await new Promise(() => {});
     }));

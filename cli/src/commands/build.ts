@@ -3,7 +3,6 @@
  * in memory as tar archives and piped to `docker build -`, so no temporary file is written.
  */
 
-
 import type { Command } from 'commander';
 import { printInfo, printIntro, printDebug, printWarning, printDim, printBlank, printSuccess, setVerbose } from '../utils/output';
 import { loadSecrets } from '../utils/secrets';

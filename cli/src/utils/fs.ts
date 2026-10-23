@@ -1,5 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, statSync } from 'fs';
-import { join } from 'path';
+import { join, relative } from 'path';
 
 /** Recursively walk a directory and return all file paths. */
 export function walkDir(dir: string): string[] {
@@ -25,4 +25,14 @@ export function walkDir(dir: string): string[] {
 export function ensureDir(path: string, mode: number): void {
   mkdirSync(path, { recursive: true });
   chmodSync(path, mode);
+}
+
+/** A path with `/` separators: Windows gives `\`, tar archives, Docker and the remote shell want `/`. */
+export function toPosix(path: string): string {
+  return path.replace(/\\/g, '/');
+}
+
+/** `relative(from, to)` with `/` separators. */
+export function posixRelative(from: string, to: string): string {
+  return toPosix(relative(from, to));
 }

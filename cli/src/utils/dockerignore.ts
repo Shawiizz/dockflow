@@ -1,6 +1,7 @@
 /** Builds the .dockerignore filter (gitignore syntax, through the `ignore` library). */
 
 import ignore from 'ignore';
+import { toPosix } from './fs';
 
 // kept out of the build context whatever the .dockerignore says
 const ALWAYS_EXCLUDED = ['.env.dockflow', '**/.env.dockflow'];
@@ -11,5 +12,5 @@ const ALWAYS_EXCLUDED = ['.env.dockflow', '**/.env.dockflow'];
  */
 export function parseDockerignore(content: string): (relativePath: string) => boolean {
   const ig = ignore().add(content).add(ALWAYS_EXCLUDED);
-  return (relativePath: string) => !ig.ignores(relativePath.replace(/\\/g, '/'));
+  return (relativePath: string) => !ig.ignores(toPosix(relativePath));
 }

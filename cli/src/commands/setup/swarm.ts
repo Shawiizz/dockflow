@@ -74,33 +74,33 @@ async function openSwarmPorts(connection: SSHKeyConnection, serverName: string):
  * the address workers join through; null, after failing the spinner, when that cannot be done.
  */
 export async function initializeSwarm(
-  connection: SSHKeyConnection, 
+  connection: SSHKeyConnection,
   manager: ResolvedServer,
 ): Promise<{ token: string; internalIp: string } | null> {
   const managerName = manager.name;
   const managerHost = swarmAddress(manager);
   const spinner = createSpinner();
   spinner.start(`Initializing Docker Swarm on ${managerName}...`);
-  
+
   try {
     let internalIp: string;
-    
+
     if (managerHost !== 'localhost' && managerHost !== '127.0.0.1') {
       internalIp = managerHost;
     } else {
       // dev and E2E run against localhost; in Docker-in-Docker the nodes meet on the shared network,
       // so take the last address that is not on the default bridge (172.17.x.x)
-      const ipResult = await sshExec(connection, 
+      const ipResult = await sshExec(connection,
         "hostname -I | tr ' ' '\\n' | grep -v '^172\\.17\\.' | grep -v '^$' | tail -1"
       );
       internalIp = ipResult.stdout.trim();
-      
+
       // nothing left after the filter: take the last address
       if (!internalIp) {
         const fallbackResult = await sshExec(connection, "hostname -I | awk '{print $NF}'");
         internalIp = fallbackResult.stdout.trim();
       }
-      
+
       if (!internalIp) {
         spinner.fail('Could not determine internal IP address');
         return null;
@@ -109,7 +109,7 @@ export async function initializeSwarm(
 
     const stateResult = await sshExec(connection, "docker info --format '{{.Swarm.LocalNodeState}}'");
     const state = stateResult.stdout.trim();
-    
+
     if (state === 'active') {
       const tokenResult = await sshExec(connection, 'docker swarm join-token worker -q');
       const token = tokenResult.stdout.trim();
@@ -117,19 +117,19 @@ export async function initializeSwarm(
       await warnIfAdvertisedElsewhere(connection, manager);
       return { token, internalIp };
     }
-    
-    const initResult = await sshExec(connection, 
+
+    const initResult = await sshExec(connection,
       `docker swarm init --advertise-addr ${shellQuote(internalIp)} 2>&1`
     );
-    
+
     if (initResult.exitCode !== 0) {
       spinner.fail(`Failed to initialize Swarm: ${initResult.stderr || initResult.stdout}`);
       return null;
     }
-    
+
     const tokenResult = await sshExec(connection, 'docker swarm join-token worker -q');
     const token = tokenResult.stdout.trim();
-    
+
     spinner.succeed(`Docker Swarm initialized on ${managerName} (${internalIp})`);
     return { token, internalIp };
   } catch (error) {
@@ -147,29 +147,29 @@ async function joinWorkerToSwarm(
   const workerName = worker.name;
   const spinner = createSpinner();
   spinner.start(`Joining ${workerName} to Swarm cluster...`);
-  
+
   try {
     const stateResult = await sshExec(connection, "docker info --format '{{.Swarm.LocalNodeState}}'");
     const state = stateResult.stdout.trim();
-    
+
     if (state === 'active') {
       spinner.succeed(`${workerName} is already in a Swarm cluster`);
       await warnIfAdvertisedElsewhere(connection, worker);
       return true;
     }
-    
+
     // Leave any inactive swarm first
     if (state === 'inactive') {
       await sshExec(connection, 'docker swarm leave --force 2>/dev/null || true');
     }
-    
+
     const joinResult = await sshExec(connection, swarmJoinCommand(joinToken, managerHost, worker.privateHost));
-    
+
     if (joinResult.exitCode !== 0) {
       spinner.fail(`Failed to join ${workerName}: ${joinResult.stderr || joinResult.stdout}`);
       return false;
     }
-    
+
     spinner.succeed(`${workerName} joined the Swarm cluster`);
     return true;
   } catch (error) {
@@ -265,7 +265,7 @@ export async function runSetupSwarm(env: string): Promise<void> {
   const deployment = resolveDeploymentForEnvironment(env);
   if (!deployment) {
     const availableEnvs = getAvailableEnvironments();
-    const suggestion = availableEnvs.length > 0 
+    const suggestion = availableEnvs.length > 0
       ? `Available environments: ${availableEnvs.join(', ')}`
       : undefined;
     throw new CLIError(

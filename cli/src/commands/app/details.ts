@@ -16,13 +16,13 @@ export function registerDetailsCommand(program: Command): void {
     .action(withServicesRequired(withResolvedEnv(async (env: string, options: { server?: string }) => {
       const { stackName, connection, serverName } = await resolveEnv(env, options.server);
       printDebug('Connection validated', { stackName });
-      
+
       printIntro(`Stack: ${stackName}`);
 
       try {
         printSection('Services');
         const servicesResult = await sshExec(
-          connection, 
+          connection,
           `docker stack services ${shellQuote(stackName)} --format "table {{.Name}}\t{{.Replicas}}\t{{.Image}}"`
         );
         printRaw(servicesResult.stdout);

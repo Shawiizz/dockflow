@@ -29,7 +29,7 @@ export function registerAppCommands(program: Command): void {
   registerMetricsCommand(program);
   registerDiagnoseCommand(program);
   registerStatusCommand(program);
-  
+
   registerExecCommand(program);
   registerCpCommand(program);
   registerRestartCommand(program);

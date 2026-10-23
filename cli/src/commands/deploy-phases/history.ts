@@ -7,11 +7,11 @@ import { printWarning } from '../../utils/output';
 import * as HistorySync from '../../services/history-sync';
 import type { SSHKeyConnection, ClusterConnection } from '../../types';
 import type { DeployContext } from '../deploy-context';
-import { activeNodes } from './shared';
+import { activeNodes, otherNodes } from './shared';
 
 /** Connections that receive history-sync writes (all nodes except the primary manager). */
 function historySyncConns(cluster: ClusterConnection): SSHKeyConnection[] {
-  return [...cluster.otherManagers, ...cluster.workers].map(n => n.connection);
+  return otherNodes(cluster).map(n => n.connection);
 }
 
 export async function recordHistory(

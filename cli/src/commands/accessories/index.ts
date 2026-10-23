@@ -27,4 +27,3 @@ export function registerAccessoriesCommands(program: Command): void {
   registerAccessoriesStopCommand(accessories);
   registerAccessoriesRemoveCommand(accessories);
 }
-

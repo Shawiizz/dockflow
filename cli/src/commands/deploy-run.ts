@@ -19,6 +19,7 @@ import {
   runHTTPHealthChecks, runPostRollbackHealthChecks, uploadFiles,
 } from './deploy-phases';
 import type { AppProgress, BuildResult, UploadRollbackPlan } from './deploy-phases';
+import { activeNodes, otherNodes } from './deploy-phases/shared';
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -96,7 +97,7 @@ export class DeployRun {
 
     await Promise.all([
       // the deploy succeeded: housekeeping failures are reported, never a reason to roll back
-      ctx.deployApp && ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config, [...ctx.cluster.otherManagers, ...ctx.cluster.workers].map((node) => sshShell(node.connection))).catch((e) => printWarning(`Old releases cleanup failed: ${messageOf(e)}`)),
+      ctx.deployApp && ctx.releases.cleanupOldReleases(ctx.stackName, ctx.config, otherNodes(ctx.cluster).map((node) => sshShell(node.connection))).catch((e) => printWarning(`Old releases cleanup failed: ${messageOf(e)}`)),
       commitUploads(this.uploadPlan).catch((e) => printWarning(`Upload commit failed: ${messageOf(e)}`)),
     ]);
   }
@@ -128,7 +129,7 @@ export class DeployRun {
         const rollbackStartedAt = new Date();
         const imageNodes = Compose.usesRegistry(ctx.config)
           ? undefined
-          : [ctx.cluster.manager, ...ctx.cluster.otherManagers, ...ctx.cluster.workers].map((node) => ({ name: node.name, shell: sshShell(node.connection) }));
+          : activeNodes(ctx.cluster).map((node) => ({ name: node.name, shell: sshShell(node.connection) }));
         rolledBackTo = await releases.rollback(ctx.stackName, swarm, ctx.deployVersion, previousSymlink, { imageNodes });
         printWarning(`Rolled back to ${rolledBackTo}`);
         await runPostRollbackHealthChecks(through.connection, swarm, ctx.stackName, ctx.config.health_checks, rollbackStartedAt);
@@ -149,7 +150,7 @@ export class DeployRun {
 
     // after the rollback: until then the failed tasks' containers hold the images
     if (this.buildResult && ctx.config.stack_management?.cleanup_on_failure !== false) {
-      await cleanupFailedImages(this.buildResult, [ctx.cluster.manager, ...ctx.cluster.otherManagers, ...ctx.cluster.workers]).catch(() => {});
+      await cleanupFailedImages(this.buildResult, activeNodes(ctx.cluster)).catch(() => {});
     }
 
     // runs last so it observes the settled state; runHook never lets an on-failure entry abort,

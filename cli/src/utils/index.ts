@@ -11,8 +11,8 @@ export * from './connection-parser';
 export { sshExec, sshExecStream, sshShell, executeInteractiveSSH } from './ssh';
 export * from './secrets';
 export {
-  validateEnvironment, 
-  validateEnv, 
+  validateEnvironment,
+  validateEnv,
   isValidationError,
   type EnvironmentContext
 } from './validation';

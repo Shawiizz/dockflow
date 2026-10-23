@@ -14,7 +14,6 @@ export const TEMP_PREFIX = '.tmp-';
 /** the previous files of a version being redeployed, put back if that redeploy fails */
 export const BACKUP_PREFIX = '.previous-';
 
-
 export interface ReleaseMetadata {
   project_name: string;
   version: string;

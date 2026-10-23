@@ -24,7 +24,7 @@ function getEnvironmentsInfo(): EnvironmentInfo[] {
 
   for (const [serverName, serverConfig] of Object.entries(serversConfig.servers)) {
     const defaults = serversConfig.defaults || { user: 'root', port: 22 };
-    
+
     for (const tag of serverConfig.tags) {
       if (!envMap.has(tag)) {
         envMap.set(tag, { name: tag, servers: [] });
@@ -74,7 +74,7 @@ export function registerListEnvCommand(parent: Command): void {
       }
 
       printBlank();
-      
+
       if (config?.project_name) {
         printSection(`Environments: ${config.project_name}`);
       } else {
@@ -98,15 +98,15 @@ export function registerListEnvCommand(parent: Command): void {
       }
 
       for (const env of environments) {
-        const envColor = env.name === 'production' 
-          ? colors.error 
-          : env.name === 'staging' 
-            ? colors.warning 
+        const envColor = env.name === 'production'
+          ? colors.error
+          : env.name === 'staging'
+            ? colors.warning
             : colors.info;
-        
+
         const managerCount = env.servers.filter(s => s.role === 'manager').length;
         const workerCount = env.servers.filter(s => s.role === 'worker').length;
-        
+
         let clusterInfo = '';
         if (managerCount > 0 || workerCount > 0) {
           const parts = [];

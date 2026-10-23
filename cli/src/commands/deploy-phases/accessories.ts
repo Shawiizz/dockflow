@@ -3,7 +3,6 @@
  * the deploy of the accessories stack.
  */
 
-import { relative } from 'path';
 import { getLayout } from '../../utils/config';
 import * as Compose from '../../services/compose';
 import type { ParsedCompose } from '../../services/compose';
@@ -11,12 +10,13 @@ import { ConvergenceError } from '../../services/swarm/convergence';
 import type { DeployContext } from '../deploy-context';
 import { convergenceError } from './app';
 import { ensureProxy } from './shared';
+import { posixRelative } from '../../utils/fs';
 
 /** The key of accessories.yml among the rendered files */
 export function accessoriesKey(): string {
   const layout = getLayout();
   return layout.accessoriesPath
-    ? relative(layout.root, layout.accessoriesPath).replace(/\\/g, '/')
+    ? posixRelative(layout.root, layout.accessoriesPath)
     : '.dockflow/docker/accessories.yml';
 }
 
