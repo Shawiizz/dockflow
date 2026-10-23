@@ -115,7 +115,7 @@ async function serviceHealth(
   serviceName: string,
   deployStartedAt?: Date,
 ): Promise<{ name: string; status: 'healthy' | 'unhealthy' | 'rolled_back' }> {
-  // Check for rollback — fetch both state and completion timestamp in one call
+  // state and completion time of the last update, in one call
   const inspectResult = await sshExec(
     connection,
     `docker service inspect ${shellQuote(serviceName)} --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}|{{.UpdateStatus.CompletedAt}}{{end}}' 2>/dev/null`,
@@ -126,14 +126,13 @@ async function serviceHealth(
     const updateState = state.trim().toLowerCase();
 
     if (updateState === 'rollback_started') {
-      // Actively rolling back right now — always a failure
+      // rolling back right now: always a failure
       return { name: serviceName, status: 'rolled_back' };
     }
 
     if (updateState === 'rollback_completed') {
-      // Only flag if the rollback finished after this deploy started.
-      // A stale rollback_completed from a previous deploy means the service
-      // is running fine on the rolled-back image — not our problem.
+      // only a rollback that finished after this deploy started counts: an older
+      // rollback_completed means the service runs fine on the rolled-back image
       if (!deployStartedAt) {
         return { name: serviceName, status: 'rolled_back' };
       }
@@ -144,7 +143,6 @@ async function serviceHealth(
     }
   }
 
-  // Check task states
   const psResult = await sshExec(
     connection,
     `docker service ps ${shellQuote(serviceName)} --filter 'desired-state=running' --format '{{.CurrentState}}' --no-trunc 2>/dev/null`,

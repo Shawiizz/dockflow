@@ -53,11 +53,7 @@ export async function storedBackups(
   }
 }
 
-/**
- * List available backups, newest first.
- * Queries every node in parallel; a node that does not answer is reported in `unreachable`,
- * never skipped silently.
- */
+/** Backups newest first, from every node in parallel; a node that does not answer is reported in `unreachable`. */
 export async function listBackups(
   allNodes: ClusterNode[],
   stackName: string,
@@ -100,7 +96,7 @@ export async function listBackups(
       const meta = parseMetadata(chunk.trim());
       if (!meta) continue;
 
-      // Deduplicate: same backup ID may appear on multiple nodes if replicated
+      // a replicated backup id can appear on several nodes
       if (seenIds.has(meta.id)) continue;
       seenIds.add(meta.id);
 

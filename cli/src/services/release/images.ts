@@ -66,11 +66,7 @@ export function removeImagesCommand(images: string[]): string {
   );
 }
 
-/**
- * Compute which images from removed releases can be deleted: anything not used
- * by a running stack, not referenced by a kept release, and not tagged :latest.
- * Returns a deduplicated list.
- */
+/** The images of removed releases that no running stack or kept release refers to, never `:latest`, without duplicates. */
 export function computeOrphanImages(
   runningImagesOutput: string,
   keptComposeYaml: string,

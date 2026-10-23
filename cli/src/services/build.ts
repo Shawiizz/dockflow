@@ -1,9 +1,6 @@
 /**
- * Build — Docker/Podman image builds (local and remote).
- *
- * Local builds use tar-stdin: the build context is assembled in memory
- * (with rendered template overrides) and piped to `docker build -`.
- * No temporary files are written to disk.
+ * Build — Docker/Podman image builds, local and remote. A local build assembles the context in
+ * memory, with the rendered template overrides, and pipes it to `docker build -`.
  */
 
 import { resolve, join, relative } from 'path';
@@ -19,17 +16,14 @@ import { parseDockerignore } from '../utils/dockerignore';
 export interface BuildTarget {
   /** Relative path used for `-f` flag (path within the tar) */
   dockerfile: string;
-  /** Absolute path to the Dockerfile on disk */
   dockerfileAbsPath: string;
-  /** Absolute path to the context directory on disk */
+  /** absolute path of the context directory */
   context: string;
-  /** Docker image tag */
   tag: string;
   /** Rendered template overrides: relative path (within context) → content */
   renderedOverrides?: Map<string, string>;
   /** Target platform for cross-compilation (e.g. 'linux/arm64') */
   platform?: string;
-  /** Container engine to use for building ('docker' or 'podman') */
   engine?: 'docker' | 'podman';
   /** Build-time variables passed via --build-arg (values already resolved from secrets) */
   args?: Record<string, string>;
@@ -79,9 +73,6 @@ function collectEntries(
   }
 }
 
-/**
- * Build a tar archive for a Docker build context.
- */
 async function buildContextTar(target: BuildTarget): Promise<Buffer> {
   const contextDir = target.context;
   const entries: TarEntry[] = [];
@@ -117,9 +108,8 @@ async function buildContextTar(target: BuildTarget): Promise<Buffer> {
 }
 
 /**
- * Compute rendered overrides for a build target from a RenderedFiles map.
- * Filters entries within the target's context dir, re-keys them relative
- * to the context, and includes the Dockerfile override if it's outside.
+ * The rendered files that fall inside the target's context, keyed relative to it, plus the
+ * rendered Dockerfile when it lives outside the context.
  */
 export function getOverridesForTarget(
   rendered: Map<string, string>,
@@ -223,7 +213,7 @@ export function getBuildTargets(
       ? resolve(resolvedContext, dockerfile)
       : resolve(basePath, dockerfile);
 
-    // Extract build args — supports both object ({ KEY: value }) and array (["KEY=value"]) formats
+    // build args come as a mapping ({ KEY: value }) or a list (["KEY=value"])
     let args: Record<string, string> | undefined;
     if (typeof build === 'object' && !Array.isArray(build)) {
       const rawArgs = (build as Record<string, unknown>).args;
@@ -258,9 +248,6 @@ export function buildEnv(target: Pick<BuildTarget, 'noDefaultAttestations'>, env
   return target.noDefaultAttestations ? { ...env, BUILDX_NO_DEFAULT_ATTESTATIONS: '1' } : env;
 }
 
-/**
- * Build a single Docker image locally via tar-stdin.
- */
 export async function buildImage(target: BuildTarget): Promise<void> {
   const tar = await buildContextTar(target);
   const cmd = target.engine || 'docker';
@@ -379,10 +366,7 @@ export async function buildAll(targets: BuildTarget[]): Promise<BuildResult> {
   return { images: built, durationMs: Date.now() - startTime };
 }
 
-/**
- * Build git auth env vars for cloning via HTTP.
- * Uses GIT_CONFIG_* env vars so the token never appears in process args.
- */
+/** Git auth for cloning over HTTP, through GIT_CONFIG_* env vars so the token never appears in process args. */
 function buildGitAuthEnv(): string {
   const token =
     process.env.GITHUB_TOKEN ||
@@ -418,12 +402,8 @@ export function remoteBuildScript(engine: string, args: Readonly<Record<string, 
 }
 
 /**
- * Build images on a remote server via SSH.
- *
- * 1. Git clone the repo on the remote host
- * 2. Extract build targets locally
- * 3. Execute builds on remote
- * 4. Cleanup temp dir
+ * Builds the images on a remote server over SSH: clones the repo there, checks out the local
+ * commit, builds each target, and removes the temporary directory.
  */
 export async function buildRemote(
   connection: SSHKeyConnection,
@@ -486,8 +466,8 @@ export async function buildRemote(
       );
     }
 
-    // The checkout MUST succeed: building whatever the branch HEAD happens to
-    // be would silently deploy different code than the version claims.
+    // building whatever the branch HEAD happens to be would silently deploy different code
+    // than the version claims
     const qCommitSha = shellQuote(commitSha);
     const checkoutResult = await sshExec(connection, `git -C ${qTmpDir} checkout ${qCommitSha} 2>&1`);
     if (checkoutResult.exitCode !== 0) {

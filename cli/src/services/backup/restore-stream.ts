@@ -33,10 +33,7 @@ function streamEnded(stream: NodeJS.ReadableStream & { readableEnded?: boolean }
   });
 }
 
-/**
- * Streams a backup file into `command` on `sink`: one pipeline when the file is on that node,
- * else a relay through this machine with backpressure.
- */
+/** Streams the backup file (gunzipped when `gunzip`) into `command` on `sink`. */
 export async function streamInto(
   source: ClusterNode,
   file: string,
@@ -65,8 +62,8 @@ export async function streamInto(
   from.stream.on('error', (e: Error) => printDebug(`Backup relay source: ${e.message}`));
   to.stream.on('error', (e: Error) => printDebug(`Backup relay target: ${e.message}`));
 
-  // Whichever side settles first decides: a reader that failed first truncated the stream; a
-  // restore that finished first stopped reading, so the reader is closed.
+  // whichever side settles first decides: a reader that failed first truncated the stream; a
+  // restore that finished first stopped reading, so the reader is closed
   const settled: { first: 'source' | 'sink' | null } = { first: null };
   const fromOutcome = from.done.then(({ exitCode }) => {
     settled.first ??= 'source';

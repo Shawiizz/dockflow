@@ -1,7 +1,6 @@
 /**
- * Metrics — collects and stores deployment metrics on the remote manager.
- *
- * All data is stored in /var/lib/dockflow/metrics/<stack>/
+ * Metrics — stores deployment metrics on the remote manager, one JSON line per deploy under
+ * the metrics dir of the stack.
  */
 
 import { sshExec, shellQuote } from '../utils/ssh';
@@ -9,9 +8,6 @@ import { DOCKFLOW_METRICS_DIR } from '../constants';
 import type { SSHKeyConnection } from '../types';
 import { printDebug } from '../utils/output';
 
-/**
- * Deployment metrics entry
- */
 export interface DeploymentMetric {
   id: string;
   timestamp: string;
@@ -29,9 +25,6 @@ export interface DeploymentMetric {
   node_count: number;
 }
 
-/**
- * Aggregated metrics summary
- */
 export interface MetricsSummary {
   total_deployments: number;
   successful: number;
@@ -46,26 +39,17 @@ export interface MetricsSummary {
   most_deployed_versions: Array<{ version: string; count: number }>;
 }
 
-/**
- * Generate a unique ID for a deployment
- */
 function generateDeploymentId(): string {
   const timestamp = Date.now().toString(36);
   const random = Math.random().toString(36).substring(2, 8);
   return `${timestamp}-${random}`;
 }
 
-/**
- * Get the metrics file path for a stack
- */
 function getMetricsPath(stackName: string): string {
   return `${DOCKFLOW_METRICS_DIR}/${stackName}/deployments.json`;
 }
 
-/**
- * Parse JSONL (JSON Lines) output into typed objects.
- * Skips empty and malformed lines.
- */
+/** Parses JSON Lines into objects, skipping empty and malformed lines. */
 export function parseJsonlLines<T = unknown>(raw: string): T[] {
   if (!raw.trim()) return [];
 
@@ -81,10 +65,7 @@ export function parseJsonlLines<T = unknown>(raw: string): T[] {
   return results;
 }
 
-/**
- * Calculate metrics summary from deployment data.
- * Pure function — no SSH.
- */
+/** Pure: no SSH. The average duration counts successful deployments only. */
 export function calculateMetricsSummary(metrics: DeploymentMetric[]): MetricsSummary {
   const now = Date.now();
   const day = 24 * 60 * 60 * 1000;
@@ -138,16 +119,10 @@ export function calculateMetricsSummary(metrics: DeploymentMetric[]): MetricsSum
   };
 }
 
-/**
- * Read and write deployment metrics via SSH.
- */
 export class Metrics {
   constructor(private readonly connection: SSHKeyConnection) {}
 
-  /**
-   * Record a deployment metric and return the raw JSON line
-   * (useful for history-sync replication to other nodes).
-   */
+  /** Appends the metric and returns its JSON line, which history-sync replicates to the other nodes. Throws when the write fails. */
   async writeDeployment(params: {
     stackName: string;
     version: string;
@@ -195,9 +170,6 @@ export class Metrics {
     return entryJson;
   }
 
-  /**
-   * Fetch deployment metrics from the remote server.
-   */
   async fetch(stackName: string, limit?: number): Promise<DeploymentMetric[]> {
     const metricsPath = getMetricsPath(stackName);
 
@@ -209,10 +181,7 @@ export class Metrics {
     return parseJsonlLines<DeploymentMetric>(result.stdout);
   }
 
-  /**
-   * Clear old metrics, keeping only the last N entries.
-   * Returns the number of entries removed.
-   */
+  /** Keeps the last `keepLast` entries and returns how many were removed. */
   async prune(stackName: string, keepLast: number = 1000): Promise<number> {
     const metricsPath = getMetricsPath(stackName);
 

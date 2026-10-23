@@ -99,10 +99,7 @@ async function sendWebhook(webhook: WebhookConfig, payload: DeployEventPayload):
   }
 }
 
-/**
- * Send all configured webhooks for a deployment event.
- * Best-effort — never throws.
- */
+/** Sends the webhooks that match the event, in parallel. Never throws. */
 export async function notify(
   webhooks: WebhookConfig[] | undefined,
   payload: DeployEventPayload,

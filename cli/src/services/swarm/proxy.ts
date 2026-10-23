@@ -68,10 +68,7 @@ export function parseListeners(output: string): Array<{ port: number; process?: 
 export class SwarmProxy {
   constructor(private readonly connection: SSHKeyConnection) {}
 
-  /**
-   * Ensure the Traefik stack is running with the current configuration.
-   * Skips when it already runs with the same generated stack.
-   */
+  /** Deploys the Traefik stack, unless it already runs with the same configuration hash. */
   async ensureRunning(proxyConfig: ProxyConfig): Promise<void> {
     const configHash = SwarmProxy.configHash(proxyConfig);
     const state = await this.currentState();
@@ -84,13 +81,12 @@ export class SwarmProxy {
 
     printDim(state.replicas ? 'Updating Traefik reverse proxy...' : 'Deploying Traefik reverse proxy...');
 
-    // Create overlay network (idempotent)
+    // the network already existing is fine
     await sshExec(
       this.connection,
       `docker network create --driver overlay --attachable ${TRAEFIK_NETWORK_NAME} 2>/dev/null || true`,
     );
 
-    // Create certs volume if ACME enabled (idempotent)
     const acme = proxyConfig.acme !== false;
     if (acme) {
       await sshExec(
@@ -216,10 +212,7 @@ export class SwarmProxy {
     return createHash('sha256').update(SwarmProxy.generateCompose(proxyConfig)).digest('hex').slice(0, 16);
   }
 
-  /**
-   * Generate the Traefik docker-compose YAML from config.
-   * With a config hash, the service carries it as a label.
-   */
+  /** The Traefik stack file for this configuration; with `configHash`, the Traefik service carries it as a label. */
   static generateCompose(proxyConfig: ProxyConfig, configHash?: string): string {
     const acme = proxyConfig.acme !== false;
     const dashboard = proxyConfig.dashboard?.enabled === true;
@@ -257,7 +250,6 @@ export class SwarmProxy {
       command.push('--api.dashboard=true');
     }
 
-    // Ports
     const ports: Array<{ target: number; published: number; protocol: string; mode: string }> = [
       { target: 80, published: 80, protocol: 'tcp', mode: 'host' },
     ];
@@ -265,16 +257,14 @@ export class SwarmProxy {
       ports.push({ target: 443, published: 443, protocol: 'tcp', mode: 'host' });
     }
 
-    // Volumes
     const volumes: string[] = [];
     if (acme) {
       volumes.push(`${TRAEFIK_CERTS_VOLUME}:/letsencrypt`);
     }
 
-    // Deploy labels
     const labels: string[] = ['traefik.enable=false'];
     if (dashboard && dashboardDomain) {
-      labels.length = 0; // Remove the disable label
+      labels.length = 0;
       labels.push(
         'traefik.enable=true',
         `traefik.http.routers.traefik-dashboard.rule=Host(\`${dashboardDomain}\`)`,
@@ -294,8 +284,6 @@ export class SwarmProxy {
       labels.push(`${CONFIG_HASH_LABEL}=${configHash}`);
     }
 
-    // Build the compose structure as YAML
-    // Using string template for precise control over output format
     const commandYaml = command.map((c) => `      - "${c}"`).join('\n');
     const portsYaml = ports
       .map((p) => `      - target: ${p.target}\n        published: ${p.published}\n        protocol: ${p.protocol}\n        mode: ${p.mode}`)

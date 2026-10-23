@@ -111,7 +111,6 @@ export function recordCommand(project: string, rules: readonly PortRule[], user:
   );
 }
 
-/** Whether a host address only answers locally */
 function isLoopback(address: string): boolean {
   const bare = address.replace(/^\[|\]$/g, '');
   return bare === '::1' || bare.startsWith('127.');

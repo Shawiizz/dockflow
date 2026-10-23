@@ -102,10 +102,9 @@ export async function restoreEntry(
   const backupId = entry.id;
   const backupDir = buildBackupDir(context.stackName, service);
 
-  // Determine compression from argument or metadata
   const backupCompression = compression ?? entry.compression;
 
-  // Volume restore uses a different flow (docker run instead of docker exec)
+  // volumes have their own flow (docker run, not docker exec in the service)
   if (dbType === 'volume') {
     return restoreVolumes(context.stackName, service, backupId, backupCompression, node);
   }
@@ -118,9 +117,9 @@ export async function restoreEntry(
 
   const dataFile = buildDataFilePath(backupDir, backupId, dbType, backupCompression);
 
-  // Refuse to stream an empty/corrupt backup into the database — for
-  // postgres/mysql an empty stream would be a silent no-op "success",
-  // and file-overwriting restores (redis) would destroy the live data.
+  // an empty or corrupt backup must not reach the database: for postgres and mysql an empty
+  // stream would be a silent no-op "success", and a file-overwriting restore (redis) would
+  // destroy the live data
   const verdict = await verifyBeforeRestore(nodeConn, dataFile, backupCompression, recordedIntegrity(dbType, backupCompression, entry.integrity), backupId, options);
   if (verdict) return err(verdict);
 
@@ -131,7 +130,7 @@ export async function restoreEntry(
     return err(e instanceof Error ? e : new Error(String(e)));
   }
 
-  // The container may have moved to another node since the backup was taken
+  // the container may run on another node than the one holding the backup
   const dockerExec = `docker exec -i ${shellQuote(containerId)} sh -c ${shellQuote(restoreScript)}`;
   let result: { exitCode: number; stderr: string };
   try {
@@ -150,19 +149,16 @@ export async function restoreEntry(
     ));
   }
 
-  // For strategies that kill the container as part of restore (e.g. Redis SHUTDOWN NOSAVE),
-  // a non-zero exit from docker exec is expected — the process died mid-exec.
-  // Only treat it as an error if there's actual stderr output.
+  // a restore that kills the container (redis SHUTDOWN NOSAVE) makes docker exec exit non-zero
+  // as the process dies mid-exec: only stderr output makes that an error
   const restoreKillsContainer = DB_TYPES[dbType].requiresServiceRestart;
   const detail = stripRefusalMarker(result.stderr).trim();
   if (result.exitCode !== 0 && (!restoreKillsContainer || detail)) {
     return err(new Error(`Restore failed: ${detail || `exit code ${result.exitCode}`}`));
   }
 
-  // If the restore killed the container (e.g. Redis SHUTDOWN NOSAVE):
-  // Swarm's restart_policy brings it back automatically in most cases.
-  // We also force a service update as a safety net for setups where the restart
-  // policy is disabled or exhausted — non-fatal if it fails.
+  // Swarm's restart_policy usually brings the container back; the forced service update covers
+  // a policy that is disabled or exhausted, and a failure of it is not fatal
   if (restoreKillsContainer) {
     await context.sleep(RESTART_PAUSE_MS);
     try {

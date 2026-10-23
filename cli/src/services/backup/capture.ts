@@ -76,7 +76,6 @@ export async function backupDatabase(
 
   const durationMs = Date.now() - startTime;
 
-  // Get file size
   const sizeCmd = `SIZE=$(stat -c %s ${shellQuote(filePath)} 2>/dev/null || echo 0) && echo $SIZE`;
   const sizeResult = await sshExec(nodeConn, sizeCmd);
   const sizeBytes = parseInt(sizeResult.stdout.trim(), 10) || 0;
@@ -135,7 +134,6 @@ async function getContainerMounts(
   }
 }
 
-/** Backup all named volumes and bind mounts for a service container */
 export async function backupVolumes(
   stackName: string,
   service: string,
@@ -156,15 +154,14 @@ export async function backupVolumes(
   const startTime = Date.now();
   const stored = storedBackups();
 
-  // Build all file paths upfront for reliable cleanup
+  // known upfront so every file can be removed if any archive fails
   const filePaths = mounts.map(m => buildDataFilePath(backupDir, backupId, 'volume', compression, m.name));
 
-  // Backup all volumes in parallel (independent SSH calls, all on nodeConn)
+  // the archives are independent, so they run in parallel
   const backupResults = await Promise.all(mounts.map(async (mount, i) => {
     const filePath = filePaths[i];
 
-    // Named volumes: tar via temporary alpine container
-    // Bind mounts: tar the host path directly
+    // a named volume is archived from a temporary alpine container, a bind mount from its host path
     const tarCmd = mount.mountType === 'volume'
       ? `docker run --rm -v ${shellQuote(mount.source)}:/backup-source:ro alpine tar cf - -C /backup-source .`
       : `tar cf - -C ${shellQuote(mount.source)} .`;
@@ -174,8 +171,8 @@ export async function backupVolumes(
       return { ok: false as const, mount, error: result.stderr };
     }
 
-    // Same pipeline pitfall as db dumps: a failed tar still exits through
-    // gzip with status 0. A legitimate tar is never empty (trailer blocks).
+    // same pipeline pitfall as db dumps: a failed tar still exits through gzip with status 0;
+    // a legitimate tar is never empty (it has trailer blocks)
     const archiveIssue = await checkArchive(nodeConn, filePath, compression, 'tar');
     if (archiveIssue) {
       return { ok: false as const, mount, error: `${archiveIssue}${result.stderr.trim() ? ` (${result.stderr.trim()})` : ''}` };
@@ -187,7 +184,7 @@ export async function backupVolumes(
     return { ok: true as const, mount, sizeBytes };
   }));
 
-  // Check for failures — clean up all files for this backup ID on any error
+  // one failure removes every file of this backup id
   const failed = backupResults.find(r => !r.ok);
   if (failed) {
     const cleanupPaths = filePaths.map(f => shellQuote(f)).join(' ');

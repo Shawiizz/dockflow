@@ -146,6 +146,7 @@ export function syncNonTargetedImageTags(
   return { ...local, services };
 }
 
+/** The distinct image references of all services. */
 export function getImages(compose: ParsedCompose): string[] {
   const images = new Set<string>();
   for (const svc of Object.values(compose.services)) {

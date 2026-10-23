@@ -1,7 +1,5 @@
 /**
- * Audit — appends structured audit log entries on the remote manager.
- *
- * Each stack has its own log file at /var/lib/dockflow/audit/{stack}.log.
+ * Audit — appends audit log entries on the remote manager, one log file per stack.
  * Lines are pipe-delimited: timestamp | result | version | performer | message
  */
 
@@ -13,14 +11,7 @@ import { getPerformer } from '../utils/config';
 export class Audit {
   constructor(private readonly connection: SSHKeyConnection) {}
 
-  /**
-   * Append a single audit entry to the stack's audit log.
-   *
-   * Format: ISO8601 | result | version | performer | message
-   *
-   * This method is intentionally fire-and-forget from the caller's
-   * perspective — wrap calls in try/catch and log warnings on failure.
-   */
+  /** Appends one entry and returns the line written. Throws when the write fails: callers treat the audit as best-effort. */
   async writeEntry(
     stackName: string,
     result: string,

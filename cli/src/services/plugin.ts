@@ -52,10 +52,6 @@ pluginEnv.addFilter('basename', pluginBasename);
 // A project's own override file is rendered like the project's other files.
 const projectEnv = new nunjucks.Environment(undefined, { autoescape: false });
 
-// ---------------------------------------------------------------------------
-// Sources
-// ---------------------------------------------------------------------------
-
 export interface PluginSource {
   origin: 'local' | 'builtin';
   /** Shown in messages: a project-relative directory, or `built-in`. */
@@ -141,10 +137,6 @@ export function resolvePluginSource(
   );
 }
 
-// ---------------------------------------------------------------------------
-// Manifest and inputs
-// ---------------------------------------------------------------------------
-
 export function parseManifest(text: string, where: string): PluginManifest {
   let raw: unknown;
   try {
@@ -205,10 +197,6 @@ export function resolveInputs(
   return values;
 }
 
-// ---------------------------------------------------------------------------
-// Expansion
-// ---------------------------------------------------------------------------
-
 export interface PluginExpansion {
   uploads: UploadItem[];
   hooks: Partial<Record<HookPhase, HookEntryInput[]>>;
@@ -230,7 +218,7 @@ function render(env: nunjucks.Environment, template: string, context: object, wh
     return env.renderString(template, context);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    // An optional input without a default is left undefined: name the one the line uses.
+    // an optional input without a default is left undefined: name the one the line uses
     const at = /Line (\d+), Column \d+\]\s*attempted to output null or undefined value/.exec(message);
     const inputs = (context as { inputs?: Record<string, unknown> }).inputs ?? {};
     const unset = at
@@ -292,7 +280,7 @@ async function materializeFile(
     if (!existsSync(abs) || !statSync(abs).isFile()) {
       throw new ConfigError(`${instance.where}: file not found in the project: ${relPath}`);
     }
-    // The project's own file: its variables plus the plugin's inputs.
+    // the project's own file sees its variables plus the plugin's inputs
     content = render(
       projectEnv,
       readFileSync(abs, 'utf-8'),
@@ -318,9 +306,6 @@ async function materializeFile(
   return { key, label: `${instance.display} › ${relPath}` };
 }
 
-/**
- * Expand every declared plugin, in declaration order.
- */
 export async function expandPlugins(uses: PluginUse[] | undefined, opts: ExpandOptions): Promise<PluginExpansion> {
   const expansion: PluginExpansion = { uploads: [], hooks: {}, files: new Map(), summary: [] };
   const seenIds = new Map<string, { entry: number; explicit: boolean }>();
@@ -333,7 +318,7 @@ export async function expandPlugins(uses: PluginUse[] | undefined, opts: ExpandO
     const id = use.id ?? manifest.name;
     const previous = seenIds.get(id);
     if (previous !== undefined) {
-      // Say which fix applies: a forgotten id and a repeated one read alike otherwise.
+      // say which fix applies: a forgotten id and a repeated one read alike otherwise
       throw !previous.explicit && use.id === undefined
         ? new ConfigError(
           `plugins #${previous.entry} and #${entry} both use ${manifest.name} without an id`,
@@ -397,10 +382,6 @@ export async function expandPlugins(uses: PluginUse[] | undefined, opts: ExpandO
 
   return expansion;
 }
-
-// ---------------------------------------------------------------------------
-// Merge
-// ---------------------------------------------------------------------------
 
 /** The path an upload writes, so two uploads into one directory are not mistaken for a clash. */
 function effectiveDest(upload: UploadItem, projectRoot: string, files: Map<string, string>): string {
@@ -478,10 +459,6 @@ export async function loadConfigWithPlugins(args: {
     pluginSummary: expansion.summary,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Listing
-// ---------------------------------------------------------------------------
 
 export interface PluginListing {
   name: string;

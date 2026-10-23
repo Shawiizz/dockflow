@@ -27,9 +27,7 @@ import { CLIError, ConnectionError, ErrorCode } from '../utils/errors';
 import { sshExec } from '../utils/ssh';
 import { getFullConnectionInfo, getManagersForEnvironment } from '../utils/servers';
 
-/**
- * Lock information stored in the lock file
- */
+/** The content of the lock file. */
 export interface LockData {
   performer: string;
   started_at: string;
@@ -40,9 +38,6 @@ export interface LockData {
   renewed_at?: string;
 }
 
-/**
- * Lock status with computed fields
- */
 export interface LockStatus {
   locked: boolean;
   data?: LockData;
@@ -95,9 +90,6 @@ export function staleTakeoverMessage(holder: LockData | null, minutes: number | 
   return `Lock of ${holder.performer}${age} is stale; taking it over`;
 }
 
-/**
- * Lock — manages deployment locks for a single stack on a remote server.
- */
 export class Lock {
   private readonly locksDir: string;
   private readonly lockFile: string;
@@ -337,9 +329,6 @@ export class Lock {
   }
 }
 
-/**
- * Factory function to create a Lock instance
- */
 export function createLock(
   connection: SSHKeyConnection,
   stackName: string,

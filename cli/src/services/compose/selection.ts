@@ -68,10 +68,6 @@ export function getExternalVolumes(compose: ParsedCompose): string[] {
   return externalNames(compose.volumes);
 }
 
-/**
- * Extract all image tags referenced in services.
- * Returns a deduplicated list.
- */
 export function hasServices(compose: ParsedCompose): boolean {
   return Object.keys(compose.services).length > 0;
 }

@@ -1,8 +1,6 @@
 /**
  * Compose templates — renders everything under .dockflow/ through Nunjucks, in memory,
  * and resolves the compose file out of the rendered files.
- *
- * No file is ever written to disk. Returns a Map<relativePath, renderedContent>.
  */
 
 import { readFileSync, existsSync } from 'fs';
@@ -19,15 +17,11 @@ import type { TemplateContext } from '../../types';
 import type { ComposeRenderContext, RenderedComposeResult, RenderedFiles } from './types';
 
 /**
- * Render all templates purely in memory.
- * The original project files are NEVER modified — nothing is written to disk.
+ * Renders every file under .dockflow/ (plugin files excepted) and the custom templates from
+ * config.templates, which land at their dest path. Nothing is written to disk.
  *
- * Returns a Map<relativePath, renderedContent> where keys use forward slashes
- * and are relative to projectRoot (e.g. ".dockflow/docker/docker-compose.yml").
- *
- * Filenames are preserved verbatim — name a file exactly as it should land on the server.
- * All files inside .dockflow/ are rendered through Nunjucks.
- * Custom templates from config.templates are rendered at their dest path.
+ * Keys are relative to projectRoot with forward slashes (e.g. ".dockflow/docker/docker-compose.yml").
+ * Filenames are kept verbatim: name a file exactly as it should land on the server.
  */
 export function renderTemplates(
   projectRoot: string,
@@ -154,9 +148,8 @@ function placeholderWarnings(
 }
 
 /**
- * Render templates and extract compose content in one call.
- * Eliminates the duplicate render→findCompose→getDirPath boilerplate
- * shared between deploy.ts and build.ts.
+ * Renders the templates and returns them with the compose content. Throws a ConfigError when no
+ * compose file is rendered; with `uploadOnly`, a missing compose file becomes an empty one.
  */
 export function renderAndResolveCompose(
   ctx: ComposeRenderContext,

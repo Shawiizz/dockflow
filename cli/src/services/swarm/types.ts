@@ -3,10 +3,6 @@
 import type { ParsedCompose } from '../compose';
 import type { ProxyConfig } from '../../utils/config';
 
-// ---------------------------------------------------------------------------
-// Stack-level types
-// ---------------------------------------------------------------------------
-
 export interface StackInfo {
   name: string;
   services: number;
@@ -41,10 +37,6 @@ export interface InternalHealthResult {
   message?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Deploy inputs
-// ---------------------------------------------------------------------------
-
 export interface StackDeployInput {
   stackName: string;
   env: string;
@@ -66,10 +58,6 @@ export interface AccessoryDeployInput {
   force?: boolean;
   proxy?: ProxyConfig;
 }
-
-// ---------------------------------------------------------------------------
-// Logs
-// ---------------------------------------------------------------------------
 
 /** Where a log line comes from: `web.2` among the service's running instances. */
 export interface LogSource {

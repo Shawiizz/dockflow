@@ -27,11 +27,7 @@ const DEFAULT_RESTART_POLICY: Record<string, unknown> = {
   max_attempts: 3,
 };
 
-/**
- * Deep merge `source` into `target`.
- * Source values win at leaf level (scalars, arrays).
- * Objects are merged recursively.
- */
+/** Merges objects recursively; `source` wins at the leaves (scalars and arrays are replaced, not merged). */
 function deepMerge(
   target: Record<string, unknown>,
   source: Record<string, unknown>,
@@ -63,10 +59,6 @@ function deepMerge(
 const PER_NODE_MODES = new Set(['global', 'global-job']);
 
 /**
- * Inject Swarm deploy defaults (update_config + rollback_config) into all services.
- * User-provided values take precedence via deep merge.
- */
-/**
  * Drop `build` from every service.
  *
  * Dockflow reads that section to know what to build, but `docker stack deploy` cannot build
@@ -82,6 +74,7 @@ export function stripBuildSections(compose: ParsedCompose): void {
   }
 }
 
+/** Adds update_config and rollback_config defaults to every service; the user's values win. */
 export function injectSwarmDefaults(compose: ParsedCompose): void {
   for (const [name, svc] of Object.entries(compose.services)) {
     const userDeploy = (svc.deploy ?? {}) as Record<string, unknown>;
@@ -107,10 +100,7 @@ export function injectSwarmDefaults(compose: ParsedCompose): void {
   compose.raw.services = compose.services;
 }
 
-/**
- * Inject accessories-specific deploy config (restart_policy only).
- * User values take precedence.
- */
+/** Adds the accessories restart_policy default (and one replica unless the service says otherwise); the user's values win. */
 export function injectAccessoriesDefaults(compose: ParsedCompose): void {
   for (const [name, svc] of Object.entries(compose.services)) {
     const deploy = (svc.deploy ?? {}) as Record<string, unknown>;

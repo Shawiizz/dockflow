@@ -58,11 +58,7 @@ function children(node: TemplateNode): TemplateNode[] {
   });
 }
 
-/**
- * Every `current.env` reference a template writes out whose key is not declared.
- *
- * @param envKeys  The keys of `current.env` for the server being deployed to.
- */
+/** Every `current.env` reference a template writes out whose key is not in `envKeys`, the keys declared for the target server. */
 export function findUndefinedEnvReferences(template: string, envKeys: Iterable<string>): UndefinedEnvReference[] {
   let root: TemplateNode;
   try {
@@ -100,9 +96,6 @@ export function findUndefinedEnvReferences(template: string, envKeys: Iterable<s
   return found;
 }
 
-/**
- * Human-readable lines describing the references, one per finding.
- */
 export function describeUndefinedEnvReferences(file: string, references: UndefinedEnvReference[], serverName: string): string[] {
   return references.map(({ name, line, suggestion }) => {
     const hint = suggestion

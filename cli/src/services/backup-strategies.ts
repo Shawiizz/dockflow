@@ -12,8 +12,6 @@ import { ConfigError, ValidationError } from '../utils/errors';
 import { shellQuote } from '../utils/ssh';
 import { DOCKFLOW_BACKUPS_DIR } from '../constants';
 
-// ─── Types ────────────────────────────────────────────────────────────────
-
 export interface MountInfo {
   /** 'volume' for named Docker volumes, 'bind' for host-mounted paths */
   mountType: 'volume' | 'bind';
@@ -37,8 +35,6 @@ export type ArchiveIntegrity = 'tar' | 'gzip' | 'trailer' | 'opaque';
 
 export const ARCHIVE_INTEGRITIES: readonly ArchiveIntegrity[] = ['tar', 'gzip', 'trailer', 'opaque'];
 
-// ─── Types of backup ──────────────────────────────────────────────────────
-
 export const DB_TYPES: Record<Exclude<BackupDbType, 'volume'>, { fileExtension: string; requiresServiceRestart: boolean }> = {
   postgres: { fileExtension: 'sql', requiresServiceRestart: false },
   mysql: { fileExtension: 'sql', requiresServiceRestart: false },
@@ -51,11 +47,9 @@ export const DB_TYPES: Record<Exclude<BackupDbType, 'volume'>, { fileExtension: 
 /** Last line of a plain-text postgres/mysql dump taken with `compression: none`; an SQL comment on restore. */
 export const DUMP_TRAILER = '-- DOCKFLOW_DUMP_END';
 
-/** Written by the in-container restore script on stderr, read back by `services/backup.ts`. */
+/** Written by the in-container restore script on stderr, read back by `backup/restore.ts`. */
 export const RESTORE_REFUSAL_MARKER = 'DOCKFLOW_REFUSED: ';
 
-// ─── In-container scripts ─────────────────────────────────────────────────
-//
 // The container's own shell reads its credentials from its own environment, so no secret appears
 // on the host command line, and a password with `$`, spaces or quotes arrives intact.
 
@@ -259,8 +253,6 @@ export function stripRefusalMarker(stderr: string): string {
     .join('\n');
 }
 
-// ─── Pure helpers ─────────────────────────────────────────────────────────
-
 /**
  * Runs `producer` on a node and writes its stdout to `remotePath` (mode 0600, directory created),
  * exiting with the PRODUCER's status, or gzip's when the producer succeeded: without pipefail a gzip
@@ -323,7 +315,6 @@ export function buildDiscardScript(mountDir: string, id8: string): string {
   return `d=${shellQuote(mountDir)}; rm -rf "$d/${restoreDirName(id8)}"`;
 }
 
-/** Convert a mount destination path to a safe filename component */
 export function sanitizePathName(mountPath: string): string {
   return mountPath.replace(/^\/+/, '').replace(/\//g, '-') || 'root';
 }
@@ -373,7 +364,6 @@ export function buildVerifyScript(remotePath: string, compression: 'gzip' | 'non
   return lines.join('\n');
 }
 
-/** Strip the stack name prefix from a Docker volume name for cleaner filenames */
 function shortVolumeName(volumeName: string, stackName: string): string {
   const prefix = `${stackName}_`;
   return volumeName.startsWith(prefix) ? volumeName.slice(prefix.length) : volumeName;
@@ -432,7 +422,6 @@ export function parseContainerMounts(
   return infos;
 }
 
-/** Derive the data file path for a backup from its metadata */
 export function buildDataFilePath(
   backupDir: string,
   id: string,
@@ -453,7 +442,6 @@ export function buildDataFilePath(
   return `${backupDir}/${id}${volPart}.${ext}${suffix}`;
 }
 
-/** Backup directory for a service within a stack */
 export function buildBackupDir(stackName: string, service: string): string {
   return `${DOCKFLOW_BACKUPS_DIR}/${stackName}/${service}`;
 }
@@ -490,10 +478,7 @@ export function parseRetention(raw: string | undefined, fallback: number): numbe
   return Number.parseInt(raw, 10);
 }
 
-/**
- * Select which backups to delete given a retention count.
- * Sorts newest-first defensively, keeps the first `retentionCount`.
- */
+/** The backups beyond the newest `retentionCount`; sorts first, so the order of `entries` does not matter. */
 export function selectBackupsToPrune<T extends OrderedBackup>(entries: T[], retentionCount: number): T[] {
   const sorted = [...entries].sort(newestBackupFirst);
   if (sorted.length <= retentionCount) return [];

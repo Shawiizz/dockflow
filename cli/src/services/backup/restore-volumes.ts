@@ -91,7 +91,7 @@ async function restoreVolumesOn(
     }
   }
 
-  // Every archive, before anything is changed
+  // every archive is verified before anything is changed
   for (const record of records) {
     const filePath = buildDataFilePath(backupDir, backupId, 'volume', compression, record.name);
     const archiveIssue = await checkArchive(nodeConn, filePath, compression, 'tar');
@@ -103,7 +103,7 @@ async function restoreVolumesOn(
     }
   }
 
-  // Every target, before anything is written: a missing one must not be created empty by docker run -v
+  // every target is resolved before anything is written: a missing one must not be created empty by docker run -v
   const existing = await dockerVolumeNames(nodeConn);
   const plans: RestorePlan[] = [];
   for (const record of records) {

@@ -1,9 +1,6 @@
 /**
- * History Sync — audit/metrics replication module.
- *
- * Replicates audit and metrics entries from the manager node
- * to all other Swarm nodes via SSH. Best-effort only — failures
- * are logged as warnings and never block a deploy.
+ * History sync — replicates audit and metrics entries from the manager to the other Swarm nodes
+ * over SSH. Best-effort: failures are warnings and never block a deploy.
  */
 
 import type { SSHKeyConnection } from '../types';
@@ -11,9 +8,7 @@ import { sshExec, shellQuote } from '../utils/ssh';
 import { printWarning, printDebug } from '../utils/output';
 import { DOCKFLOW_AUDIT_DIR, DOCKFLOW_METRICS_DIR } from '../constants';
 
-/**
- * Sync a single audit + metrics entry to one remote node.
- */
+/** Appends one audit and one metrics entry on a node. A failure is a warning, never a throw. */
 export async function syncToNode(
   targetConnection: SSHKeyConnection,
   stackName: string,
@@ -38,10 +33,7 @@ export async function syncToNode(
   }
 }
 
-/**
- * Sync audit + metrics entries to all non-manager nodes.
- * Best-effort — never throws.
- */
+/** Syncs the entries to every non-manager node in parallel. Never throws. */
 export async function syncToAllNodes(
   otherConnections: SSHKeyConnection[],
   stackName: string,

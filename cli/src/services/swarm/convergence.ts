@@ -116,13 +116,12 @@ export async function waitForConvergence(
 
     lastStatuses = statuses;
 
-    // Single SSH call to get all update states (used for both convergence check and failure detection)
+    // one SSH call for all update states, used by the convergence check and the failure detection
     const updateStates = await serviceUpdateStates(connection, lines);
 
     if (allConverged) {
-      // Before declaring convergence, verify no service has an in-progress update.
-      // During a redeploy, old replicas may already match the desired count before
-      // the rolling update starts. We must wait for the update to finish.
+      // during a redeploy the old replicas may already match the desired count before the
+      // rolling update starts: wait for the update to finish
       const updating = updatingServices(updateStates);
       if (updating.length > 0) {
         printDebug(`Update in progress: ${updating.join(', ')}`);
@@ -135,7 +134,6 @@ export async function waitForConvergence(
       return;
     }
 
-    // Detect rollback/crash-loop states from the same inspection data
     try {
       detectFailingFromStates(updateStates, options.deployStartedAt ?? null);
     } catch (error) {
@@ -180,7 +178,7 @@ export async function waitForConvergence(
     await clock.sleep(interval);
   }
 
-  // Timeout — use last known statuses
+  // timed out: report from the last known statuses
   const notConverged = lastStatuses.filter((s) => {
     const match = s.match(/(\d+)\/(\d+)$/);
     return !match || match[1] !== match[2];
@@ -199,10 +197,7 @@ export async function waitForConvergence(
   );
 }
 
-/**
- * Fetch the UpdateStatus.State for all services in a single SSH call.
- * Returns a Map of service name → state (lowercase).
- */
+/** The update state (lowercase) and start time of every listed service, in a single SSH call. */
 async function serviceUpdateStates(connection: SSHKeyConnection, serviceLines: string[]): Promise<Map<string, UpdateState>> {
   const serviceNames = serviceLines.map((l) => l.split('\t')[0]).filter(Boolean);
   if (serviceNames.length === 0) return new Map();
@@ -231,10 +226,7 @@ function startedByThisDeploy(startedAt: string | null, deployStartedAt: number |
   return Number.isNaN(started) || started >= deployStartedAt;
 }
 
-/**
- * Detect services in rollback or crash-loop states during convergence.
- * Throws immediately on detection.
- */
+/** Throws a ConvergenceError at once for a service rolled back by this deploy or stuck in a paused update. */
 function detectFailingFromStates(states: Map<string, UpdateState>, deployStartedAt: number | null): void {
   const rolledBack: string[] = [];
   const stuck: string[] = [];
@@ -266,7 +258,6 @@ function detectFailingFromStates(states: Map<string, UpdateState>, deployStarted
   }
 }
 
-/** Return service names that have an in-progress update (state = "updating"). */
 function updatingServices(states: Map<string, UpdateState>): string[] {
   return [...states.entries()]
     .filter(([, { state }]) => state === 'updating')

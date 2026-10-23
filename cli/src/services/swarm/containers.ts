@@ -249,8 +249,8 @@ export class SwarmContainers {
     await Promise.all(running.map(async (task) => {
       const found = await findContainerForTask(task.id, allConns);
       if (!found) {
-        // Never skip silently: a missing container means partial logs —
-        // typically an unreachable node or a connection list missing workers.
+        // never skip silently: a missing container means partial logs, typically an
+        // unreachable node or a connection list missing workers
         printWarning(
           `Logs incomplete: container for task ${task.id.slice(0, 12)} (node ${task.node}) not found on any reachable node`,
         );

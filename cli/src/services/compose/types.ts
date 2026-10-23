@@ -13,10 +13,7 @@ export interface ComposeRenderContext {
   [key: string]: unknown;
 }
 
-/**
- * Result of renderTemplates — a Map of relative paths to rendered content.
- * No files are written to disk. Keys use forward slashes.
- */
+/** Rendered template files by relative path (forward slashes). Nothing is written to disk. */
 export type RenderedFiles = Map<string, string>;
 
 export interface ParsedCompose {

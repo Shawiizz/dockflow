@@ -62,7 +62,7 @@ async function stuckServices(connection: SSHKeyConnection, stackName: string): P
         return svc;
       }
     } catch {
-      // Ignore unparseable output
+      // unparseable output counts as not stuck
     }
     return null;
   }));

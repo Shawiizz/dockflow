@@ -74,8 +74,6 @@ export function resolveHookEntries(
   });
 }
 
-// ─── Local bash resolution ────────────────────────────────────
-//
 // Local hooks run through bash. On Windows, plain `bash` in PATH usually
 // resolves to the System32 WSL stub, which fails with a cryptic
 // "execvpe(/bin/bash) failed" when no WSL distro is configured — so Git Bash
@@ -121,8 +119,7 @@ export function resolveLocalBash(): string | null {
     return cachedLocalBash;
   }
 
-  // Any other bash in PATH (MSYS2, Cygwin, scoop…) is fine — only the WSL
-  // stub is rejected.
+  // any other bash in PATH (MSYS2, Cygwin, scoop) is fine; only the WSL stub is rejected
   const fromPath = Bun.which('bash');
   cachedLocalBash = fromPath && !isWslStubPath(fromPath) ? fromPath : null;
   return cachedLocalBash;
@@ -215,7 +212,7 @@ async function execRemote(
 ): Promise<void> {
   const result = await sshExec(connection, program, { stdin: input });
   if (result.stdout.trim()) printRaw(result.stdout.trim());
-  // The entry's own output goes to stdout; stderr only carries a failure to set it up.
+  // the entry's own output goes to stdout; stderr only carries a failure to set it up
   if (result.exitCode !== 0 && result.stderr.trim()) printRaw(result.stderr.trim());
 
   if (result.exitCode !== 0) {
@@ -292,7 +289,7 @@ async function runScriptEntry(entry: ResolvedHookEntry, label: string, rc: Entry
     return;
   }
 
-  // A private directory: the system temp dir is shared, and the script may hold secrets.
+  // a private directory: the system temp dir is shared, and the script may hold secrets
   const tmpDir = mkdtempSync(join(tmpdir(), 'dockflow-hook-'));
   const tmpFile = join(tmpDir, 'hook.sh');
   writeFileSync(tmpFile, content, { mode: 0o700 });
@@ -313,11 +310,9 @@ async function runCommandEntry(entry: ResolvedHookEntry, label: string, rc: Entr
 }
 
 /**
- * Run every entry declared for a phase, in order.
- *
- * Build phases (pre-build, post-build) run locally by default. When
- * remote_build: true they run on the server — pass `remote` to enable this.
- * Upload and deploy phases always run on the server; `remote` is required.
+ * Runs every entry declared for a phase, in order. Build phases run locally unless
+ * `remote_build: true`; the other phases always run on the server. A phase that runs on the
+ * server is skipped with a warning when `remote` is not passed.
  */
 export async function runHook(
   phase: HookPhase,

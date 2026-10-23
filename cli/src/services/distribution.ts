@@ -1,8 +1,6 @@
 /**
- * Distribution — image transfer module.
- *
- * Streams images to nodes via SSH pipe (docker or podman save/load).
- * Also handles registry push and authentication.
+ * Distribution — gets images onto the nodes: `save` piped over SSH into `load` (docker or podman),
+ * from this machine or from the build node, plus registry login and push.
  */
 
 import type { ClientChannel } from 'ssh2';

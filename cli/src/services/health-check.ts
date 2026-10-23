@@ -1,9 +1,6 @@
 /**
- * HealthCheck — swarm-agnostic health checking.
- *
- * Internal health checks (Swarm tasks) are delegated to the
- * injected SwarmStack. HTTP endpoint checks run sequentially with a
- * per-endpoint spinner that updates in place on each retry.
+ * HealthCheck — Swarm task health, delegated to the injected SwarmStack, and HTTP endpoint checks.
+ * Endpoints are checked one at a time, each with a spinner that updates on every retry.
  */
 
 import type { SSHKeyConnection } from '../types';
@@ -14,7 +11,7 @@ import type { HealthCheckConfig, HealthCheckEndpoint } from '../utils/config';
 import type { InternalHealthResult } from './swarm/types';
 import type { SwarmStack } from './swarm/stack';
 
-// Defaults — overridable via config.health_checks.timeout / .interval
+// overridable with health_checks.timeout and health_checks.interval
 const DEFAULT_HEALTHCHECK_TIMEOUT_S = 120;
 const DEFAULT_HEALTHCHECK_INTERVAL_S = 5;
 
@@ -24,9 +21,6 @@ export class HealthCheck {
     private readonly swarm: SwarmStack,
   ) {}
 
-  /**
-   * Internal health check, delegated to the injected SwarmStack.
-   */
   async checkInternalHealth(
     stackName: string,
     config?: HealthCheckConfig,
@@ -93,7 +87,7 @@ export class HealthCheck {
       '-X', method,
     ];
     if (endpoint.validate_certs === false) curlFlags.push('-k');
-    // Shell-escape the URL to avoid injection (no shell expansion in double-quoted string)
+    // single-quoted so the remote shell expands nothing in the URL
     const safeUrl = endpoint.url.replace(/'/g, "'\\''");
     const cmd = `curl ${curlFlags.join(' ')} '${safeUrl}'`;
 
@@ -171,7 +165,7 @@ export class HealthCheck {
           ErrorCode.HEALTH_CHECK_FAILED,
         );
       case 'rollback':
-        // This service only signals the failure — deploy.ts performs the actual rollback.
+        // this only signals the failure: the deploy command performs the rollback
         throw new DeployError(
           `HTTP health checks failed: ${failedEndpoints.join(', ')}`,
           ErrorCode.HEALTH_CHECK_FAILED,

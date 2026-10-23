@@ -1,12 +1,8 @@
 /**
  * Compose — template rendering + docker-compose YAML manipulation.
  *
- * Handles Jinja2/nunjucks template rendering, YAML load/serialize,
- * image tag updates, Swarm deploy config injection, and Traefik label
- * generation — all in pure TypeScript.
- *
- * Template rendering is entirely in-memory — no files are ever
- * written to disk. Returns a Map<relativePath, renderedContent>.
+ * Template rendering, YAML load/serialize, image tag updates, Swarm deploy config injection and
+ * Traefik label generation. Rendering is in-memory: it returns a Map<relativePath, renderedContent>.
  */
 
 export type { ComposeRenderContext, ParsedCompose, RenderedComposeResult, RenderedFiles } from './types';

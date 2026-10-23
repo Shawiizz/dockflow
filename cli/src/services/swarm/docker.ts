@@ -1,5 +1,6 @@
 /**
- * Shared helpers for Swarm operations that search across nodes.
+ * Swarm helpers shared by the swarm modules: task listing, container lookup across nodes, and the
+ * errors of failed docker reads.
  */
 
 import type { SSHKeyConnection } from '../../types';
@@ -31,10 +32,7 @@ export function qualifyServiceName(stackName: string, serviceName: string): stri
   return serviceName.startsWith(`${stackName}_`) ? serviceName : `${stackName}_${serviceName}`;
 }
 
-/**
- * Race every node in parallel for the first container matching `labelFilter`.
- * Used to locate a Swarm-managed container without knowing which node hosts it.
- */
+/** Races every node for the first container matching `labelFilter`: the node hosting a Swarm container is not known. */
 async function findContainerByLabel(
   labelFilter: string,
   conns: SSHKeyConnection[],
@@ -58,7 +56,7 @@ async function findContainerByLabel(
   }
 }
 
-/** List Swarm tasks (running + historical) for a service via the manager. */
+/** The running and historical tasks of a service, as the manager lists them; empty when the listing fails. */
 export async function listSwarmTasks(
   stackName: string,
   serviceName: string,
@@ -82,7 +80,7 @@ export async function listSwarmTasks(
   return tasks;
 }
 
-/** Locate the container (including stopped) backing a specific Swarm task. */
+/** The container backing a Swarm task, stopped ones included. */
 export function findContainerForTask(
   taskId: string,
   conns: SSHKeyConnection[],
@@ -90,7 +88,7 @@ export function findContainerForTask(
   return findContainerByLabel(`label=com.docker.swarm.task.id=${taskId}`, conns, { includeStopped: true });
 }
 
-/** Locate a running container for a Swarm service. `serviceName` may be bare or already qualified. */
+/** A running container of a service; `serviceName` may be bare or already qualified. */
 export function findSwarmContainer(
   stackName: string,
   serviceName: string,

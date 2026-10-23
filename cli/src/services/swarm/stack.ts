@@ -44,13 +44,12 @@ export class SwarmStack {
 
   async deploy(input: StackDeployInput): Promise<Result<void, DeployError>> {
     try {
-      // 1. Create external networks + volumes (always from the full compose)
+      // external networks and volumes come from the full compose, filter or not
       const networks = Compose.externalNetworksToCreate(input.compose, input.stackName);
       const volumes = Compose.getExternalVolumes(input.compose);
       await createExternalResources(this.conn, networks, volumes);
 
-      // 2. When --services filter is set, only those services are deployed, and
-      //    prune is disabled so other running services are left untouched.
+      // with a services filter (--only), prune stays off so the other running services are left untouched
       const prune = !input.servicesFilter?.length;
       this.deployStartedAt = await deployStack(this.conn, this.clock, input.stackName, this.render(input), { prune, withRegistryAuth: true });
       return ok(undefined);
@@ -86,7 +85,7 @@ export class SwarmStack {
 
   async deployAccessory(input: AccessoryDeployInput): Promise<Result<{ deployed: boolean }, DeployError>> {
     try {
-      // Accessories already have injectAccessoriesDefaults applied by caller.
+      // the caller has already applied injectAccessoriesDefaults
       const content = Compose.serialize(input.compose);
       await createExternalResources(this.conn, Compose.externalNetworksToCreate(input.compose, input.stackName), Compose.getExternalVolumes(input.compose));
       const deployed = await deployAccessories(this.conn, this.clock, input.stackName, content, { force: input.force });

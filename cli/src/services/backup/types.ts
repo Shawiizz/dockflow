@@ -19,9 +19,8 @@ export interface BackupBaseEntry {
   compression: 'gzip' | 'none';
   /** The check the backup got when it was taken; absent in metadata written before it existed */
   integrity?: ArchiveIntegrity;
-  /** Host of the node where this backup is stored */
+  /** the node where this backup is stored */
   nodeHost: string;
-  /** SSH port of the node where this backup is stored */
   nodePort: number;
 }
 

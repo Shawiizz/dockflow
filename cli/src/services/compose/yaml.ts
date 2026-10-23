@@ -340,17 +340,12 @@ function parseComposeYaml(content: string, file: string): Record<string, unknown
   return raw;
 }
 
-/**
- * Load and parse a docker-compose YAML file from disk.
- */
 export function load(composePath: string): ParsedCompose {
   const content = readFileSync(composePath, 'utf-8');
   return loadFromString(content, composePath);
 }
 
 /**
- * Parse a docker-compose YAML string into a ParsedCompose.
- *
  * `file` names the source in error messages. Numbers and booleans written where Compose expects
  * strings keep their source text (`PORT: 010` stays `"010"`), and so do octal file modes
  * (`mode: 0440` stays `"0440"`, which Compose reads in base 8). See `parseComposeYaml` for what is

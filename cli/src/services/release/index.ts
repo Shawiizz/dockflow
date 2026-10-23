@@ -1,8 +1,6 @@
 /**
- * Release — manages versioned release directories on the remote manager.
- *
- * Handles rollback to previous releases and cleans up old releases
- * along with their orphaned Docker images.
+ * Release — the versioned release directories on the remote manager: creation, rollback, and
+ * cleanup of old releases with their orphaned Docker images.
  *
  * Remote directory structure:
  *   /var/lib/dockflow/stacks/{stackName}/
@@ -121,7 +119,7 @@ export class Release {
     const tmp = `${stackDir}/${TEMP_PREFIX}${version}-${randomBytes(4).toString('hex')}`;
     const q = shellQuote;
 
-    // Leftovers of an interrupted create are dropped; the deploy lock rules out a concurrent one.
+    // leftovers of an interrupted create are dropped; the deploy lock rules out a concurrent one
     const prepared = await this.shell.run(
       [
         'umask 077',
@@ -205,10 +203,7 @@ export class Release {
     return { previousSymlink };
   }
 
-  /**
-   * Read the compose file from the current release symlink.
-   * Returns null if no release exists yet.
-   */
+  /** The compose file of the release `current` points at, null when there is none yet. */
   async getCurrentComposeContent(stackName: string): Promise<string | null> {
     const result = await this.shell.run(`cat ${shellQuote(`${this.stackDir(stackName)}/${CURRENT_LINK}/${COMPOSE_FILE}`)} 2>/dev/null`);
     return result.exitCode === 0 && result.stdout.trim() ? result.stdout : null;
@@ -242,9 +237,8 @@ export class Release {
   }
 
   /**
-   * Rollback to the previous release. Returns the version rolled back to.
-   * When `previousReleasePath` is supplied the target is used directly;
-   * otherwise the newest release older than current, or other than the failed one, is used.
+   * Rolls back and returns the version rolled back to: `previousReleasePath` when given, else the
+   * newest release older than current, or other than the failed one.
    */
   async rollback(
     stackName: string,
@@ -269,7 +263,7 @@ export class Release {
     }
     const previousDir = this.releaseDir(stackName, previousVersion);
 
-    // A failed redeploy of the same version goes back to that version's previous files.
+    // a failed redeploy of the same version goes back to that version's previous files
     const sameVersion = failedVersion === previousVersion;
     if (failedVersion && this.replaced.has(`${stackName}/${failedVersion}`)) {
       await this.restoreReplaced(stackName, failedVersion);
@@ -282,7 +276,7 @@ export class Release {
 
     printInfo(`Rolling back to ${previousVersion}...`);
 
-    // A release written before the rendered stack was stored only has its compose.
+    // a release written before the rendered stack was stored only has its compose
     const stackResult = await this.shell.run(
       `cat ${shellQuote(`${previousDir}/${RELEASE_STACK_FILE}`)} 2>/dev/null || cat ${shellQuote(`${previousDir}/${COMPOSE_FILE}`)}`,
     );
@@ -377,9 +371,8 @@ export class Release {
   }
 
   /**
-   * Remove a single release directory; a version this process redeployed gets its previous files
-   * back instead. If restoreTo is provided and the `current` symlink points to this version,
-   * restores it to the given target (or removes the symlink if restoreTo is null).
+   * Removes a release directory; a version this process redeployed gets its previous files back
+   * instead. When `current` points at this version, `restoreTo` is the new target (null removes the link).
    */
   async removeRelease(stackName: string, version: string, restoreTo?: string | null): Promise<void> {
     const dir = this.releaseDir(stackName, version);
@@ -402,8 +395,8 @@ export class Release {
   }
 
   /**
-   * Cleanup old releases keeping the N most recent, and current whatever its age.
-   * Also removes orphaned Docker images from deleted releases, here and on `otherNodes`.
+   * Keeps the newest `stack_management.keep_releases` releases, and current whatever its age; the
+   * orphaned images of the removed ones are deleted here and on `otherNodes`.
    */
   async cleanupOldReleases(
     stackName: string,

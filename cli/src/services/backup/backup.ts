@@ -1,13 +1,9 @@
 /**
- * Backup — manages backup and restore operations for accessory databases
- * and Docker volumes.
+ * Backup — backup and restore of accessory databases and Docker volumes. Dumps and restores run
+ * with `docker exec` in the service container; volumes are archived by a temporary Alpine container.
  *
- * Uses SSH + docker exec to run dump/restore commands inside containers,
- * and docker run with temporary Alpine containers for volume backups.
- *
- * Design: backups are stored on the node where the service runs, not necessarily
- * the manager. nodeHost/nodePort are stored in metadata so future operations
- * (restore, prune, list) can connect to the correct node directly.
+ * Backups are stored on the node where the service runs, not necessarily the manager: nodeHost and
+ * nodePort in the metadata let restore, prune and list connect to the right node.
  *
  * The class is the public entry point; the work of each operation lives in the sibling modules.
  */
@@ -56,10 +52,7 @@ export class Backup {
     return findSwarmContainer(this.stackName, service, this.connection, this.nodes.map(node => node.connection));
   }
 
-  /**
-   * Create a backup of an accessory service.
-   * The backup file is written on the node where the container runs.
-   */
+  /** Backs up an accessory service; the file is written on the node where its container runs. */
   async backup(
     service: string,
     config: BackupAccessoryConfig,
@@ -72,18 +65,14 @@ export class Backup {
     const { containerId, connection: nodeConn } = found;
     const stored = () => storedBackups(() => this.list(service), service);
 
-    // Volume backup uses a different flow (docker run instead of docker exec)
+    // a volume backup runs a container (docker run), not docker exec in the service
     if (config.type === 'volume') {
       return backupVolumes(this.stackName, service, containerId, nodeConn, config, compression, stored);
     }
     return backupDatabase(this.stackName, service, containerId, nodeConn, config, compression, stored);
   }
 
-  /**
-   * List available backups, newest first.
-   * Queries every node in parallel; a node that does not answer is reported in `unreachable`,
-   * never skipped silently.
-   */
+  /** Backups newest first, from every node in parallel; a node that does not answer is reported in `unreachable`. */
   async list(service?: string, options: { node?: string } = {}): Promise<Result<BackupListing, Error>> {
     return listBackups(this.nodes, this.stackName, service, options);
   }
@@ -98,10 +87,9 @@ export class Backup {
   }
 
   /**
-   * Restore from a backup.
-   * `backup` is an id to look up on every node, or the entry resolveBackup already found, which
-   * spares a second round of listings (and the wait for a node that does not answer).
-   * Connects to the node holding the backup.
+   * Restores on the node holding the backup. `backup` is an id to look up on every node, or the
+   * entry resolveBackup already found, which spares a second round of listings (and the wait for
+   * a node that does not answer).
    */
   async restore(
     service: string,
@@ -167,9 +155,6 @@ export class Backup {
   }
 }
 
-/**
- * Factory function
- */
 export function createBackup(
   connection: SSHKeyConnection,
   stackName: string,
