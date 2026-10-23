@@ -142,7 +142,7 @@ A command run in a container exits with the container's own code through `ExecEx
 **Stateful classes** (`cli/src/services/*.ts`, no Service suffix):
 - `Metrics` (`metrics.ts`) — deployment metrics read/write, connection-bound
 - `Lock` (`lock.ts`) — deployment lock management (acquire/release with stale detection)
-- `Backup` (`backup.ts`) — backup/restore for accessories, holds manager + worker connections
+- `Backup` (`backup/backup.ts`) — backup/restore for accessories, holds manager + worker connections; its work is split by responsibility in `backup/`: `capture.ts` (dump and volume archives), `listing.ts` (nodes, list, resolve), `prune.ts`, `verify.ts`, `restore.ts`, `restore-volumes.ts`, `restore-stream.ts`, `metadata.ts`, `types.ts` (`index.ts` re-exports the public API)
 - `Audit` (`audit.ts`) — deployment audit log entries on remote manager
 - `Release` (`release.ts`) — release directory management, rollback, cleanup of old releases
 - `HealthCheck` (`health-check.ts`) — HTTP endpoint checks with retry (uses `SwarmStack` for the internal check)
