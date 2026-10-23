@@ -4,6 +4,7 @@
  */
 
 import type { ClientChannel } from 'ssh2';
+import { createHash } from 'node:crypto';
 import { createGzip } from 'node:zlib';
 import { Readable } from 'node:stream';
 import type { SSHKeyConnection } from '../types';
@@ -29,27 +30,46 @@ function saveCommand(image: string, runtime: ContainerRuntime): string {
   return `${runtime} save ${shellQuote(image)} | gzip -1`;
 }
 
-function imageIdCommand(image: string, runtime: ContainerRuntime): string {
-  return `${runtime} images --no-trunc -q ${shellQuote(image)} 2>/dev/null | head -1`;
+/**
+ * What an image is made of: its layers and the config its containers start from. The image id is
+ * no use here: an image store on containerd and a classic one give the same image different ids.
+ */
+export const IMAGE_CONTENT_FORMAT =
+  '{{json .RootFS.Layers}} {{json .Config.Env}} {{json .Config.Cmd}} {{json .Config.Entrypoint}} ' +
+  '{{json .Config.WorkingDir}} {{json .Config.User}} {{json .Config.ExposedPorts}} {{json .Config.Volumes}} ' +
+  '{{json .Config.Labels}} {{json .Config.StopSignal}} {{json .Config.Healthcheck}} {{json .Os}} {{json .Architecture}}';
+
+/** The sha256 of an image's content, as the remote shell prints it. */
+function contentKeyPipeline(ref: string, runtime: ContainerRuntime): string {
+  return `${runtime} image inspect --format ${shellQuote(IMAGE_CONTENT_FORMAT)} ${ref} 2>/dev/null | sha256sum | cut -d' ' -f1`;
 }
 
-export async function getRemoteImageId(
-  connection: SSHKeyConnection,
-  image: string,
-  runtime: ContainerRuntime = 'docker',
-): Promise<string> {
-  const result = await sshExec(connection, imageIdCommand(image, runtime));
-  return result.stdout.trim();
-}
-
-export async function getLocalImageId(image: string, engine: 'docker' | 'podman' = 'docker'): Promise<string> {
-  const proc = Bun.spawn(
-    [engine, 'images', '--no-trunc', '-q', image],
-    { stdout: 'pipe', stderr: 'pipe' },
-  );
+/** The content key of an image on this machine; empty when the engine does not know it. */
+export async function getLocalContentKey(image: string, runtime: ContainerRuntime = 'docker'): Promise<string> {
+  const proc = Bun.spawn([runtime, 'image', 'inspect', '--format', IMAGE_CONTENT_FORMAT, image], { stdout: 'pipe', stderr: 'pipe' });
   const stdout = await new Response(proc.stdout).text();
-  await proc.exited;
-  return stdout.trim().split('\n')[0] || '';
+  if (await proc.exited !== 0 || !stdout.trim()) return '';
+  return createHash('sha256').update(stdout).digest('hex');
+}
+
+/** The content key of an image on a node; empty when the node does not hold it. */
+export async function getRemoteContentKey(connection: SSHKeyConnection, image: string, runtime: ContainerRuntime = 'docker'): Promise<string> {
+  const result = await sshExec(connection, `${runtime} image inspect ${shellQuote(image)} >/dev/null 2>&1 && ${contentKeyPipeline(shellQuote(image), runtime)}`);
+  return result.exitCode === 0 ? result.stdout.trim() : '';
+}
+
+/**
+ * Tags `image` on a node from one of the images of its repository with the content `key`, the
+ * previous version's most often; fails when the node holds none.
+ */
+export function tagSameContentCommand(image: string, key: string, runtime: ContainerRuntime): string {
+  const { name } = parseImageRef(image);
+  return (
+    `for id in $(${runtime} images -q --no-trunc ${shellQuote(name)} 2>/dev/null | sort -u); do ` +
+    'id=${id#sha256:}; ' +
+    `[ "$(${contentKeyPipeline('"$id"', runtime)})" = ${shellQuote(key)} ] && exec ${runtime} tag "$id" ${shellQuote(image)}; ` +
+    'done; exit 1'
+  );
 }
 
 async function pipeToChannel(
@@ -179,32 +199,21 @@ async function streamRemoteToTarget(
   }
 }
 
-/** Tags `image` on the node from the image of that id, when the node holds it; fails otherwise. */
-export function tagByIdCommand(imageId: string, image: string, runtime: ContainerRuntime): string {
-  // the bare hex id: docker and podman both take it, not both the sha256: form
-  const id = shellQuote(imageId.replace(/^sha256:/, ''));
-  return `${runtime} image inspect ${id} >/dev/null 2>&1 && ${runtime} tag ${id} ${shellQuote(image)}`;
-}
-
 /** The targets the image must be sent to: not those that hold it already, under this tag or another. */
 async function filterTargetsNeedingImage(
   image: string,
-  sourceId: string,
+  sourceKey: string,
   targets: DistributionTarget[],
   runtime: ContainerRuntime = 'docker',
 ): Promise<DistributionTarget[]> {
-  if (!sourceId) return targets;
+  if (!sourceKey) return targets;
 
   const checks = await Promise.all(
     targets.map(async (target) => {
-      if (await getRemoteImageId(target.connection, image, runtime) === sourceId) {
-        printDim(`Already up to date on ${target.name}: ${image}`);
-        return null;
-      }
-      // each deploy tags a new version: an unchanged image is already there under the previous tag
-      const tagged = await sshExec(target.connection, tagByIdCommand(sourceId, image, runtime));
+      // each deploy tags a new version: an unchanged image is there already under the previous tag
+      const tagged = await sshExec(target.connection, tagSameContentCommand(image, sourceKey, runtime));
       if (tagged.exitCode === 0) {
-        printDim(`Already on ${target.name}, tagged ${image}`);
+        printDim(`Already on ${target.name}: ${image}`);
         return null;
       }
       return target;
@@ -276,11 +285,11 @@ async function distributeImages(
     for (const image of images) {
       spinner.update(`Distributing ${image}${label}...`);
 
-      const sourceId = isRemote
-        ? await getRemoteImageId(source, image, runtime)
-        : await getLocalImageId(image, runtime);
+      const sourceKey = isRemote
+        ? await getRemoteContentKey(source, image, runtime)
+        : await getLocalContentKey(image, runtime);
 
-      const needsUpdate = await filterTargetsNeedingImage(image, sourceId, targets, runtime);
+      const needsUpdate = await filterTargetsNeedingImage(image, sourceKey, targets, runtime);
       if (needsUpdate.length === 0) continue;
 
       const streamFn = isRemote
