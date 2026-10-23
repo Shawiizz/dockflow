@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import type { SSHExecResult, SSHKeyConnection } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -14,13 +14,15 @@ let sshResponses: Responder = () => undefined;
 const okResult = (stdout = ''): SSHExecResult => ({ stdout, stderr: '', exitCode: 0 });
 
 const realSsh = await import('../utils/ssh');
-mock.module('../utils/ssh', () => ({
-  ...realSsh,
-  sshExec: async (_conn: unknown, cmd: string): Promise<SSHExecResult> => {
+const sshSpies = [
+  spyOn(realSsh, 'sshExec').mockImplementation((async (_conn: unknown, cmd: string): Promise<SSHExecResult> => {
     executedCommands.push(cmd);
     return sshResponses(cmd) ?? okResult();
-  },
-}));
+  }) as never),
+];
+afterAll(() => {
+  for (const spy of sshSpies) spy.mockRestore();
+});
 
 const { openPortCommands, openPorts } = await import('../commands/setup/firewall');
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { isDevVersion } from '../commands/setup/forward';
 import { DOCKFLOW_VERSION } from '../constants';
 import type { ConnectionInfo, SSHExecResult } from '../types';
@@ -23,26 +23,29 @@ const fakeChannel = (entry: { stdin: string }): Awaited<ReturnType<typeof realSs
     stream: { end: (data: string) => void (entry.stdin += data) },
     done: Promise.resolve({ exitCode: channelExit, stdout: '', stderr: channelExit === 0 ? '' : 'cat: Permission denied' }),
   }) as unknown as Awaited<ReturnType<typeof realSsh.sshExecChannel>>;
-mock.module('../utils/ssh', () => ({
-  ...realSsh,
-  presentedHostKey: (...args: Parameters<typeof realSsh.presentedHostKey>) => (scripted ? presented : realSsh.presentedHostKey(...args)),
-  sshExec: async (...args: Parameters<typeof realSsh.sshExec>) => {
-    if (!scripted) return realSsh.sshExec(...args);
+const unmockedSsh = { ...realSsh };
+const sshSpies = [
+  spyOn(realSsh, 'presentedHostKey').mockImplementation(((...args: Parameters<typeof unmockedSsh.presentedHostKey>) => (scripted ? presented : unmockedSsh.presentedHostKey(...args))) as never),
+  spyOn(realSsh, 'sshExec').mockImplementation((async (...args: Parameters<typeof unmockedSsh.sshExec>) => {
+    if (!scripted) return unmockedSsh.sshExec(...args);
     executed.push(args[1]);
     return answer(respond(args[1]));
-  },
-  sshExecChannel: async (...args: Parameters<typeof realSsh.sshExecChannel>) => {
-    if (!scripted) return realSsh.sshExecChannel(...args);
+  }) as never),
+  spyOn(realSsh, 'sshExecChannel').mockImplementation((async (...args: Parameters<typeof unmockedSsh.sshExecChannel>) => {
+    if (!scripted) return unmockedSsh.sshExecChannel(...args);
     const entry = { command: args[1], stdin: '' };
     channels.push(entry);
     return fakeChannel(entry);
-  },
-  executeInteractiveSSH: async (...args: Parameters<typeof realSsh.executeInteractiveSSH>) => {
-    if (!scripted) return realSsh.executeInteractiveSSH(...args);
+  }) as never),
+  spyOn(realSsh, 'executeInteractiveSSH').mockImplementation((async (...args: Parameters<typeof unmockedSsh.executeInteractiveSSH>) => {
+    if (!scripted) return unmockedSsh.executeInteractiveSSH(...args);
     interactive.push(args[1]);
     return interactiveExit;
-  },
-}));
+  }) as never),
+];
+afterAll(() => {
+  for (const spy of sshSpies) spy.mockRestore();
+});
 
 const { cleanupTempDir, connectionFailureMessage, detectRemoteArch, makeTempDir, runRemoteSetup, writePasswordFile } = await import('../commands/setup/remote');
 

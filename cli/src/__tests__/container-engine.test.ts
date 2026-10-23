@@ -1,17 +1,19 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import type { SSHExecResult, SSHKeyConnection } from '../types';
 
 const commands: string[] = [];
 let reply: SSHExecResult = { stdout: '', stderr: '', exitCode: 0 };
 
 const realSsh = await import('../utils/ssh');
-mock.module('../utils/ssh', () => ({
-  ...realSsh,
-  sshExec: async (_conn: unknown, command: string) => {
+const sshSpies = [
+  spyOn(realSsh, 'sshExec').mockImplementation((async (_conn: unknown, command: string) => {
     commands.push(command);
     return reply;
-  },
-}));
+  }) as never),
+];
+afterAll(() => {
+  for (const spy of sshSpies) spy.mockRestore();
+});
 
 const { detectContainerEngine } = await import('../commands/deploy-phases');
 

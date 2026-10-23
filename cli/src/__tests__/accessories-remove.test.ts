@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import type { SSHExecResult, SSHKeyConnection } from '../types';
 
 const executed: { host: string; cmd: string }[] = [];
@@ -8,23 +8,27 @@ let volumesByHost: Record<string, string[]> = {};
 const ok = (stdout = ''): SSHExecResult => ({ stdout, stderr: '', exitCode: 0 });
 
 const realSsh = await import('../utils/ssh');
-mock.module('../utils/ssh', () => ({
-  ...realSsh,
-  sshExec: async (conn: SSHKeyConnection, cmd: string): Promise<SSHExecResult> => {
+const sshSpies = [
+  spyOn(realSsh, 'sshExec').mockImplementation((async (conn: SSHKeyConnection, cmd: string): Promise<SSHExecResult> => {
     executed.push({ host: conn.host, cmd });
     if (cmd.startsWith('docker stack ls')) return ok(stackDeployed ? 'demo-production-accessories\n' : '');
     if (cmd.startsWith('docker stack services')) return ok('demo-production-accessories_redis\t1/1\n');
     if (cmd.startsWith('docker volume ls')) return ok((volumesByHost[conn.host] ?? []).join('\n'));
     if (cmd.startsWith('docker stack ps')) return ok('0');
     return ok();
-  },
-}));
+  }) as never),
+];
+afterAll(() => {
+  for (const spy of sshSpies) spy.mockRestore();
+});
 
 const realConfig = await import('../utils/config');
-mock.module('../utils/config', () => ({
-  ...realConfig,
-  getAccessoriesStackName: (env: string) => `demo-${env}-accessories`,
-}));
+const configSpies = [
+  spyOn(realConfig, 'getAccessoriesStackName').mockImplementation(((env: string) => `demo-${env}-accessories`) as never),
+];
+afterAll(() => {
+  for (const spy of configSpies) spy.mockRestore();
+});
 
 const { containersGoneCommand, removeAccessories } = await import('../commands/accessories/remove');
 const { ErrorCode } = await import('../utils/errors');

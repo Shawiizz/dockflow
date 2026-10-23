@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -61,16 +61,19 @@ function fakeChannel(command: string) {
 }
 
 const realSsh = await import('../utils/ssh');
-mock.module('../utils/ssh', () => ({
-  ...realSsh,
-  sshExec: (conn: unknown, command: string) => {
-    if (!intercept) return realSsh.sshExec(conn as never, command);
+const unmockedSsh = { ...realSsh };
+const sshSpies = [
+  spyOn(realSsh, 'sshExec').mockImplementation(((conn: unknown, command: string) => {
+    if (!intercept) return unmockedSsh.sshExec(conn as never, command);
     psCalls += 1;
     return Promise.resolve({ stdout: 'abc123\n', stderr: '', exitCode: 0 });
-  },
-  sshExecChannelUnbuffered: (conn: unknown, command: string) =>
-    intercept ? Promise.resolve(fakeChannel(command)) : realSsh.sshExecChannelUnbuffered(conn as never, command),
-}));
+  }) as never),
+  spyOn(realSsh, 'sshExecChannelUnbuffered').mockImplementation(((conn: unknown, command: string) =>
+    intercept ? Promise.resolve(fakeChannel(command)) : unmockedSsh.sshExecChannelUnbuffered(conn as never, command)) as never),
+];
+afterAll(() => {
+  for (const spy of sshSpies) spy.mockRestore();
+});
 
 const { SwarmContainerBackend } = await import('../services/orchestrator/swarm/swarm-container');
 

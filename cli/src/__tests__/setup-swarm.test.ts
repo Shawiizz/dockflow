@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import * as output from '../utils/output';
 import type { ResolvedServer, SSHExecResult, SSHKeyConnection } from '../types';
 import { CLIError, ErrorCode } from '../utils/errors';
@@ -10,15 +10,18 @@ let respond: Responder = () => undefined;
 const executed: { host: string; command: string }[] = [];
 
 const realSsh = await import('../utils/ssh');
-mock.module('../utils/ssh', () => ({
-  ...realSsh,
-  sshExec: async (...args: Parameters<typeof realSsh.sshExec>) => {
-    if (!scripted) return realSsh.sshExec(...args);
+const unmockedSsh = { ...realSsh };
+const sshSpies = [
+  spyOn(realSsh, 'sshExec').mockImplementation((async (...args: Parameters<typeof unmockedSsh.sshExec>) => {
+    if (!scripted) return unmockedSsh.sshExec(...args);
     const [conn, command] = args;
     executed.push({ host: conn.host, command });
     return { stdout: '', stderr: '', exitCode: 0, ...respond(conn.host, command) };
-  },
-}));
+  }) as never),
+];
+afterAll(() => {
+  for (const spy of sshSpies) spy.mockRestore();
+});
 
 const { initializeSwarm, joinWorkers, readiness, requireAllJoined, swarmAddress, swarmJoinCommand } = await import('../commands/setup/swarm');
 
