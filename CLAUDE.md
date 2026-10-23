@@ -191,6 +191,8 @@ Typed with ssh2 `ConnectConfig` in `cli/src/utils/ssh/` (`connect.ts` connection
 
 Keys are passed in-memory (never written to temp files). Core functions: `sshExec()` (collect output), `sshExecStream()` (stream with callbacks), `sshShell()` (interactive).
 
+**Remote commands are built with `sh`** (`utils/ssh/quoting.ts`): sh`rm -rf ${dir}/old` quotes every interpolated value, a number goes in as it is and an array as its elements quoted one by one. The SSH calls take only the `ShellCommand` that `sh` returns, so a command written as a plain string does not compile. Shell syntax the code builds itself (a sub-command made with `sh`, a pipe, flags it chose) goes in through `raw()`, never a value from config, a file, the user or a server. `userCommand()` is the one pass-through of a command the user typed (`dockflow ssh <env> <command>`). A script handed to `sh -c` inside a container stays a plain string and is inserted as a value. Plugin templates quote a value for a hook's command line with the `shell` filter.
+
 ### Deploy Flow (TypeScript, direct SSH)
 
 The `dockflow deploy` command executes entirely in TypeScript via ssh2:
