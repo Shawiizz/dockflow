@@ -6,6 +6,7 @@
 
 # Secrets
 ssh
+!cli/src/utils/ssh/
 .env.dockflow
 secrets.json
 *.pem

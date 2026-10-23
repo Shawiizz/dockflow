@@ -185,7 +185,7 @@ Verbose mode controlled by `setVerbose()` / `isVerbose()`.
 
 ### SSH Connections
 
-Typed with ssh2 `ConnectConfig` in `cli/src/utils/ssh.ts`. Connection types in `cli/src/types/connection.ts`:
+Typed with ssh2 `ConnectConfig` in `cli/src/utils/ssh/` (`connect.ts` connections and retries, `pool.ts` the pool, `exec.ts` and `channels.ts` commands, `interactive.ts` shells and PTYs, `quoting.ts` shell quoting, `index.ts` the public API). Connection types in `cli/src/types/connection.ts`:
 - `SSHKeyConnection` — host, port, user, privateKey
 - `SSHPasswordConnection` — host, port, user, password
 

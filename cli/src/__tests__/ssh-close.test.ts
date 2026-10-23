@@ -4,7 +4,7 @@ import { utils } from 'ssh2';
 import type * as SshModule from '../utils/ssh';
 
 // Other files mock utils/ssh; the query suffix loads its own instance, whose pool this file closes.
-const UNMOCKED_SSH = '../utils/ssh.ts?unmocked';
+const UNMOCKED_SSH = '../utils/ssh/index.ts?unmocked';
 const { closeAllConnections, sshExec } = (await import(UNMOCKED_SSH)) as typeof SshModule;
 
 describe('closeAllConnections: a handshake in progress', () => {
