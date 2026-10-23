@@ -135,6 +135,12 @@ describe('mergeEnvVars', () => {
     expect(result.DB_URL).toBe('postgres://x');
   });
 
+  it('a CI server-specific var wins over the CI global one, whatever their order', () => {
+    setEnv('PRODUCTION_MAIN_DB_URL', 'from-server');
+    setEnv('PRODUCTION_DB_URL', 'from-global');
+    expect(mergeEnvVars(emptyConfig, 'production', 'main', undefined).DB_URL).toBe('from-server');
+  });
+
   it('connection-related vars are never merged into app env', () => {
     setEnv('PRODUCTION_CONNECTION', 'xxx');
     setEnv('PRODUCTION_HOST', 'xxx');

@@ -84,8 +84,7 @@ export function getServerHostKey(env: string, serverName: string): string | unde
 
 /**
  * Layers a server's variables: `env.all`, `env.<tag>`, the server's own `env`, then the CI
- * variables `<ENV>_<VAR>` and `<ENV>_<SERVER>_<VAR>`, each layer overriding the one before. Two
- * CI variables naming the same variable are applied in the order process.env lists them.
+ * variables `<ENV>_<VAR>` and `<ENV>_<SERVER>_<VAR>`, each layer overriding the one before.
  * Connection settings (host, user, key, password...) are never taken as variables.
  */
 export function mergeEnvVars(
@@ -111,25 +110,21 @@ export function mergeEnvVars(
   const envUpper = tag.toUpperCase();
   const serverKey = serverNameToEnvKey(serverName);
 
+  const connectionSettings = ['CONNECTION', 'HOST', 'USER', 'PORT', 'SSH_PRIVATE_KEY', 'PASSWORD', 'HOST_KEY'];
+  const globalVars: EnvVars = {};
+  const serverVars: EnvVars = {};
   for (const [key, value] of Object.entries(process.env)) {
-    const globalMatch = key.match(new RegExp(`^${envUpper}_([A-Z][A-Z0-9_]*)$`));
-    if (globalMatch) {
-      const varName = globalMatch[1];
-      // skip this server's own `<ENV>_<SERVER>_*` variables and the connection settings
-      if (!varName.startsWith(serverKey + '_') && 
-          !['CONNECTION', 'HOST', 'USER', 'PORT', 'SSH_PRIVATE_KEY', 'PASSWORD', 'HOST_KEY'].includes(varName)) {
-        result[varName] = value!;
-      }
-    }
-
+    if (value === undefined) continue;
     const serverMatch = key.match(new RegExp(`^${envUpper}_${serverKey}_([A-Z][A-Z0-9_]*)$`));
     if (serverMatch) {
-      const varName = serverMatch[1];
-      if (!['CONNECTION', 'HOST', 'USER', 'PORT', 'SSH_PRIVATE_KEY', 'PASSWORD', 'HOST_KEY'].includes(varName)) {
-        result[varName] = value!;
-      }
+      if (!connectionSettings.includes(serverMatch[1])) serverVars[serverMatch[1]] = value;
+      continue;
     }
+    const globalMatch = key.match(new RegExp(`^${envUpper}_([A-Z][A-Z0-9_]*)$`));
+    if (globalMatch && !connectionSettings.includes(globalMatch[1])) globalVars[globalMatch[1]] = value;
   }
-  
+  // the server's own variables win, whatever order process.env lists them in
+  Object.assign(result, globalVars, serverVars);
+
   return result;
 }

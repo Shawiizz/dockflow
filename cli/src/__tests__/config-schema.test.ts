@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { FirewallConfigSchema, isIpOrCidr, ProxyConfigSchema } from '../schemas/config.schema';
-import { findUnknownConfigKeys } from '../schemas/validation';
+import { findUnknownConfigKeys, getSuggestion, validateConfig } from '../schemas/validation';
 
 describe('isIpOrCidr', () => {
   it('accepts addresses and CIDR ranges of both families', () => {
@@ -57,5 +57,14 @@ describe('FirewallConfigSchema', () => {
 
   it('refuses a misspelled key, which would otherwise open the port to everyone', () => {
     expect(ports({ port: 443, form: ['173.245.48.0/20'] }).success).toBe(false);
+  });
+});
+
+describe('getSuggestion', () => {
+  it('gives the project_name hint for a name the regex refuses', () => {
+    const result = validateConfig({ project_name: 'My App' });
+    expect(result.success).toBe(false);
+    const issue = !result.success ? result.error.find((i) => i.path === 'project_name') : undefined;
+    expect(issue && getSuggestion(issue)).toBe('Use lowercase letters, numbers, and hyphens only (e.g., "my-app")');
   });
 });

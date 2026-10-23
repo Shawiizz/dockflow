@@ -210,15 +210,14 @@ export function findUnknownRootKeys(data: unknown): UnknownKey[] {
 /** A hint for the Zod issue codes that have one, else null. */
 export function getSuggestion(issue: ValidationIssue): string | null {
   const suggestions: Record<string, string> = {
-    'invalid_string': issue.path === 'project_name'
+    // Zod 4 reports a failed regex as invalid_format
+    'invalid_format': issue.path === 'project_name'
       ? 'Use lowercase letters, numbers, and hyphens only (e.g., "my-app")'
-      : null as unknown as string,
+      : 'Check the format requirements for this field',
 
     'invalid_type': `Check that the field exists and has the correct type`,
 
     'too_small': 'This field requires at least one item',
-
-    'invalid_regex': 'Check the format requirements for this field',
   };
 
   return suggestions[issue.code] ?? null;
