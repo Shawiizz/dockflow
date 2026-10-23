@@ -119,6 +119,13 @@ describe("day-2 commands", () => {
       await waitForService(CACHE_SERVICE, "1/1", { timeoutMs: 90_000 });
     }, 300_000);
 
+    test("the app reaches its accessory by name over the accessories network", async () => {
+      const result = await run(["exec", TEST_ENV, "web", "-T", "--", "nslookup", "cache"]);
+
+      expectSuccess("exec nslookup cache", result);
+      expect(result.stdout).toMatch(/Name:\s+cache/);
+    }, 60_000);
+
     test("status shows the version and the replicas of the stack", async () => {
       const result = await run(["status", TEST_ENV]);
 
