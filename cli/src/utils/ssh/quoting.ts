@@ -25,3 +25,41 @@ export function escapeSingleQuotes(value: string): string {
 export function shellQuote(value: string): string {
   return `'${escapeSingleQuotes(value)}'`;
 }
+
+/** Shell syntax the code builds itself, which `sh` inserts as it is. */
+export class RawShell {
+  constructor(readonly text: string) {}
+}
+
+/**
+ * Marks shell syntax the code builds (a command made with `sh`, a pipe, a redirection, flags it
+ * chose): `sh` inserts it unquoted. Never a value read from config, a file or a server.
+ */
+export function raw(text: string): RawShell {
+  return new RawShell(text);
+}
+
+export type ShellValue = string | number | RawShell | readonly (string | number | RawShell)[];
+
+function shellValue(value: ShellValue): string {
+  if (value instanceof RawShell) return value.text;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error(`Not a number a shell command can take: ${value}`);
+    return String(value);
+  }
+  if (Array.isArray(value)) return value.map(shellValue).join(' ');
+  return shellQuote(value as string);
+}
+
+/**
+ * A remote command whose interpolated values are all quoted: what `dir` holds in
+ * sh`rm -rf ${dir}/tmp` can never become another command. A number goes in as it is, an array as
+ * its elements quoted one by one, and shell syntax the code builds through `raw()`.
+ */
+export function sh(strings: TemplateStringsArray, ...values: ShellValue[]): string {
+  let command = strings[0];
+  values.forEach((value, i) => {
+    command += shellValue(value) + strings[i + 1];
+  });
+  return command;
+}

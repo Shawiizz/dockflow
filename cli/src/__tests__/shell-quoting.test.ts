@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { escapeSingleQuotes, shellQuote } from '../utils/ssh';
+import { escapeSingleQuotes, raw, sh, shellQuote } from '../utils/ssh';
 
 describe('escapeSingleQuotes', () => {
   it('passes through values without quotes', () => {
@@ -45,5 +45,29 @@ describe('shellQuote', () => {
 
   it('a path with spaces stays one token', () => {
     expect(shellQuote('/etc/my app/conf')).toBe("'/etc/my app/conf'");
+  });
+});
+
+describe('sh', () => {
+  it('quotes every value, so none can add a command', () => {
+    expect(sh`rm -rf ${"/tmp/x; reboot"}/old`).toBe("rm -rf '/tmp/x; reboot'/old");
+  });
+
+  it('keeps the quoted value next to a live glob', () => {
+    expect(sh`rm -f ${'/var/lib/a b'}/.tmp-*`).toBe("rm -f '/var/lib/a b'/.tmp-*");
+  });
+
+  it('inserts numbers as they are and refuses one that is not finite', () => {
+    expect(sh`docker logs --tail ${50} web`).toBe('docker logs --tail 50 web');
+    expect(() => sh`sleep ${Number.NaN}`).toThrow('Not a number');
+  });
+
+  it('quotes each element of an array', () => {
+    expect(sh`docker rmi ${['a:1', "b's:2"]}`).toBe("docker rmi 'a:1' 'b'\\''s:2'");
+  });
+
+  it('inserts what raw() marks, a command built with sh included', () => {
+    const save = sh`docker save ${'web:1'}`;
+    expect(sh`${raw(save)} | gzip -1 > ${'/tmp/web.tar.gz'}`).toBe("docker save 'web:1' | gzip -1 > '/tmp/web.tar.gz'");
   });
 });
