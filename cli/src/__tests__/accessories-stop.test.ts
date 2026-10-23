@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import { registerAccessoriesStopCommand } from '../commands/accessories/stop';
 import * as accessories from '../commands/accessories/utils';
 import * as serviceName from '../commands/app/service-name';
-import * as factory from '../services/orchestrator/factory';
+import { SwarmStack } from '../services/swarm/stack';
 import * as config from '../utils/config';
 import { ErrorCode } from '../utils/errors';
 import * as output from '../utils/output';
@@ -29,12 +29,10 @@ beforeEach(() => {
     spyOn(accessories, 'requireAccessoriesStack').mockResolvedValue({ stackName: STACK } as never),
     spyOn(config, 'loadConfig').mockReturnValue({ project_name: 'shop' } as never),
     spyOn(serviceName, 'serviceMode').mockImplementation(async (_conn, _stack, name) => modes[name] as never),
-    spyOn(factory, 'createStackBackend').mockReturnValue({
-      getServices: async () => [{ name: 'cache' }, { name: 'agent' }],
-      scaleService: async (_stack: string, name: string) => {
-        scaled.push(name);
-      },
-    } as never),
+    spyOn(SwarmStack.prototype, 'getServices').mockResolvedValue([{ name: 'cache' }, { name: 'agent' }] as never),
+    spyOn(SwarmStack.prototype, 'scaleService').mockImplementation(async (_stack: string, name: string) => {
+      scaled.push(name);
+    }),
   );
   for (const name of ['printIntro', 'printBlank', 'printNote', 'printOutro', 'printWarning', 'printInfo'] as const) {
     spies.push(spyOn(output, name).mockImplementation(() => {}));

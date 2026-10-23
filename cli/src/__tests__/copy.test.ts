@@ -11,7 +11,7 @@ import {
   planCopyOut,
   probeContainerPath,
   remoteSourcePath,
-} from '../services/orchestrator/copy';
+} from '../services/swarm/copy';
 import { CLIError, ErrorCode, ValidationError } from '../utils/errors';
 
 function thrown(run: () => unknown): Error {

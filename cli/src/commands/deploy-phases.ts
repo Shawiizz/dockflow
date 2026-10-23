@@ -1,5 +1,5 @@
 /**
- * Deploy phases — self-contained steps called by the deploy orchestrator.
+ * Deploy phases — self-contained steps called by the deploy swarm.
  *
  * Each function receives a DeployContext and performs one logical phase:
  * build, accessories, app deploy + health checks, or audit/history.
@@ -29,8 +29,9 @@ import * as Build from '../services/build';
 import * as Distribution from '../services/distribution';
 import * as Hook from '../services/hook';
 import { CONVERGENCE_TIMEOUT_S, CONVERGENCE_INTERVAL_S, DOCKFLOW_UPLOAD_BACKUPS_DIR } from '../constants';
-import type { StackBackend, StackDeployInput } from '../services/orchestrator/interfaces';
-import { ConvergenceError } from '../services/orchestrator/swarm/swarm-stack-ops';
+import type { StackDeployInput } from '../services/swarm/types';
+import type { SwarmStack } from '../services/swarm/stack';
+import { ConvergenceError } from '../services/swarm/stack-ops';
 import type { DockflowConfig, HealthCheckConfig, UploadItem } from '../utils/config';
 import type { DeployContext } from './deploy-context';
 
@@ -666,8 +667,8 @@ export async function applyPublicPorts(ctx: DeployContext): Promise<void> {
 
 /** Bring Traefik up to date once per deploy, for whichever phase needs it first. */
 function ensureProxy(ctx: DeployContext): Promise<void> {
-  if (!ctx.proxyBackend) return Promise.resolve();
-  ctx.proxyReady ??= ctx.proxyBackend.ensureRunning(ctx.config.proxy!);
+  if (!ctx.swarmProxy) return Promise.resolve();
+  ctx.proxyReady ??= ctx.swarmProxy.ensureRunning(ctx.config.proxy!);
   return ctx.proxyReady;
 }
 
@@ -690,7 +691,7 @@ function accessoriesToDeploy(ctx: DeployContext): { compose: ParsedCompose; rout
 export async function releaseAccessoriesDigest(ctx: DeployContext): Promise<string | undefined> {
   const deployed = ctx.skipAccessories ? null : accessoriesToDeploy(ctx);
   if (deployed) return Compose.accessoriesDigest(Compose.serialize(deployed.compose));
-  return (await ctx.orchestrator.accessoriesDigest(ctx.stackName).catch(() => null)) ?? undefined;
+  return (await ctx.swarm.accessoriesDigest(ctx.stackName).catch(() => null)) ?? undefined;
 }
 
 export async function deployAccessories(ctx: DeployContext): Promise<void> {
@@ -702,7 +703,7 @@ export async function deployAccessories(ctx: DeployContext): Promise<void> {
   if (routed) await ensureProxy(ctx);
 
   const accessoriesRelPath = accessoriesKey();
-  const result = await ctx.orchestrator.deployAccessory({
+  const result = await ctx.swarm.deployAccessory({
     stackName: ctx.stackName,
     env: ctx.env,
     compose: accessoriesCompose,
@@ -818,13 +819,13 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose, app:
 
   const deployStartedAt = new Date();
 
-  const deployResult = await ctx.orchestrator.deploy(input);
+  const deployResult = await ctx.swarm.deploy(input);
   if (!deployResult.success) {
     throw deployResult.error;
   }
   app.sent = true;
 
-  const convergence = await ctx.orchestrator.waitConvergence(
+  const convergence = await ctx.swarm.waitConvergence(
     ctx.stackName,
     CONVERGENCE_TIMEOUT_S,
     CONVERGENCE_INTERVAL_S,
@@ -836,7 +837,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose, app:
   }
 
   if (ctx.config.health_checks?.enabled !== false) {
-    const health = new HealthCheck(ctx.cluster.manager.connection, ctx.orchestrator);
+    const health = new HealthCheck(ctx.cluster.manager.connection, ctx.swarm);
     const internalResult = await health.checkInternalHealth(ctx.stackName, ctx.config.health_checks, servicesFilter, deployStartedAt);
     if (!internalResult.healthy) {
       throw new DeployError(
@@ -852,7 +853,7 @@ export async function deployApp(ctx: DeployContext, compose: ParsedCompose, app:
 
 export async function runHTTPHealthChecks(ctx: DeployContext): Promise<void> {
   if (!ctx.deployApp || !ctx.config.health_checks?.endpoints?.length) return;
-  const health = new HealthCheck(ctx.cluster.manager.connection, ctx.orchestrator);
+  const health = new HealthCheck(ctx.cluster.manager.connection, ctx.swarm);
   await health.checkHTTPEndpoints(ctx.config.health_checks);
 }
 
@@ -862,14 +863,14 @@ export async function runHTTPHealthChecks(ctx: DeployContext): Promise<void> {
  */
 export async function runPostRollbackHealthChecks(
   connection: SSHKeyConnection,
-  orchestrator: StackBackend,
+  swarm: SwarmStack,
   stackName: string,
   healthConfig: HealthCheckConfig | undefined,
   rollbackStartedAt: Date,
 ): Promise<void> {
   if (healthConfig?.enabled === false) return;
 
-  const health = new HealthCheck(connection, orchestrator);
+  const health = new HealthCheck(connection, swarm);
 
   // a Swarm rollback completed before ours (the failed update's own) says nothing about this version
   const result = await health.checkInternalHealth(stackName, healthConfig, undefined, rollbackStartedAt).catch(() => null);

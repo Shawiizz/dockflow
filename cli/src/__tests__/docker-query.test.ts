@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { dockerQueryError } from '../services/orchestrator/swarm/swarm-utils';
+import { dockerQueryError } from '../services/swarm/docker';
 import { ErrorCode } from '../utils/errors';
 
 const failed = (stderr: string, exitCode = 1) => ({ stdout: '', stderr, exitCode });

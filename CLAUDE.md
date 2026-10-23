@@ -120,30 +120,24 @@ A command run in a container exits with the container's own code through `ExecEx
 
 ### Services Layer
 
-`cli/src/services/` follows a strict three-tier naming convention. The suffix communicates the shape of the export, not just its category:
+`cli/src/services/` follows a two-tier naming convention. The shape of the export tells what it is:
 
 | Shape | Suffix | Examples | Import style |
 |---|---|---|---|
-| Backend contract (Swarm implementation) | `*Backend` | `StackBackend`, `ContainerBackend`, `ProxyBackend` | `new SwarmStackBackend(conn)` via factory |
-| Stateful class (wraps a connection / holds state) | no suffix | `Audit`, `Lock`, `Release`, `Metrics`, `Backup`, `HealthCheck` | `new Lock(conn, stackName)` |
+| Stateful class (wraps a connection / holds state) | no suffix | `SwarmStack`, `SwarmContainers`, `SwarmProxy`, `Audit`, `Lock`, `Release`, `Metrics`, `Backup`, `HealthCheck` | `new SwarmStack(conn)` |
 | Pure module (stateless free functions) | no class | `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notification.ts`, `history-sync.ts`, `plugin.ts` | `import * as Compose from '../services/compose'` |
 
 **Rules:**
 - Never append `Service` to anything new. The word is too vague — if the class wraps state, drop the suffix; if it's just functions, make it a module.
-- `*Backend` is reserved for the orchestrator contracts, and lives only under `services/orchestrator/`.
 - Stateful class files are named after the singular noun (e.g. `lock.ts` exports `class Lock` + `createLock()` factory).
 - Module files export top-level `export function` declarations and are imported with `import * as Xxx from '...'`.
 
-**Orchestrator abstraction** (`cli/src/services/orchestrator/`):
+**Swarm** (`cli/src/services/swarm/`): commands reach the cluster through these classes, never with Swarm commands of their own:
 
-Commands reach Swarm through common interfaces; factory functions in `cli/src/services/orchestrator/factory.ts` create the Swarm implementations:
-
-- `StackBackend` — stack lifecycle: deploy, remove, getServices, scale, rollback, list stacks, and the internal health check (`checkInternalHealth`: tasks in their desired state, from `docker service ps` + UpdateStatus)
-  - `SwarmStackBackend` — uses `docker stack deploy`, `docker service` commands
-- `ContainerBackend` — exec/shell/copy/logs in containers
-  - `SwarmContainerBackend` — finds containers via `docker ps` across all nodes with `Promise.any()`
-- `ProxyBackend` — Traefik management
-  - `SwarmProxyBackend`
+- `SwarmStack` (`stack.ts`) — stack lifecycle: deploy, remove, getServices, scale, rollback, list stacks, and the internal health check (`checkInternalHealth`: tasks in their desired state, from `docker service ps` + UpdateStatus)
+- `SwarmContainers` (`containers.ts`) — exec/shell/copy/logs in containers, found with `docker ps` across all nodes
+- `SwarmProxy` (`proxy.ts`) — Traefik management
+- `types.ts` holds the data they take and return; `docker.ts` the Docker queries they share; `copy.ts` plans `dockflow cp`
 
 **Stateful classes** (`cli/src/services/*.ts`, no Service suffix):
 - `Metrics` (`metrics.ts`) — deployment metrics read/write, connection-bound
@@ -151,7 +145,7 @@ Commands reach Swarm through common interfaces; factory functions in `cli/src/se
 - `Backup` (`backup.ts`) — backup/restore for accessories, holds manager + worker connections
 - `Audit` (`audit.ts`) — deployment audit log entries on remote manager
 - `Release` (`release.ts`) — release directory management, rollback, cleanup of old releases
-- `HealthCheck` (`health-check.ts`) — HTTP endpoint checks with retry (uses `StackBackend` for the internal check)
+- `HealthCheck` (`health-check.ts`) — HTTP endpoint checks with retry (uses `SwarmStack` for the internal check)
 
 Each stateful class exposes a matching factory (`createLock`, `createBackup`, …) where construction needs defaults from config.
 
@@ -170,7 +164,7 @@ Config field `container_engine: 'docker' | 'podman'` (auto-detected if not set).
 
 Services and modules use the `Result<T, E>` type pattern (`ok()` / `err()`) from `cli/src/types/`.
 
-**Multi-node awareness:** Classes that need to find or operate on containers (`Backup`, `SwarmContainerBackend`) accept an `allConnections: SSHKeyConnection[]` parameter alongside the manager connection. This is required because in a multi-node Swarm, a container may run on any worker — not just the manager. Always pass `getAllNodeConnections(env)` when creating these.
+**Multi-node awareness:** Classes that need to find or operate on containers (`Backup`, `SwarmContainers`) accept an `allConnections: SSHKeyConnection[]` parameter alongside the manager connection. This is required because in a multi-node Swarm, a container may run on any worker — not just the manager. Always pass `getAllNodeConnections(env)` when creating these.
 
 ### Console Output
 
@@ -226,7 +220,7 @@ Remote setup (`setup user@host`) ships the version-pinned binary and forwards fl
 
 ### Remote Directory Permissions
 
-All directories under `/var/lib/dockflow/` are created by the deploy command (via the `StackBackend` implementations) with proper ownership so the deploy user can write to them directly via SSH without sudo. The `dockflow setup` command also creates the base `/var/lib/dockflow` directory.
+All directories under `/var/lib/dockflow/` are created by the deploy command (via `SwarmStack`) with proper ownership so the deploy user can write to them directly via SSH without sudo. The `dockflow setup` command also creates the base `/var/lib/dockflow` directory.
 
 Directory constants are defined in `cli/src/constants.ts` (`DOCKFLOW_STACKS_DIR`, `DOCKFLOW_LOCKS_DIR`, `DOCKFLOW_AUDIT_DIR`, `DOCKFLOW_METRICS_DIR`, `DOCKFLOW_BACKUPS_DIR`, `DOCKFLOW_ACCESSORIES_DIR`, `DOCKFLOW_UPLOAD_BACKUPS_DIR`).
 
@@ -304,9 +298,9 @@ CI secrets format: `{ENV}_{SERVER}_CONNECTION` = base64-encoded JSON `{host, por
 - **Config schema + interface parity**: Update both Zod schema and TypeScript interface when adding config fields.
 - **Error handling**: Throw typed `CLIError` subclasses from commands. Never catch-and-exit manually.
 - **Services for container ops**: Use the services layer (`cli/src/services/`) for stack/container interactions, not raw SSH commands in command handlers.
-- **Orchestrator abstraction**: New commands that interact with stacks/containers must use the backend interfaces (`StackBackend`, `ContainerBackend`, `HealthBackend`, `ProxyBackend`) via the factory functions in `cli/src/services/orchestrator/factory.ts`, not Swarm commands in command handlers.
-- **Service naming**: Follow the three-tier convention (see *Services Layer*). `*Backend` for polymorphic interfaces, plain nouns for stateful classes, module imports for stateless functions. Never introduce a new `*Service` class.
-- **Multi-node services**: When creating `Backup` or `SwarmContainerBackend`, always pass `getAllNodeConnections(env)` so container lookups work on worker nodes too.
+- **Swarm access**: New commands that interact with stacks/containers go through `SwarmStack`, `SwarmContainers` or `SwarmProxy` (`cli/src/services/swarm/`), not Swarm commands in command handlers.
+- **Service naming**: Follow the two-tier convention (see *Services Layer*): plain nouns for stateful classes, module imports for stateless functions. Never introduce a new `*Service` class.
+- **Multi-node services**: When creating `Backup` or `SwarmContainers`, always pass `getAllNodeConnections(env)` so container lookups work on worker nodes too.
 - **New directory paths**: Add constants in `cli/src/constants.ts` and ensure the deploy command creates them on the remote host.
 
 ## Self-Review Before Finishing

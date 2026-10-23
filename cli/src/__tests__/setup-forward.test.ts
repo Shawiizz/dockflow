@@ -60,7 +60,7 @@ describe('buildForwardFlags', () => {
       REMOTE,
     ).join(' ');
     expect(flags).toContain('--skip-docker-install');
-    expect(flags).not.toContain('--orchestrator');
+    expect(flags).not.toContain('--swarm');
     expect(flags).toContain('--nginx');
   });
 

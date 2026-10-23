@@ -22,7 +22,7 @@ import { DEFAULT_SSH_PORT, SSH_READY_TIMEOUT_MS, SSH_KEEPALIVE_INTERVAL_MS } fro
 import { getStackName, getAccessoriesStackName } from '../../utils/config';
 import { shellQuote } from '../../utils/ssh';
 import { hostKeyCheck, type HostKeyCheck } from '../../utils/host-key';
-import { findSwarmContainer } from '../../services/orchestrator/swarm/swarm-utils';
+import { findSwarmContainer } from '../../services/swarm/docker';
 import type { SSHKeyConnection } from '../../types';
 import { getAllNodeConnections, getManagerConnection, isValidDockerName } from './_helpers';
 

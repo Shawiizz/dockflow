@@ -1,16 +1,16 @@
 /**
  * `dockflow cp`: copies files between the CLI machine and a container, in either direction, as a
  * tar stream through `docker cp` on the node running it. The planning (docker cp semantics, the
- * `SRC/.` contents form) lives in `services/orchestrator/copy.ts`, the archive safety in
+ * `SRC/.` contents form) lives in `services/swarm/copy.ts`, the archive safety in
  * `utils/tar.ts`; this file resolves the target and drives the streams.
  */
 
 import { promises as fs } from 'fs';
 import { dirname } from 'path';
 import type { Command } from 'commander';
-import { createContainerBackend } from '../../services/orchestrator/factory';
-import type { LocalPathState } from '../../services/orchestrator/copy';
-import { parseCopyArguments, planCopyIn, planCopyOut, probeContainerPath } from '../../services/orchestrator/copy';
+import { SwarmContainers } from '../../services/swarm/containers';
+import type { LocalPathState } from '../../services/swarm/copy';
+import { parseCopyArguments, planCopyIn, planCopyOut, probeContainerPath } from '../../services/swarm/copy';
 import { ValidationError, withServicesRequired } from '../../utils/errors';
 import { formatBytes, printSuccess } from '../../utils/output';
 import { extractTar, packPathToTar } from '../../utils/tar';
@@ -67,7 +67,7 @@ export async function runCp(env: string, src: string, dest: string, options: CpC
     await requireAppService(connection, env, stackName, service, 'cp');
   }
 
-  const containers = createContainerBackend(connection, getAllNodeConnections(env));
+  const containers = new SwarmContainers(connection, getAllNodeConnections(env));
   const taskId = options.pick ? await pickSwarmTask(stackName, service, connection) : undefined;
 
   if (request.direction === 'out') {

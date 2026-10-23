@@ -6,7 +6,6 @@ import * as phases from '../commands/deploy-phases';
 import { Audit } from '../services/audit';
 import { Metrics } from '../services/metrics';
 import * as notification from '../services/notification';
-import * as factory from '../services/orchestrator/factory';
 import { Release } from '../services/release';
 import * as lockModule from '../services/lock';
 import { ok } from '../types';
@@ -38,7 +37,6 @@ beforeEach(() => {
       { name: 'server_1', connection },
       { name: 'agent_1', connection: worker },
     ]),
-    spyOn(factory, 'createStackBackend').mockReturnValue({} as never),
     spyOn(lockModule, 'createEnvLock').mockResolvedValue({
       acquire: async () => ok({}),
       keepAlive: () => {},

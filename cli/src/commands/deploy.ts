@@ -49,7 +49,8 @@ import { displayDeployDryRun, displayRenderedStack } from './deploy-dry-run';
 import type { ClusterNode, ResolvedServer, SSHKeyConnection } from '../types';
 
 import * as Compose from '../services/compose';
-import { createStackBackend, createProxyBackend } from '../services/orchestrator/factory';
+import { SwarmStack } from '../services/swarm/stack';
+import { SwarmProxy } from '../services/swarm/proxy';
 import { assertReleaseName, Release, releaseEpoch } from '../services/release';
 import { createEnvLock } from '../services/lock';
 import { Audit } from '../services/audit';
@@ -274,8 +275,8 @@ async function resolveSetup(rawEnv: string | undefined, rawVersion: string | und
     cluster,
     deployApp: shouldDeployApp, forceAccessories, skipAccessories,
     options, rendered, composeContent, composeDirPath,
-    orchestrator: createStackBackend(managerConn),
-    proxyBackend: config.proxy?.enabled ? createProxyBackend(managerConn) : undefined,
+    swarm: new SwarmStack(managerConn),
+    swarmProxy: config.proxy?.enabled ? new SwarmProxy(managerConn) : undefined,
     releases: new Release(managerConn),
     lock: await createEnvLock(env, stackName, config.lock?.stale_threshold_minutes),
     audit: new Audit(managerConn),
@@ -364,7 +365,7 @@ async function execute(ctx: DeployContext): Promise<void> {
     await loginManagerToRegistry(ctx);
 
     // The whole stack, even under --only: a rollback restores every service.
-    const renderedStack = ctx.orchestrator.render({
+    const renderedStack = ctx.swarm.render({
       stackName: ctx.stackName, env: ctx.env, compose, proxy: ctx.config.proxy,
     });
 
@@ -421,7 +422,7 @@ async function execute(ctx: DeployContext): Promise<void> {
     }
     const lost = through !== null && through !== ctx.cluster.manager;
     const releases = lost ? new Release(through.connection) : ctx.releases;
-    const orchestrator = lost ? createStackBackend(through.connection) : ctx.orchestrator;
+    const swarm = lost ? new SwarmStack(through.connection) : ctx.swarm;
 
     if (through && outcome === 'rollback' && previousSymlink) {
       // rollback() handles its own cleanup — calling removeRelease first would delete the failed release before rollback can list it.
@@ -430,9 +431,9 @@ async function execute(ctx: DeployContext): Promise<void> {
         const imageNodes = Compose.usesRegistry(ctx.config)
           ? undefined
           : [ctx.cluster.manager, ...ctx.cluster.otherManagers, ...ctx.cluster.workers].map((node) => ({ name: node.name, shell: sshShell(node.connection) }));
-        rolledBackTo = await releases.rollback(ctx.stackName, orchestrator, ctx.deployVersion, previousSymlink, { imageNodes });
+        rolledBackTo = await releases.rollback(ctx.stackName, swarm, ctx.deployVersion, previousSymlink, { imageNodes });
         printWarning(`Rolled back to ${rolledBackTo}`);
-        await runPostRollbackHealthChecks(through.connection, orchestrator, ctx.stackName, ctx.config.health_checks, rollbackStartedAt);
+        await runPostRollbackHealthChecks(through.connection, swarm, ctx.stackName, ctx.config.health_checks, rollbackStartedAt);
       }
       catch (e) {
         printWarning(

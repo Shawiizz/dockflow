@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { arrangeLogLines, LogLineBuffer, parseDockerLogLines, splitServiceLogsContext, splitTimestamp, timestampKey } from '../utils/docker-logs';
-import { tasksToFollow } from '../services/orchestrator/swarm/swarm-container';
+import { tasksToFollow } from '../services/swarm/containers';
 
 const TASK = 'shop-production_web.1.k2j3h4g5f6d7s8a9q1w2e3r4t';
 

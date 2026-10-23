@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { analyzeTaskError } from '../commands/app/diagnose';
-import { SwarmStackBackend } from '../services/orchestrator/swarm/swarm-stack';
-import { stackDeployFailure, SwarmStackOps, type SwarmClock } from '../services/orchestrator/swarm/swarm-stack-ops';
-import { dockerQueryError } from '../services/orchestrator/swarm/swarm-utils';
+import { SwarmStack } from '../services/swarm/stack';
+import { stackDeployFailure, SwarmStackOps, type SwarmClock } from '../services/swarm/stack-ops';
+import { dockerQueryError } from '../services/swarm/docker';
 import type { SSHExecResult } from '../types';
 import { DeployError, ErrorCode } from '../utils/errors';
 import * as output from '../utils/output';
@@ -212,7 +212,7 @@ describe('docker service scale on a global service', () => {
   it('raises the message Docker gave', async () => {
     scriptSsh([[/docker service scale /, { exitCode: index.cases['service-scale-global'].exitCode, stderr: recorded('service-scale-global') }]]);
 
-    const failure = await new SwarmStackBackend(conn, new FakeClock()).scaleService(STACK, 'web', 2).catch((error) => error);
+    const failure = await new SwarmStack(conn, new FakeClock()).scaleService(STACK, 'web', 2).catch((error) => error);
 
     expect(failure).toBeInstanceOf(DeployError);
     expect(failure.message.trim()).toBe(recorded('service-scale-global').trim());
@@ -233,7 +233,7 @@ describe('the convergence timeout with recorded task errors', () => {
           [new RegExp(`^docker stack ps .*desired-state=${desired}`), { stdout: tasks }],
         ]);
 
-        const result = await new SwarmStackBackend(conn, new FakeClock()).waitConvergence(STACK, 10, 5);
+        const result = await new SwarmStack(conn, new FakeClock()).waitConvergence(STACK, 10, 5);
 
         expect(result.timedOut).toBe(true);
         expect(result.errorDetail).toBe(

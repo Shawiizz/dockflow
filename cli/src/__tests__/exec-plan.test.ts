@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { dockerExecCommand } from '../services/orchestrator/swarm/swarm-container';
+import { dockerExecCommand } from '../services/swarm/containers';
 import { ValidationError } from '../utils/errors';
 import { parseExecEnv, planExec } from '../utils/exec-plan';
 

@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import { getPerformer } from '../../utils/config';
 import { createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
-import { createStackBackend } from '../../services/orchestrator/factory';
+import { SwarmStack } from '../../services/swarm/stack';
 import * as Compose from '../../services/compose';
 import { Release } from '../../services/release';
 import { sshShell } from '../../utils/remote-shell';
@@ -37,7 +37,7 @@ export function registerRollbackCommand(program: Command): void {
         );
       }
 
-      const orchestrator = createStackBackend(connection);
+      const swarm = new SwarmStack(connection);
       const audit = new Audit(connection);
       const metrics = new Metrics(connection);
       const spinner = createSpinner();
@@ -49,7 +49,7 @@ export function registerRollbackCommand(program: Command): void {
       await withDeployLock(lock, service ? `Rollback ${service}` : `Rollback ${stackName}`, async () => {
         if (service) {
           spinner.start(`Rolling back ${stackName}_${service}...`);
-          await orchestrator.rollbackService(stackName, service);
+          await swarm.rollbackService(stackName, service);
           spinner.succeed(`Rolled back ${stackName}_${service}`);
 
           const durationMs = Date.now() - startTime;
@@ -68,9 +68,9 @@ export function registerRollbackCommand(program: Command): void {
           const imageNodes = Compose.usesRegistry(config)
             ? undefined
             : nodesOf(env, { name: serverName, connection }).map((node) => ({ name: node.name, shell: sshShell(node.connection) }));
-          const rolledBackTo = await releases.rollback(stackName, orchestrator, null, null, { imageNodes });
+          const rolledBackTo = await releases.rollback(stackName, swarm, null, null, { imageNodes });
           spinner.succeed(`Rolled back to ${rolledBackTo}`);
-          await runPostRollbackHealthChecks(connection, orchestrator, stackName, config.health_checks, rollbackStartedAt);
+          await runPostRollbackHealthChecks(connection, swarm, stackName, config.health_checks, rollbackStartedAt);
 
           const durationMs = Date.now() - startTime;
           const message = `Rolled back ${stackName} to ${rolledBackTo}`;

@@ -6,7 +6,7 @@
 import type { SSHKeyConnection } from '../../types/connection';
 import { getAccessoriesStackName } from '../../utils/config';
 import { shellQuote, sshExec } from '../../utils/ssh';
-import { runDockerQuery } from '../../services/orchestrator/swarm/swarm-utils';
+import { runDockerQuery } from '../../services/swarm/docker';
 import { DockerError, ErrorCode } from '../../utils/errors';
 
 /**

@@ -17,7 +17,7 @@ import {
   selectRetention,
   selectRollbackTarget,
 } from '../services/release';
-import type { StackBackend } from '../services/orchestrator/interfaces';
+import type { SwarmStack } from '../services/swarm/stack';
 import type { SSHExecResult } from '../types';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { RemoteShell } from '../utils/remote-shell';
@@ -227,7 +227,7 @@ function fakeBackend(options: { redeployFails?: boolean; convergenceFails?: bool
         : { success: true as const, data: undefined };
     },
     waitConvergence: async () => ({ converged: !options.convergenceFails, rolledBack: false, timedOut: false }),
-  } as unknown as StackBackend;
+  } as unknown as SwarmStack;
   return { backend, redeployed };
 }
 

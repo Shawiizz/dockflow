@@ -1,30 +1,21 @@
 /**
  * Swarm stack backend.
  *
- * Implements StackBackend for Docker Swarm. Deploy mechanics live in the
+ * Implements SwarmStack for Docker Swarm. Deploy mechanics live in the
  * helper (SwarmStackOps); inspection, health, and lifecycle commands are
  * direct SSH calls.
  */
 
-import type { SSHKeyConnection } from '../../../types';
-import { ok, err, type Result } from '../../../types/result';
-import { DeployError, ErrorCode } from '../../../utils/errors';
-import { shellQuote, sshExec } from '../../../utils/ssh';
-import { printDebug, createTimedSpinner } from '../../../utils/output';
-import { ConvergenceError, realClock, SwarmStackOps, type SwarmClock } from './swarm-stack-ops';
-import { runDockerQuery } from './swarm-utils';
-import * as Compose from '../../compose';
-import { CONVERGENCE_TIMEOUT_S, DOCKFLOW_STACKS_DIR } from '../../../constants';
-import type {
-  StackBackend,
-  StackInfo,
-  ServiceInfo,
-  ConvergenceResult,
-  StackMetadata,
-  StackDeployInput,
-  AccessoryDeployInput,
-  InternalHealthResult,
-} from '../interfaces';
+import type { SSHKeyConnection } from '../../types';
+import { ok, err, type Result } from '../../types/result';
+import { DeployError, ErrorCode } from '../../utils/errors';
+import { shellQuote, sshExec } from '../../utils/ssh';
+import { printDebug, createTimedSpinner } from '../../utils/output';
+import { ConvergenceError, realClock, SwarmStackOps, type SwarmClock } from './stack-ops';
+import { runDockerQuery } from './docker';
+import * as Compose from '../compose';
+import { CONVERGENCE_TIMEOUT_S, DOCKFLOW_STACKS_DIR } from '../../constants';
+import type { StackInfo, ServiceInfo, ConvergenceResult, StackMetadata, StackDeployInput, AccessoryDeployInput, InternalHealthResult } from './types';
 
 export interface SwarmContainerInfo {
   id: string;
@@ -43,7 +34,7 @@ export interface SwarmTaskInfo {
   error: string;
 }
 
-export class SwarmStackBackend implements StackBackend {
+export class SwarmStack {
   private readonly ops: SwarmStackOps;
   private readonly renders = new Map<string, string>();
 
@@ -371,7 +362,7 @@ export class SwarmStackBackend implements StackBackend {
   }
 
   // ---------------------------------------------------------------------------
-  // Inspection methods outside the StackBackend interface, used by `dockflow ps` and
+  // Inspection methods outside the SwarmStack interface, used by `dockflow ps` and
   // `dockflow diagnose`: containers on nodes, task scheduling.
   // ---------------------------------------------------------------------------
 

@@ -2,10 +2,10 @@
  * Shared helpers for Swarm operations that search across nodes.
  */
 
-import type { SSHKeyConnection } from '../../../types';
-import { shellQuote, sshExec } from '../../../utils/ssh';
-import { printDebug } from '../../../utils/output';
-import { DockerError, ErrorCode } from '../../../utils/errors';
+import type { SSHKeyConnection } from '../../types';
+import { shellQuote, sshExec } from '../../utils/ssh';
+import { printDebug } from '../../utils/output';
+import { DockerError, ErrorCode } from '../../utils/errors';
 
 export interface SwarmTask {
   id: string;

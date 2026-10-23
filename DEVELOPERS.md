@@ -132,31 +132,11 @@ docker exec dockflow-test-manager docker stack ps test-app-test
 
 ## Services Layer — Naming Convention
 
-`cli/src/services/` uses a three-tier naming system. The suffix (or lack of one) tells you the shape of the export:
+`cli/src/services/` uses a two-tier naming system. The shape of the export tells what it is.
 
-### 1. `*Backend` — polymorphic interfaces
+### 1. Plain noun — stateful classes
 
-Used only under `cli/src/services/orchestrator/`: the contracts the commands use, implemented for Swarm under `./swarm/`.
-
-```ts
-// Interface
-export interface StackBackend {
-  deploy(input: StackDeployInput): Promise<Result<void, DeployError>>;
-  // ...
-}
-
-// Implementation
-export class SwarmStackBackend implements StackBackend { /* ... */ }
-
-// Consumed via factory
-const backend = createStackBackend(managerConn);
-```
-
-Current backends: `StackBackend` (which also runs the internal health check), `ContainerBackend`, `ProxyBackend`.
-
-### 2. Plain noun — stateful classes
-
-One class per file, named after the singular noun. Wraps a connection or holds state across multiple calls.
+One class per file, named after the singular noun. Wraps a connection or holds state across multiple calls. The Swarm classes live under `cli/src/services/swarm/`: `SwarmStack`, `SwarmContainers`, `SwarmProxy`.
 
 ```ts
 // cli/src/services/lock.ts
@@ -183,7 +163,7 @@ import { createLock } from '../services/lock';
 const lock = createLock(conn, stackName, config.lock?.stale_threshold_minutes);
 ```
 
-### 3. Module — stateless free functions
+### 2. Module — stateless free functions
 
 No class. The file is a namespace of top-level `export function` declarations, imported via `import * as`.
 
@@ -206,19 +186,17 @@ Current modules: `compose.ts`, `build.ts`, `distribution.ts`, `hook.ts`, `notifi
 
 ### Why no more `*Service`?
 
-The suffix was ambiguous — it was attached to interfaces, to stateful classes, and to bags of static helpers without distinction. Each of the three forms above answers a different question for the reader:
+The suffix was ambiguous — it was attached to stateful classes and to bags of static helpers without distinction. Each of the two forms above answers a different question for the reader:
 
-- `*Backend` → "this has multiple implementations, look for a factory"
 - plain noun → "this is a class, you instantiate it, it holds state"
 - module → "this is just functions, import the namespace"
 
-**Never introduce a new `*Service` class.** If you're tempted to, the shape you actually want is one of the three above.
+**Never introduce a new `*Service` class.** If you're tempted to, the shape you actually want is one of the two above.
 
 ### Picking the right shape
 
 | Situation | Shape |
 |---|---|
-| Multiple implementations behind a common interface | `*Backend` |
 | Wraps an SSH connection or other resource, called 2+ times | Stateful class |
 | Pure, stateless transformations or side effects | Module of functions |
 | "I have some helper functions" | Module of functions — never a class with `static` methods |
@@ -232,7 +210,7 @@ Quick checklist:
 1. **Command**: add in `cli/src/commands/`, register in `cli/src/commands/register-all.ts`
 2. **Service logic**: put in `cli/src/services/`. Pick the right shape (see *Services Layer — Naming Convention* above)
 3. **Config field**: update both `cli/src/schemas/config.schema.ts` (Zod) and `cli/src/utils/config.ts` (interface)
-4. **New remote path**: add constants in `cli/src/constants.ts` and ensure the deploy command creates them via the `StackBackend` implementations
+4. **New remote path**: add constants in `cli/src/constants.ts` and ensure the deploy command creates them through `SwarmStack`
 5. **Typecheck, lint, tests**: from `cli/`, `bun run typecheck` (zero errors), `bun run lint` and `bun test src/`
 6. **Documentation**: add or update a page in `docs/app/en/`. A new command or option goes on `docs/app/en/cli/page.mdx` (the `docs-sync` unit test fails without it), and a new error code in its exit codes table. A new page is added to the `_meta.ts` of its folder and, for a configuration page, to the cards of `docs/app/en/configuration/page.mdx`; the llms.txt files follow the `_meta` files by themselves.
 

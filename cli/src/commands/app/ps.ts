@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { printInfo, printSection, printDebug, colors, printBlank, printDim, printRaw } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
-import { SwarmStackBackend } from '../../services/orchestrator/swarm/swarm-stack';
+import { SwarmStack } from '../../services/swarm/stack';
 import { DockerError, withServicesRequired } from '../../utils/errors';
 import { nodesOf, onEveryNode } from './nodes';
 
@@ -21,14 +21,14 @@ export function registerPsCommand(program: Command): void {
       printDebug('Connection validated', { stackName, tasks: options.tasks });
 
 
-      const orchestrator = new SwarmStackBackend(connection);
+      const swarm = new SwarmStack(connection);
 
       printInfo(`Stack: ${stackName}`);
       printBlank();
 
       try {
         if (options.tasks) {
-          const tasks = await orchestrator.getTasks(stackName);
+          const tasks = await swarm.getTasks(stackName);
 
           printSection('Tasks');
           printBlank();
@@ -52,8 +52,8 @@ export function registerPsCommand(program: Command): void {
         } else {
           const nodes = nodesOf(env, { name: serverName, connection });
           const [perNode, services] = await Promise.all([
-            onEveryNode(nodes, (node) => new SwarmStackBackend(node.connection).getContainers(stackName)),
-            orchestrator.getServices(stackName),
+            onEveryNode(nodes, (node) => new SwarmStack(node.connection).getContainers(stackName)),
+            swarm.getServices(stackName),
           ]);
           const containers = perNode.flatMap(({ node, value }) => value.map((container) => ({ ...container, node: node.name })));
 

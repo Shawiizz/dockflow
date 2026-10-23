@@ -4,12 +4,12 @@
 
 import type { SSHKeyConnection } from '../../types';
 import { selectPrompt } from '../../utils/prompts';
-import { createStackBackend } from '../../services/orchestrator/factory';
-import { listSwarmTasks } from '../../services/orchestrator/swarm/swarm-utils';
+import { SwarmStack } from '../../services/swarm/stack';
+import { listSwarmTasks } from '../../services/swarm/docker';
 import { DockerError, ErrorCode } from '../../utils/errors';
 
 export async function pickService(connection: SSHKeyConnection, stackName: string): Promise<string> {
-  const services = await createStackBackend(connection).getServices(stackName);
+  const services = await new SwarmStack(connection).getServices(stackName);
   if (services.length === 0) throw new DockerError(`No services found for stack ${stackName}`, { code: ErrorCode.STACK_NOT_FOUND });
   if (services.length === 1) return services[0].name;
 

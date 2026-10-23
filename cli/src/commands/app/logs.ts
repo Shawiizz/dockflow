@@ -5,10 +5,11 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import type { SSHKeyConnection } from '../../types';
-import type { LogSource } from '../../services/orchestrator/interfaces';
+import type { LogSource } from '../../services/swarm/types';
 import { printInfo, printSection, printDebug, printBlank, printRaw } from '../../utils/output';
 import { resolveEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
-import { createContainerBackend, createStackBackend } from '../../services/orchestrator/factory';
+import { SwarmContainers } from '../../services/swarm/containers';
+import { SwarmStack } from '../../services/swarm/stack';
 import { DockerError, ErrorCode, withServicesRequired } from '../../utils/errors';
 import { parseTailOption } from '../../utils/log-options';
 import { pickService, pickSwarmTask } from './pick';
@@ -59,7 +60,7 @@ export async function showLogs(
   options: LogsCommandOptions,
 ): Promise<void> {
   // every node: a service's tasks may all run on workers
-  const logsBackend = createContainerBackend(connection, getAllNodeConnections(env));
+  const containers = new SwarmContainers(connection, getAllNodeConnections(env));
 
   let taskId: string | undefined;
   if (options.pick) {
@@ -77,18 +78,18 @@ export async function showLogs(
   };
   const fail = (err: Error) => { throw err; };
 
-  const services = service ? [service] : (await createStackBackend(connection).getServices(stackName)).map((s) => s.name);
+  const services = service ? [service] : (await new SwarmStack(connection).getServices(stackName)).map((s) => s.name);
   if (services.length === 0) throw new DockerError(`No services found for stack ${stackName}`, { code: ErrorCode.STACK_NOT_FOUND });
 
   try {
     if (options.follow || services.length === 1) {
       const print = createLogPrinter({ prefix: options.prefix !== false, services: services.length });
-      await Promise.all(services.map((name) => logsBackend.streamLogs(stackName, name, logOptions, print, fail)));
+      await Promise.all(services.map((name) => containers.streamLogs(stackName, name, logOptions, print, fail)));
       return;
     }
     for (const name of services) {
       printSection(name);
-      await logsBackend.streamLogs(stackName, name, logOptions, createLogPrinter({ prefix: options.prefix !== false, services: 1 }), fail);
+      await containers.streamLogs(stackName, name, logOptions, createLogPrinter({ prefix: options.prefix !== false, services: 1 }), fail);
     }
   } catch (error) {
     if (error instanceof DockerError) throw error;

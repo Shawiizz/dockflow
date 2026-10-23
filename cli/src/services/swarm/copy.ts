@@ -105,7 +105,7 @@ export interface LocalPathState {
 }
 
 export interface CopyOutPlan {
-  /** what to pass to `ContainerBackend.copyOut` */
+  /** what to pass to `SwarmContainers.copyOut` */
   remotePath: string;
   /** local directory the archive is extracted into */
   extractDir: string;
@@ -144,7 +144,7 @@ export interface ContainerPathState {
 }
 
 export interface CopyInPlan {
-  /** what to pass to `ContainerBackend.copyIn` */
+  /** what to pass to `SwarmContainers.copyIn` */
   destDir: string;
   /** name the packed entry takes (`packPathToTar`); null packs a directory's entries */
   entryName: string | null;

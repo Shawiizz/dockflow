@@ -16,7 +16,7 @@ export const DOCKFLOW_RELEASE_URL = 'https://github.com/Shawiizz/dockflow/releas
  * Directory paths
  */
 export const DOCKFLOW_STACKS_DIR = '/var/lib/dockflow/stacks';
-/** The stack a release re-applies on rollback, as the orchestrator received it. */
+/** The stack a release re-applies on rollback, as the swarm received it. */
 export const RELEASE_STACK_FILE = 'stack.yml';
 export const DOCKFLOW_LOCKS_DIR = '/var/lib/dockflow/locks';
 export const DOCKFLOW_AUDIT_DIR = '/var/lib/dockflow/audit';

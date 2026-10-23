@@ -8,7 +8,7 @@ import { printInfo, printIntro, printOutro, printNote, printWarning, printBlank,
 import { confirmPrompt } from '../../utils/prompts';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { requireAccessoriesStack } from './utils';
-import { createStackBackend } from '../../services/orchestrator/factory';
+import { SwarmStack } from '../../services/swarm/stack';
 import { loadConfig } from '../../utils/config';
 import { CLIError, DockerError, ErrorCode, withErrorHandler, ConfigError } from '../../utils/errors';
 import { serviceMode } from '../app/service-name';
@@ -33,9 +33,9 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
       const config = loadConfig();
       if (!config) throw new ConfigError('No dockflow config found');
-      const orchestrator = createStackBackend(connection);
+      const swarm = new SwarmStack(connection);
 
-      const services = await orchestrator.getServices(stackName);
+      const services = await swarm.getServices(stackName);
       if (services.length === 0) {
         throw new DockerError('No accessories services found', { code: ErrorCode.STACK_NOT_FOUND });
       }
@@ -82,7 +82,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
         if (service) {
           const spinner = createSpinner();
           spinner.start(`Stopping ${service}...`);
-          await orchestrator.scaleService(stackName, service, 0, scale);
+          await swarm.scaleService(stackName, service, 0, scale);
           spinner.succeed(`Accessory '${service}' ${done}`);
         } else {
           const spinner = createSpinner();
@@ -91,7 +91,7 @@ export function registerAccessoriesStopCommand(program: Command): void {
 
           for (const name of stoppable) {
             try {
-              await orchestrator.scaleService(stackName, name, 0, scale);
+              await swarm.scaleService(stackName, name, 0, scale);
             } catch (error) {
               failed.push(`${name}: ${error instanceof Error ? error.message : String(error)}`);
             }

@@ -1,8 +1,8 @@
 /**
- * HealthCheck — orchestrator-agnostic health checking.
+ * HealthCheck — swarm-agnostic health checking.
  *
  * Internal health checks (Swarm tasks) are delegated to the
- * injected StackBackend. HTTP endpoint checks run sequentially with a
+ * injected SwarmStack. HTTP endpoint checks run sequentially with a
  * per-endpoint spinner that updates in place on each retry.
  */
 
@@ -11,7 +11,8 @@ import { sshExec } from '../utils/ssh';
 import { printDebug, printDim, printWarning, createSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { HealthCheckConfig, HealthCheckEndpoint } from '../utils/config';
-import type { StackBackend, InternalHealthResult } from './orchestrator/interfaces';
+import type { InternalHealthResult } from './swarm/types';
+import type { SwarmStack } from './swarm/stack';
 
 // Defaults — overridable via config.health_checks.timeout / .interval
 const DEFAULT_HEALTHCHECK_TIMEOUT_S = 120;
@@ -20,11 +21,11 @@ const DEFAULT_HEALTHCHECK_INTERVAL_S = 5;
 export class HealthCheck {
   constructor(
     private readonly connection: SSHKeyConnection,
-    private readonly stackBackend: StackBackend,
+    private readonly swarm: SwarmStack,
   ) {}
 
   /**
-   * Internal health check, delegated to the injected StackBackend.
+   * Internal health check, delegated to the injected SwarmStack.
    */
   async checkInternalHealth(
     stackName: string,
@@ -35,7 +36,7 @@ export class HealthCheck {
     const timeoutS = config?.timeout ?? DEFAULT_HEALTHCHECK_TIMEOUT_S;
     const intervalS = config?.interval ?? DEFAULT_HEALTHCHECK_INTERVAL_S;
 
-    return this.stackBackend.checkInternalHealth(stackName, timeoutS, intervalS, servicesFilter, deployStartedAt);
+    return this.swarm.checkInternalHealth(stackName, timeoutS, intervalS, servicesFilter, deployStartedAt);
   }
 
   private async checkHTTPLocal(

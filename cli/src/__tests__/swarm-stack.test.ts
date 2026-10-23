@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 import { createHash } from 'crypto';
 import { convergenceError } from '../commands/deploy-phases';
 import { accessoriesDigest, loadFromString, serialize } from '../services/compose';
-import { SwarmStackBackend } from '../services/orchestrator/swarm/swarm-stack';
-import { failedTasksByService, stackDeployFailure, type SwarmClock } from '../services/orchestrator/swarm/swarm-stack-ops';
+import { SwarmStack } from '../services/swarm/stack';
+import { failedTasksByService, stackDeployFailure, type SwarmClock } from '../services/swarm/stack-ops';
 import type { SSHExecResult } from '../types';
 import { DeployError, ErrorCode } from '../utils/errors';
 import * as output from '../utils/output';
@@ -137,7 +137,7 @@ afterEach(() => {
   spyOn(output, 'createTimedSpinner').mockRestore();
 });
 
-const backend = (): SwarmStackBackend => new SwarmStackBackend(conn, clock);
+const backend = (): SwarmStack => new SwarmStack(conn, clock);
 
 const appCompose = () => loadFromString('services:\n  web:\n    image: web:1\n  worker:\n    image: worker:1\n');
 
@@ -147,7 +147,7 @@ function expectDeployError(result: { success: boolean; error?: Error }, message:
   expect(result.error?.message).toMatch(message);
 }
 
-describe('SwarmStackBackend.deploy', () => {
+describe('SwarmStack.deploy', () => {
   function scriptDeploy(listed = STACK): void {
     script
       .on(STACK_SERVICES_NAMES, { stdout: '' })
@@ -326,7 +326,7 @@ describe('SwarmStackBackend.deploy', () => {
   });
 });
 
-describe('SwarmStackBackend.redeploy', () => {
+describe('SwarmStack.redeploy', () => {
   it('sends the stored compose as it is, with prune and registry auth', async () => {
     script
       .on(STACK_SERVICES_NAMES, { stdout: '' })
@@ -342,7 +342,7 @@ describe('SwarmStackBackend.redeploy', () => {
   });
 });
 
-describe('SwarmStackBackend.deployAccessory', () => {
+describe('SwarmStack.deployAccessory', () => {
   const accessories = () => loadFromString('services:\n  db:\n    image: db:1\n');
   const input = (force?: boolean) => ({ stackName: STACK, env: 'production', compose: accessories(), accessoryPath: 'accessories.yml', force });
   const hash = createHash('sha256').update(serialize(accessories())).digest('hex');
@@ -471,7 +471,7 @@ describe('SwarmStackBackend.deployAccessory', () => {
   });
 });
 
-describe('SwarmStackBackend.waitConvergence', () => {
+describe('SwarmStack.waitConvergence', () => {
   const WEB = `${STACK}_web`;
   const WORKER = `${STACK}_worker`;
 
@@ -747,7 +747,7 @@ describe('SwarmStackBackend.waitConvergence', () => {
   });
 });
 
-describe('SwarmStackBackend.checkInternalHealth', () => {
+describe('SwarmStack.checkInternalHealth', () => {
   const WEB = `${STACK}_web`;
   const started = new Date('2026-09-19T12:00:00Z');
 
@@ -818,7 +818,7 @@ describe('SwarmStackBackend.checkInternalHealth', () => {
 
 const SERVICE_UPDATE = /^(timeout 300 )?docker service update /;
 
-describe('SwarmStackBackend.restart', () => {
+describe('SwarmStack.restart', () => {
   const listing = `${STACK}_web|web:1|1/1|\n${STACK}_worker|worker:1|2/2|\n`;
 
   it('updates every service of the stack in one chained command', async () => {
@@ -868,7 +868,7 @@ describe('SwarmStackBackend.restart', () => {
   });
 });
 
-describe('SwarmStackBackend service commands', () => {
+describe('SwarmStack service commands', () => {
   it('scales by the quoted, stack-qualified name, detached only on request', async () => {
     script.on(/^(timeout 300 )?docker service scale /, {});
 
@@ -916,7 +916,7 @@ describe('SwarmStackBackend service commands', () => {
   });
 });
 
-describe('SwarmStackBackend queries', () => {
+describe('SwarmStack queries', () => {
   const dockerDown = {
     exitCode: 1,
     stderr: 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?',

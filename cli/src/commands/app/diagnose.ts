@@ -5,7 +5,7 @@ import {
   printSuccess, printDebug, printBlank, printRaw, printWarning, colors,
 } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
-import { SwarmStackBackend } from '../../services/orchestrator/swarm/swarm-stack';
+import { SwarmStack } from '../../services/swarm/stack';
 import { withServicesRequired } from '../../utils/errors';
 
 interface DiagnosticIssue {
@@ -105,11 +105,11 @@ export function registerDiagnoseCommand(program: Command): void {
       printBlank();
 
       const issues: DiagnosticIssue[] = [];
-      const orchestrator = new SwarmStackBackend(connection);
+      const swarm = new SwarmStack(connection);
 
       // ── Stack existence ──────────────────────────────────────────────────
       printSection('Stack Status');
-      const stackExists = await orchestrator.stackExists(stackName);
+      const stackExists = await swarm.stackExists(stackName);
       if (!stackExists) {
         printError('Stack does not exist');
         issues.push({
@@ -125,7 +125,7 @@ export function registerDiagnoseCommand(program: Command): void {
 
       // ── Service replicas ─────────────────────────────────────────────────
       printSection('Services');
-      const services = await orchestrator.getServices(stackName);
+      const services = await swarm.getServices(stackName);
       for (const service of services) {
         const [current, desired] = service.replicas.split('/').map(s => parseInt(s.trim()));
         if (current === 0 && desired > 0) {
@@ -141,7 +141,7 @@ export function registerDiagnoseCommand(program: Command): void {
 
       // ── Failed tasks ─────────────────────────────────────────────────────
       printSection('Task Errors');
-      const tasks = await orchestrator.getTasks(stackName);
+      const tasks = await swarm.getTasks(stackName);
       const failures = tasks
         .filter(t => t.error || t.currentState.includes('Failed'))
         .slice(0, 10);

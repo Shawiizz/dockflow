@@ -4,7 +4,7 @@ import type { DeployContext } from '../commands/deploy-context';
 import { displayRenderedStack } from '../commands/deploy-dry-run';
 import { appStackInput, composeWithImageTags, keepRunningImageTags } from '../commands/deploy-phases';
 import { loadFromString } from '../services/compose';
-import { SwarmStackBackend } from '../services/orchestrator/swarm/swarm-stack';
+import { SwarmStack } from '../services/swarm/stack';
 import type { DockflowConfig } from '../utils/config';
 import * as output from '../utils/output';
 
@@ -38,7 +38,7 @@ function context(overrides: { only?: string; deployApp?: boolean; running?: stri
     config: { project_name: 'shop', ...overrides.config } as DockflowConfig,
     options: { only: overrides.only },
     composeContent: overrides.composeContent ?? COMPOSE,
-    orchestrator: new SwarmStackBackend(conn),
+    swarm: new SwarmStack(conn),
     releases: { getCurrentComposeContent: async () => overrides.running ?? null },
   } as unknown as DeployContext;
 }
@@ -145,7 +145,7 @@ describe('displayRenderedStack', () => {
 
   it('prints exactly what the deploy sends', async () => {
     const ctx = context({ only: 'web', running: RUNNING });
-    const sent = ctx.orchestrator.render(appStackInput(ctx, await keepRunningImageTags(ctx, composeWithImageTags(ctx))));
+    const sent = ctx.swarm.render(appStackInput(ctx, await keepRunningImageTags(ctx, composeWithImageTags(ctx))));
 
     await displayRenderedStack(ctx);
 

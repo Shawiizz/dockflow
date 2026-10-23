@@ -154,5 +154,5 @@ export async function displayRenderedStack(ctx: DeployContext): Promise<void> {
     'The stack below is printed as it would be sent: values rendered from servers.yml and CI secrets ' +
       '(current.env.*) appear in clear. Do not share or log it.',
   );
-  printRaw(ctx.orchestrator.render(appStackInput(ctx, compose)).trimEnd());
+  printRaw(ctx.swarm.render(appStackInput(ctx, compose)).trimEnd());
 }

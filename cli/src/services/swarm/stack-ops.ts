@@ -1,26 +1,26 @@
 /**
  * Low-level Swarm stack operations.
  *
- * Helper for SwarmStackBackend — owns the mechanics of `docker stack deploy`:
+ * Helper for SwarmStack — owns the mechanics of `docker stack deploy`:
  * external resource creation, stuck-service recovery, convergence polling,
  * hash-based accessories change detection.
  *
  * Not exported through services/index.ts — consumers should use
- * SwarmStackBackend (via createStackBackend) instead.
+ * SwarmStack (via createStackBackend) instead.
  */
 
-import type { SSHKeyConnection } from '../../../types';
-import { shellQuote, sshExec, sshExecChannel } from '../../../utils/ssh';
-import { printDebug, printInfo, printWarning, printSuccess, createTimedSpinner } from '../../../utils/output';
-import { DeployError, ErrorCode } from '../../../utils/errors';
-import { accessoriesDigest } from '../../compose';
+import type { SSHKeyConnection } from '../../types';
+import { shellQuote, sshExec, sshExecChannel } from '../../utils/ssh';
+import { printDebug, printInfo, printWarning, printSuccess, createTimedSpinner } from '../../utils/output';
+import { DeployError, ErrorCode } from '../../utils/errors';
+import { accessoriesDigest } from '../compose';
 import {
   DOCKFLOW_ACCESSORIES_DIR,
   STACK_REMOVAL_MAX_ATTEMPTS,
   STACK_REMOVAL_POLL_INTERVAL_MS,
   CONVERGENCE_TIMEOUT_S,
   CONVERGENCE_INTERVAL_S,
-} from '../../../constants';
+} from '../../constants';
 
 export interface SwarmClock {
   now(): number;

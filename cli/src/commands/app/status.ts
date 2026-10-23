@@ -7,7 +7,7 @@
 import type { Command } from 'commander';
 import chalk from 'chalk';
 import { getAvailableEnvironments, getManagersForEnvironment } from '../../utils/servers';
-import { createStackBackend } from '../../services/orchestrator/factory';
+import { SwarmStack } from '../../services/swarm/stack';
 import { withSecrets } from '../../utils/secrets';
 import { CLIError, ConnectionError, ErrorCode, withServicesRequired } from '../../utils/errors';
 import { resolveEnv, resolveEnvironmentPrefix } from '../../utils/validation';
@@ -42,8 +42,8 @@ export interface StatusDeps {
 
 async function readEnvironment(env: string): Promise<EnvReading> {
   const { stackName, connection } = await resolveEnv(env);
-  const orchestrator = createStackBackend(connection);
-  const [meta, services] = await Promise.all([orchestrator.getMetadata(stackName), orchestrator.getServices(stackName)]);
+  const swarm = new SwarmStack(connection);
+  const [meta, services] = await Promise.all([swarm.getMetadata(stackName), swarm.getServices(stackName)]);
   const totals = services.reduce(
     (sum, s) => {
       const [running, desired] = s.replicas.split('/').map(Number);

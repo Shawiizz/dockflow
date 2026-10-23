@@ -2,8 +2,8 @@
  * Services barrel export
  *
  * Service layer for deploy/operate flows. Stack lifecycle and exec
- * are handled through the orchestrator layer
- * (`services/orchestrator/*`) — not re-exported here.
+ * are handled through the swarm layer
+ * (`services/swarm/*`) — not re-exported here.
  */
 
 // Deployment metrics
@@ -24,7 +24,7 @@ export * from './history-sync';
 // Compose manipulation (template rendering, image tagging, deploy config injection)
 export * from './compose';
 
-// Health checks (internal via StackBackend + HTTP endpoints)
+// Health checks (internal via SwarmStack + HTTP endpoints)
 export * from './health-check';
 
 // Release lifecycle (create, rollback, cleanup)

@@ -5,7 +5,8 @@
 import type { DockflowConfig } from '../utils/config';
 import type { ClusterConnection } from '../types';
 import type { RenderedFiles } from '../services/compose';
-import type { StackBackend, ProxyBackend } from '../services/orchestrator/interfaces';
+import type { SwarmStack } from '../services/swarm/stack';
+import type { SwarmProxy } from '../services/swarm/proxy';
 import type { Release } from '../services/release';
 import type { Lock } from '../services/lock';
 import type { Audit } from '../services/audit';
@@ -48,8 +49,8 @@ export interface DeployContext {
   composeContent: string;
   composeDirPath: string;
 
-  orchestrator: StackBackend;
-  proxyBackend?: ProxyBackend;
+  swarm: SwarmStack;
+  swarmProxy?: SwarmProxy;
   /** Traefik brought up to date, by whichever phase needed it first */
   proxyReady?: Promise<void>;
   releases: Release;

@@ -6,8 +6,8 @@ import type { Command } from 'commander';
 import { sshExec } from '../../utils/ssh';
 import { printSection, printNote, printJSON, printBlank, printDim, printRaw, colors } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
-import { createStackBackend } from '../../services/orchestrator/factory';
-import { qualifyServiceName } from '../../services/orchestrator/swarm/swarm-utils';
+import { SwarmStack } from '../../services/swarm/stack';
+import { qualifyServiceName } from '../../services/swarm/docker';
 import { DockerError, ErrorCode, withErrorHandler } from '../../utils/errors';
 
 interface TaskInfo {
@@ -30,8 +30,8 @@ export function registerListServicesCommand(parent: Command): void {
       const { stackName, connection } = await resolveEnv(env, options.server);
 
       try {
-        const orchestrator = createStackBackend(connection);
-        const services = await orchestrator.getServices(stackName);
+        const swarm = new SwarmStack(connection);
+        const services = await swarm.getServices(stackName);
 
         if (services.length === 0) {
           throw new DockerError(

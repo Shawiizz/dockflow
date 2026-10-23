@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 import { printWarning, printInfo, printDebug, createSpinner } from '../../utils/output';
 import { confirmPrompt } from '../../utils/prompts';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
-import { createStackBackend } from '../../services/orchestrator/factory';
+import { SwarmStack } from '../../services/swarm/stack';
 import { loadConfig } from '../../utils/config';
 import { CLIError, DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
 import { createEnvLock } from '../../services/lock';
@@ -39,14 +39,14 @@ export function registerStopCommand(program: Command): void {
 
       const config = loadConfig();
       if (!config) throw new ConfigError('No dockflow config found');
-      const orchestrator = createStackBackend(connection);
+      const swarm = new SwarmStack(connection);
 
       const spinner = createSpinner();
 
       try {
         await withDeployLock(await createEnvLock(env, stackName, config.lock?.stale_threshold_minutes), `Stop ${stackName}`, async () => {
           spinner.start(`Stopping stack ${stackName}...`);
-          await orchestrator.removeStack(stackName);
+          await swarm.removeStack(stackName);
           spinner.succeed(`Stack ${stackName} stopped`);
         });
       } catch (error) {

@@ -7,7 +7,7 @@ import type { Command } from 'commander';
 import type { SSHKeyConnection } from '../../types';
 import { printInfo } from '../../utils/output';
 import { resolveEnv, getAllNodeConnections, withResolvedEnv } from '../../utils/validation';
-import { createContainerBackend } from '../../services/orchestrator/factory';
+import { SwarmContainers } from '../../services/swarm/containers';
 import { ExecExitError, withServicesRequired } from '../../utils/errors';
 import { type ExecPlan, planExec } from '../../utils/exec-plan';
 import { pickSwarmTask } from './pick';
@@ -48,7 +48,7 @@ export async function runExecIn(
   plan: ExecPlan,
   options: Pick<ExecCommandOptions, 'pick'>,
 ): Promise<void> {
-  const containers = createContainerBackend(connection, getAllNodeConnections(env));
+  const containers = new SwarmContainers(connection, getAllNodeConnections(env));
   const taskId = options.pick ? await pickSwarmTask(stackName, service, connection) : undefined;
 
   if (plan.mode === 'shell') {

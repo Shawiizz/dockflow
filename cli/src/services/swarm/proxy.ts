@@ -8,20 +8,19 @@
 
 import { createHash } from 'crypto';
 
-import type { SSHKeyConnection } from '../../../types';
-import type { ProxyConfig } from '../../../utils/config';
-import { shellQuote, sshExec, sshExecChannel } from '../../../utils/ssh';
-import { printDebug, printDim, printSuccess } from '../../../utils/output';
-import { DeployError, ErrorCode } from '../../../utils/errors';
+import type { SSHKeyConnection } from '../../types';
+import type { ProxyConfig } from '../../utils/config';
+import { shellQuote, sshExec, sshExecChannel } from '../../utils/ssh';
+import { printDebug, printDim, printSuccess } from '../../utils/output';
+import { DeployError, ErrorCode } from '../../utils/errors';
 import {
   TRAEFIK_STACK_NAME,
   TRAEFIK_NETWORK_NAME,
   TRAEFIK_CERTS_VOLUME,
   TRAEFIK_IMAGE,
   SOCKET_PROXY_IMAGE,
-} from '../../../constants';
+} from '../../constants';
 
-import type { ProxyBackend } from '../interfaces';
 
 const CONFIG_HASH_LABEL = 'dockflow.config-hash';
 const TRAEFIK_SERVICE = `${TRAEFIK_STACK_NAME}_traefik`;
@@ -68,7 +67,7 @@ export function parseListeners(output: string): Array<{ port: number; process?: 
   return listeners;
 }
 
-export class SwarmProxyBackend implements ProxyBackend {
+export class SwarmProxy {
   constructor(private readonly connection: SSHKeyConnection) {}
 
   /**
@@ -76,7 +75,7 @@ export class SwarmProxyBackend implements ProxyBackend {
    * Skips when it already runs with the same generated stack.
    */
   async ensureRunning(proxyConfig: ProxyConfig): Promise<void> {
-    const configHash = SwarmProxyBackend.configHash(proxyConfig);
+    const configHash = SwarmProxy.configHash(proxyConfig);
     const state = await this.currentState();
     if (state.replicas === '1/1' && state.configHash === configHash) {
       printDebug('Traefik stack already running');
@@ -106,7 +105,7 @@ export class SwarmProxyBackend implements ProxyBackend {
       this.connection,
       `docker stack deploy --prune --resolve-image changed -c - ${TRAEFIK_STACK_NAME}`,
     );
-    stream.end(SwarmProxyBackend.generateCompose(proxyConfig, configHash));
+    stream.end(SwarmProxy.generateCompose(proxyConfig, configHash));
     const result = await done;
 
     if (result.exitCode !== 0) {
@@ -123,7 +122,7 @@ export class SwarmProxyBackend implements ProxyBackend {
    * for on a first install: while Traefik runs, it is the one holding the ports.
    */
   private async assertPortsFree(proxyConfig: ProxyConfig, traefikExists: boolean): Promise<void> {
-    const ports = SwarmProxyBackend.publishedPorts(proxyConfig);
+    const ports = SwarmProxy.publishedPorts(proxyConfig);
     const holders = await this.swarmServiceHolders(ports);
     if (!traefikExists) {
       const known = new Set(holders.map((holder) => holder.port));
@@ -217,7 +216,7 @@ export class SwarmProxyBackend implements ProxyBackend {
 
   /** A short hash of the stack generated for this configuration. */
   static configHash(proxyConfig: ProxyConfig): string {
-    return createHash('sha256').update(SwarmProxyBackend.generateCompose(proxyConfig)).digest('hex').slice(0, 16);
+    return createHash('sha256').update(SwarmProxy.generateCompose(proxyConfig)).digest('hex').slice(0, 16);
   }
 
   /**

@@ -1,22 +1,22 @@
 /**
  * Swarm container backend.
  *
- * Implements ContainerBackend for Docker Swarm: locates the container for a
+ * Implements SwarmContainers for Docker Swarm: locates the container for a
  * given service across all Swarm nodes, then runs `docker exec`/`docker cp`
  * on the right node.
  */
 
 import { PassThrough, type Readable } from 'stream';
-import type { SSHKeyConnection } from '../../../types';
-import { sshExec, sshExecStream, sshExecChannelUnbuffered, executeInteractiveSSH, shellQuote, type SSHUnbufferedChannelHandle } from '../../../utils/ssh';
-import { CLIError, ConnectionError, ErrorCode } from '../../../utils/errors';
-import type { ExecRequest } from '../../../utils/exec-plan';
-import { printWarning } from '../../../utils/output';
-import type { ContainerBackend, LogSource, LogsOptions } from '../interfaces';
-import { ContainerPathError } from '../copy';
-import { LogLineBuffer } from '../../../utils/docker-logs';
-import { findSwarmContainer, findContainerForTask, listSwarmTasks, qualifyServiceName } from './swarm-utils';
-import { dockerSinceValue, LOCAL_OFFSET, parseSince } from '../../../utils/log-options';
+import type { SSHKeyConnection } from '../../types';
+import { sshExec, sshExecStream, sshExecChannelUnbuffered, executeInteractiveSSH, shellQuote, type SSHUnbufferedChannelHandle } from '../../utils/ssh';
+import { CLIError, ConnectionError, ErrorCode } from '../../utils/errors';
+import type { ExecRequest } from '../../utils/exec-plan';
+import { printWarning } from '../../utils/output';
+import type { LogSource, LogsOptions } from './types';
+import { ContainerPathError } from './copy';
+import { LogLineBuffer } from '../../utils/docker-logs';
+import { findSwarmContainer, findContainerForTask, listSwarmTasks, qualifyServiceName } from './docker';
+import { dockerSinceValue, LOCAL_OFFSET, parseSince } from '../../utils/log-options';
 
 /** `docker exec [-it|-i] [-w <dir>] [-u <user>] [-e KEY=VALUE]... <id> <argv...>`, every element quoted. */
 export function dockerExecCommand(
@@ -71,7 +71,7 @@ export function tasksToFollow<T extends { desiredState: string }>(tasks: readonl
   return tasks.filter((task) => task.desiredState === 'Running' || task.desiredState === 'Complete');
 }
 
-export class SwarmContainerBackend implements ContainerBackend {
+export class SwarmContainers {
   constructor(
     private readonly conn: SSHKeyConnection,
     private readonly allConnections: SSHKeyConnection[],

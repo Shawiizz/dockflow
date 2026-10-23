@@ -534,7 +534,7 @@ export function getPerformer(): string {
 
 const SERVER_KEYS = ['servers', 'defaults', 'env'] as const;
 const CONFIG_KEYS = [
-  'project_name', 'orchestrator', 'container_engine', 'registry', 'proxy',
+  'project_name', 'swarm', 'container_engine', 'registry', 'proxy',
   'health_checks', 'stack_management', 'hooks', 'lock', 'notifications', 'backup',
   'templates', 'options',
 ] as const;

@@ -26,7 +26,7 @@ import { printDebug, printInfo, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { DOCKFLOW_STACKS_DIR, RELEASE_STACK_FILE } from '../constants';
 import { parseImageRef } from './compose';
-import type { StackBackend } from './orchestrator/interfaces';
+import type { SwarmStack } from './swarm/stack';
 import type { DockflowConfig } from '../utils/config';
 
 const DEFAULT_KEEP_RELEASES = 3;
@@ -487,7 +487,7 @@ export class Release {
    */
   async rollback(
     stackName: string,
-    orchestrator: StackBackend,
+    swarm: SwarmStack,
     failedVersion?: string | null,
     previousReleasePath?: string | null,
     options: RollbackOptions = {},
@@ -534,12 +534,12 @@ export class Release {
 
     if (options.imageNodes?.length) await this.requireImagesOnNodes(previousDir, previousVersion, options.imageNodes);
 
-    const deployResult = await orchestrator.redeploy(stackName, stackResult.stdout);
+    const deployResult = await swarm.redeploy(stackName, stackResult.stdout);
     if (!deployResult.success) {
       throw new DeployError(deployResult.error.message, ErrorCode.ROLLBACK_FAILED);
     }
 
-    const convergence = await orchestrator.waitConvergence(stackName, 300, 5);
+    const convergence = await swarm.waitConvergence(stackName, 300, 5);
     if (!convergence.converged) {
       const detail = convergence.errorDetail ?? (convergence.timedOut ? 'timed out' : convergence.rolledBack ? 'Swarm rolled the services back' : '');
       throw new DeployError(
@@ -549,7 +549,7 @@ export class Release {
       );
     }
 
-    await this.warnIfAccessoriesChanged(stackName, orchestrator, previousDir, previousVersion);
+    await this.warnIfAccessoriesChanged(stackName, swarm, previousDir, previousVersion);
 
     const linkResult = await this.shell.run(`ln -sfn ${shellQuote(previousDir)} ${shellQuote(`${this.stackDir(stackName)}/${CURRENT_LINK}`)}`);
     if (linkResult.exitCode !== 0) {
@@ -603,12 +603,12 @@ export class Release {
   }
 
   /** Accessories are not part of the stack a rollback redeploys; say so when they are not what the release ran with. */
-  private async warnIfAccessoriesChanged(stackName: string, orchestrator: StackBackend, dir: string, version: string): Promise<void> {
+  private async warnIfAccessoriesChanged(stackName: string, swarm: SwarmStack, dir: string, version: string): Promise<void> {
     try {
       const metadata = await this.shell.run(`cat ${shellQuote(`${dir}/${METADATA_FILE}`)} 2>/dev/null`);
       const recorded = metadata.exitCode === 0 ? parseMetadata(metadata.stdout)?.accessories_digest : undefined;
       if (typeof recorded !== 'string' || recorded === '') return;
-      const running = await orchestrator.accessoriesDigest(stackName);
+      const running = await swarm.accessoriesDigest(stackName);
       if (running !== null && running !== recorded) printWarning(`Accessories were not rolled back: they changed since ${version}`);
     } catch (error) {
       printDebug(`Accessories digest check failed: ${error instanceof Error ? error.message : String(error)}`);

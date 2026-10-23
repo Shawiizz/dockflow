@@ -4,11 +4,11 @@
  */
 
 import type { SSHKeyConnection } from '../../types';
-import { createStackBackend } from '../../services/orchestrator/factory';
+import { SwarmStack } from '../../services/swarm/stack';
 import { getAccessoriesStackName } from '../../utils/config';
 import { sshExec, shellQuote } from '../../utils/ssh';
 import { CLIError, ErrorCode } from '../../utils/errors';
-import { qualifyServiceName } from '../../services/orchestrator/swarm/swarm-utils';
+import { qualifyServiceName } from '../../services/swarm/docker';
 
 /** The commands `dockflow accessories` has too. */
 const ACCESSORY_COMMANDS = new Set(['exec', 'logs', 'restart', 'stop']);
@@ -51,7 +51,7 @@ export async function requireAppService(
   service: string,
   command: string,
 ): Promise<void> {
-  const services = (await createStackBackend(connection).getServices(stackName)).map((s) => s.name);
+  const services = (await new SwarmStack(connection).getServices(stackName)).map((s) => s.name);
   if (services.includes(service) || services.includes(service.replace(`${stackName}_`, ''))) return;
 
   const accessories = getAccessoriesStackName(env);

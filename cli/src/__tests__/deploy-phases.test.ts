@@ -22,7 +22,7 @@ import { accessoriesDigest, serialize } from '../services/compose';
 import { removeImagesCommand } from '../services/release';
 import * as ssh from '../utils/ssh';
 import { HealthCheck } from '../services/health-check';
-import type { StackBackend } from '../services/orchestrator/interfaces';
+import type { SwarmStack } from '../services/swarm/stack';
 import * as output from '../utils/output';
 import type { DeployContext } from '../commands/deploy-context';
 import { DeployError, ErrorCode } from '../utils/errors';
@@ -217,13 +217,13 @@ describe('runPostRollbackHealthChecks', () => {
 
   function backend(result: { healthy: boolean; message?: string }) {
     const calls: unknown[][] = [];
-    const orchestrator = {
+    const swarm = {
       checkInternalHealth: async (...args: unknown[]) => {
         calls.push(args);
         return result;
       },
-    } as unknown as StackBackend;
-    return { orchestrator, calls };
+    } as unknown as SwarmStack;
+    return { swarm, calls };
   }
 
   const warnings = spyOn(output, 'printWarning').mockImplementation(() => {});
@@ -234,9 +234,9 @@ describe('runPostRollbackHealthChecks', () => {
   });
 
   it('judges only the tasks started by the rollback, and warns when they are unhealthy', async () => {
-    const { orchestrator, calls } = backend({ healthy: false, message: 'web: 0/2' });
+    const { swarm, calls } = backend({ healthy: false, message: 'web: 0/2' });
 
-    await runPostRollbackHealthChecks(connection, orchestrator, 'shop-production', undefined, startedAt);
+    await runPostRollbackHealthChecks(connection, swarm, 'shop-production', undefined, startedAt);
 
     expect(calls[0]?.[0]).toBe('shop-production');
     expect(calls[0]?.[4]).toBe(startedAt);
@@ -245,19 +245,19 @@ describe('runPostRollbackHealthChecks', () => {
   });
 
   it('checks the endpoints without rolling back a rollback', async () => {
-    const { orchestrator } = backend({ healthy: true });
+    const { swarm } = backend({ healthy: true });
     const endpoints = [{ url: 'https://shop.example.com/health' }];
 
-    await runPostRollbackHealthChecks(connection, orchestrator, 'shop-production', { endpoints, on_failure: 'rollback' } as never, startedAt);
+    await runPostRollbackHealthChecks(connection, swarm, 'shop-production', { endpoints, on_failure: 'rollback' } as never, startedAt);
 
     expect(http).toHaveBeenCalledWith(expect.objectContaining({ endpoints, on_failure: 'notify' }));
     expect(warnings).not.toHaveBeenCalled();
   });
 
   it('does nothing when health checks are disabled', async () => {
-    const { orchestrator, calls } = backend({ healthy: false });
+    const { swarm, calls } = backend({ healthy: false });
 
-    await runPostRollbackHealthChecks(connection, orchestrator, 'shop-production', { enabled: false } as never, startedAt);
+    await runPostRollbackHealthChecks(connection, swarm, 'shop-production', { enabled: false } as never, startedAt);
 
     expect(calls).toEqual([]);
     expect(http).not.toHaveBeenCalled();
@@ -341,7 +341,7 @@ describe('releaseAccessoriesDigest', () => {
   function context(options: { accessories?: string; skip?: boolean; running?: string | null | Error }) {
     const deployed: unknown[] = [];
     const reads: string[] = [];
-    const orchestrator = {
+    const swarm = {
       accessoriesDigest: async (stackName: string) => {
         reads.push(stackName);
         if (options.running instanceof Error) throw options.running;
@@ -359,7 +359,7 @@ describe('releaseAccessoriesDigest', () => {
       skipAccessories: options.skip === true,
       forceAccessories: false,
       rendered: new Map(options.accessories === undefined ? [] : [[accessoriesKey(), options.accessories]]),
-      orchestrator,
+      swarm,
     } as unknown as DeployContext;
     return { ctx, deployed, reads };
   }

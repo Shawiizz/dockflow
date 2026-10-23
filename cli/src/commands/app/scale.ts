@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { printDebug, createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
-import { createStackBackend } from '../../services/orchestrator/factory';
+import { SwarmStack } from '../../services/swarm/stack';
 import { CLIError, DockerError, ErrorCode, withServicesRequired } from '../../utils/errors';
 import { requireAppService, serviceMode } from './service-name';
 
@@ -35,12 +35,12 @@ export function registerScaleCommand(program: Command): void {
         );
       }
 
-      const orchestrator = createStackBackend(connection);
+      const swarm = new SwarmStack(connection);
       const spinner = createSpinner();
       spinner.start(`Scaling ${stackName}_${service} to ${replicaCount} replicas...`);
 
       try {
-        await orchestrator.scaleService(stackName, service, replicaCount, { detach: options.wait === false });
+        await swarm.scaleService(stackName, service, replicaCount, { detach: options.wait === false });
         spinner.succeed('Done');
       } catch (error) {
         if (error instanceof CLIError) {

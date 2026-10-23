@@ -4,7 +4,7 @@
 
 import type { Command } from 'commander';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
-import { createStackBackend } from '../../services/orchestrator/factory';
+import { SwarmStack } from '../../services/swarm/stack';
 import { loadConfig } from '../../utils/config';
 import { CLIError, ErrorCode, withServicesRequired, ConfigError } from '../../utils/errors';
 import { colors, printJSON, printBlank, printDim, printRaw } from '../../utils/output';
@@ -21,9 +21,9 @@ export function registerVersionCommand(program: Command): void {
 
       const config = loadConfig();
       if (!config) throw new ConfigError('No dockflow config found');
-      const orchestrator = createStackBackend(connection);
+      const swarm = new SwarmStack(connection);
 
-      const metadata = await orchestrator.getMetadata(stackName);
+      const metadata = await swarm.getMetadata(stackName);
       if (!metadata) {
         throw new CLIError(`No deployment found for ${stackName}`, ErrorCode.STACK_NOT_FOUND, `Deploy first with \`dockflow deploy ${env}\`.`);
       }
@@ -33,7 +33,7 @@ export function registerVersionCommand(program: Command): void {
         return;
       }
 
-      const services = await orchestrator.getServices(stackName);
+      const services = await swarm.getServices(stackName);
 
       printBlank();
       printRaw(`Stack: ${colors.info(stackName)}`);

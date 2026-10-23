@@ -17,8 +17,8 @@ import { ok, err, type Result } from '../types';
 import { BackupError, ErrorCode, ValidationError } from '../utils/errors';
 import { sshExec, sshExecChannel, sshExecChannelUnbuffered, shellQuote } from '../utils/ssh';
 import { formatBytes, printDebug, printInfo, printWarning } from '../utils/output';
-import { findSwarmContainer, qualifyServiceName } from './orchestrator/swarm/swarm-utils';
-import { SwarmStackBackend } from './orchestrator/swarm/swarm-stack';
+import { findSwarmContainer, qualifyServiceName } from './swarm/docker';
+import { SwarmStack } from './swarm/stack';
 import { BACKUP_ORPHAN_GRACE_H, DOCKFLOW_BACKUPS_DIR } from '../constants';
 import {
   DB_TYPES,
@@ -218,7 +218,7 @@ export interface BackupOptions {
 const RESTART_PAUSE_MS = 3000;
 
 export class Backup {
-  private readonly orchestrator: SwarmStackBackend;
+  private readonly swarm: SwarmStack;
   private readonly sleep: (ms: number) => Promise<void>;
   /** The manager first, then every other server with SSH credentials */
   private readonly nodes: ClusterNode[];
@@ -231,7 +231,7 @@ export class Backup {
     nodes: ClusterNode[] = [],
     options: BackupOptions = {}
   ) {
-    this.orchestrator = new SwarmStackBackend(connection);
+    this.swarm = new SwarmStack(connection);
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     const same = (a: SSHKeyConnection, b: SSHKeyConnection) => a.host === b.host && a.port === b.port;
     const manager = nodes.find(node => same(node.connection, connection)) ?? { name: connection.host, connection };
@@ -887,7 +887,7 @@ export class Backup {
     if (restoreKillsContainer) {
       await this.sleep(RESTART_PAUSE_MS);
       try {
-        await this.orchestrator.restart(this.stackName, service);
+        await this.swarm.restart(this.stackName, service);
       } catch (e) {
         printDebug(`Service update after restore failed (non-fatal): ${e instanceof Error ? e.message : String(e)}`);
       }

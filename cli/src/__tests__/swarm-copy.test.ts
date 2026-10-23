@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Duplex } from 'node:stream';
 import type { SSHKeyConnection } from '../types';
-import { ContainerPathError, planCopyIn, probeContainerPath } from '../services/orchestrator/copy';
+import { ContainerPathError, planCopyIn, probeContainerPath } from '../services/swarm/copy';
 import { extractTar, packPathToTar } from '../utils/tar';
 import { hasPosixShell } from './helpers/local-shell';
 
@@ -75,7 +75,7 @@ afterAll(() => {
   for (const spy of sshSpies) spy.mockRestore();
 });
 
-const { SwarmContainerBackend } = await import('../services/orchestrator/swarm/swarm-container');
+const { SwarmContainers } = await import('../services/swarm/containers');
 
 const connection = { host: 'node1', port: 22, user: 'deploy', privateKey: '' } as SSHKeyConnection;
 const temporary: string[] = [];
@@ -115,10 +115,10 @@ afterAll(() => {
   for (const dir of temporary.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe.skipIf(!available)('SwarmContainerBackend copyOut and copyIn', () => {
+describe.skipIf(!available)('SwarmContainers copyOut and copyIn', () => {
   it('streams a directory out of the container', async () => {
     newContainer();
-    const containers = new SwarmContainerBackend(connection, []);
+    const containers = new SwarmContainers(connection, []);
     const dest = tempDir('out');
     const result = await extractTar(await containers.copyOut('shop', 'web', '/app/logs'), dest);
     expect(result).toEqual({ files: 1, bytes: 8 });
@@ -128,7 +128,7 @@ describe.skipIf(!available)('SwarmContainerBackend copyOut and copyIn', () => {
 
   it('streams the entries of a directory for the contents form', async () => {
     newContainer();
-    const containers = new SwarmContainerBackend(connection, []);
+    const containers = new SwarmContainers(connection, []);
     const dest = tempDir('contents');
     await extractTar(await containers.copyOut('shop', 'web', '/app/logs/.'), dest);
     expect(readFileSync(join(dest, 'today.log'), 'utf8')).toBe('line one');
@@ -136,7 +136,7 @@ describe.skipIf(!available)('SwarmContainerBackend copyOut and copyIn', () => {
 
   it('errors the stream with a not-found ContainerPathError for a missing path', async () => {
     newContainer();
-    const containers = new SwarmContainerBackend(connection, []);
+    const containers = new SwarmContainers(connection, []);
     const error = await extractTar(await containers.copyOut('shop', 'web', '/nope'), tempDir('missing')).then(
       () => null,
       (e: unknown) => e,
@@ -147,7 +147,7 @@ describe.skipIf(!available)('SwarmContainerBackend copyOut and copyIn', () => {
 
   it('copies a local directory into the container and back', async () => {
     newContainer();
-    const containers = new SwarmContainerBackend(connection, []);
+    const containers = new SwarmContainers(connection, []);
     const src = tempDir('src');
     mkdirSync(join(src, 'conf', 'nested'), { recursive: true });
     writeFileSync(join(src, 'conf', 'nested', 'a.txt'), 'a');
@@ -158,7 +158,7 @@ describe.skipIf(!available)('SwarmContainerBackend copyOut and copyIn', () => {
 
   it('reports a destination that is not a directory', async () => {
     newContainer();
-    const containers = new SwarmContainerBackend(connection, []);
+    const containers = new SwarmContainers(connection, []);
     const src = tempDir('src');
     writeFileSync(join(src, 'f'), 'x');
     const error = await containers.copyIn('shop', 'web', '/missing', packPathToTar(join(src, 'f'), 'f')).then(
@@ -170,7 +170,7 @@ describe.skipIf(!available)('SwarmContainerBackend copyOut and copyIn', () => {
 
   it('fails the copy when the local archive fails', async () => {
     newContainer();
-    const containers = new SwarmContainerBackend(connection, []);
+    const containers = new SwarmContainers(connection, []);
     const missing = packPathToTar(join(tempDir('none'), 'absent'), 'absent');
     await expect(containers.copyIn('shop', 'web', '/app', missing)).rejects.toThrow();
   });
@@ -178,7 +178,7 @@ describe.skipIf(!available)('SwarmContainerBackend copyOut and copyIn', () => {
   it('probes the destination without reading the whole archive and stays on one container', async () => {
     newContainer();
     writeFileSync(join(containerRoot, 'app', 'big.bin'), Buffer.alloc(4 * 1024 * 1024, 1));
-    const containers = new SwarmContainerBackend(connection, []);
+    const containers = new SwarmContainers(connection, []);
     const open = (path: string) => containers.copyOut('shop', 'web', path);
     expect(await probeContainerPath(open, 'web', '/app/big.bin')).toEqual({ service: 'web', path: '/app/big.bin', type: 'file' });
     expect(await probeContainerPath(open, 'web', '/app/logs')).toMatchObject({ type: 'directory' });
@@ -189,7 +189,7 @@ describe.skipIf(!available)('SwarmContainerBackend copyOut and copyIn', () => {
 
   it('copies a file over an existing file through the probe and the plan', async () => {
     newContainer();
-    const containers = new SwarmContainerBackend(connection, []);
+    const containers = new SwarmContainers(connection, []);
     const src = tempDir('src');
     writeFileSync(join(src, 'new.yml'), 'port: 8080');
     const destination = await probeContainerPath((path) => containers.copyOut('shop', 'web', path), 'web', '/app/config.yml');

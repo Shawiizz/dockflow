@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { parse } from 'yaml';
-import { parseListeners, parseServicePorts, SwarmProxyBackend } from '../services/orchestrator/swarm/swarm-proxy';
+import { parseListeners, parseServicePorts, SwarmProxy } from '../services/swarm/proxy';
 import { DeployError } from '../utils/errors';
 import * as output from '../utils/output';
 import * as ssh from '../utils/ssh';
@@ -20,24 +20,24 @@ interface Stack {
 
 const base = { enabled: true, acme: true, email: 'ops@example.com' } as ProxyConfig;
 
-describe('SwarmProxyBackend.configHash', () => {
+describe('SwarmProxy.configHash', () => {
   it('is stable for the same configuration', () => {
-    expect(SwarmProxyBackend.configHash({ ...base })).toBe(SwarmProxyBackend.configHash({ ...base }));
+    expect(SwarmProxy.configHash({ ...base })).toBe(SwarmProxy.configHash({ ...base }));
   });
 
   it('changes when the generated stack would change', () => {
-    const hash = SwarmProxyBackend.configHash(base);
+    const hash = SwarmProxy.configHash(base);
 
-    expect(SwarmProxyBackend.configHash({ ...base, email: 'other@example.com' })).not.toBe(hash);
-    expect(SwarmProxyBackend.configHash({ ...base, acme: false })).not.toBe(hash);
-    expect(SwarmProxyBackend.configHash({ ...base, dashboard: { enabled: true, domain: 'tr.example.com' } } as ProxyConfig)).not.toBe(hash);
+    expect(SwarmProxy.configHash({ ...base, email: 'other@example.com' })).not.toBe(hash);
+    expect(SwarmProxy.configHash({ ...base, acme: false })).not.toBe(hash);
+    expect(SwarmProxy.configHash({ ...base, dashboard: { enabled: true, domain: 'tr.example.com' } } as ProxyConfig)).not.toBe(hash);
   });
 });
 
-describe('SwarmProxyBackend.generateCompose', () => {
+describe('SwarmProxy.generateCompose', () => {
   it('gives Traefik the Docker API through a read-only proxy, never the socket itself', () => {
     for (const config of [base, { ...base, acme: false } as ProxyConfig]) {
-      const stack = parse(SwarmProxyBackend.generateCompose(config)) as Stack;
+      const stack = parse(SwarmProxy.generateCompose(config)) as Stack;
       const traefik = stack.services.traefik;
       const proxy = stack.services['socket-proxy'];
       expect((traefik.volumes ?? []).some((v) => v.includes('docker.sock'))).toBe(false);
@@ -52,26 +52,26 @@ describe('SwarmProxyBackend.generateCompose', () => {
 
   it('trusts the X-Forwarded-* headers of the configured senders on every entrypoint', () => {
     const trusted = { ...base, trusted_ips: ['173.245.48.0/20', '2400:cb00::/32'] } as ProxyConfig;
-    const compose = SwarmProxyBackend.generateCompose(trusted);
+    const compose = SwarmProxy.generateCompose(trusted);
     expect(compose).toContain('"--entrypoints.web.forwardedHeaders.trustedIPs=173.245.48.0/20,2400:cb00::/32"');
     expect(compose).toContain('"--entrypoints.websecure.forwardedHeaders.trustedIPs=173.245.48.0/20,2400:cb00::/32"');
-    expect(SwarmProxyBackend.generateCompose({ ...trusted, acme: false })).not.toContain('websecure.forwardedHeaders');
-    expect(SwarmProxyBackend.generateCompose(base)).not.toContain('forwardedHeaders');
-    expect(SwarmProxyBackend.configHash(trusted)).not.toBe(SwarmProxyBackend.configHash(base));
+    expect(SwarmProxy.generateCompose({ ...trusted, acme: false })).not.toContain('websecure.forwardedHeaders');
+    expect(SwarmProxy.generateCompose(base)).not.toContain('forwardedHeaders');
+    expect(SwarmProxy.configHash(trusted)).not.toBe(SwarmProxy.configHash(base));
   });
 
   it('labels the service with the hash it was deployed from, dashboard or not', () => {
-    const hash = SwarmProxyBackend.configHash(base);
+    const hash = SwarmProxy.configHash(base);
     const dashboard = { ...base, dashboard: { enabled: true, domain: 'tr.example.com' } } as ProxyConfig;
 
-    expect(SwarmProxyBackend.generateCompose(base, hash)).toContain(`"dockflow.config-hash=${hash}"`);
-    expect(SwarmProxyBackend.generateCompose(dashboard, 'abc')).toContain('"dockflow.config-hash=abc"');
-    expect(SwarmProxyBackend.generateCompose(base)).not.toContain('dockflow.config-hash');
+    expect(SwarmProxy.generateCompose(base, hash)).toContain(`"dockflow.config-hash=${hash}"`);
+    expect(SwarmProxy.generateCompose(dashboard, 'abc')).toContain('"dockflow.config-hash=abc"');
+    expect(SwarmProxy.generateCompose(base)).not.toContain('dockflow.config-hash');
   });
 
   it('registers the ACME account with no contact when proxy.email is unset', () => {
     const { email: _email, ...noEmail } = base;
-    const compose = SwarmProxyBackend.generateCompose(noEmail as ProxyConfig);
+    const compose = SwarmProxy.generateCompose(noEmail as ProxyConfig);
     expect(compose).not.toContain('acme.email');
     expect(compose).toContain('--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json');
   });
@@ -90,7 +90,7 @@ interface Scripted {
   ss?: string | null;
 }
 
-describe('SwarmProxyBackend.ensureRunning: ports', () => {
+describe('SwarmProxy.ensureRunning: ports', () => {
   let commands: string[];
   let deployed: boolean;
   let restore: Array<{ mockRestore: () => void }> = [];
@@ -127,7 +127,7 @@ describe('SwarmProxyBackend.ensureRunning: ports', () => {
   }
 
   async function ensure(config: ProxyConfig = base): Promise<unknown> {
-    return new SwarmProxyBackend(conn).ensureRunning(config).then(
+    return new SwarmProxy(conn).ensureRunning(config).then(
       () => undefined,
       (error) => error,
     );
@@ -199,7 +199,7 @@ describe('SwarmProxyBackend.ensureRunning: ports', () => {
   });
 
   it('skips the whole check when Traefik already runs with the same configuration', async () => {
-    script({ traefik: { replicas: '1/1', hash: SwarmProxyBackend.configHash(base) }, services: 'shop_web|80/tcp/ingress \n' });
+    script({ traefik: { replicas: '1/1', hash: SwarmProxy.configHash(base) }, services: 'shop_web|80/tcp/ingress \n' });
 
     expect(await ensure()).toBeUndefined();
     expect(deployed).toBe(false);

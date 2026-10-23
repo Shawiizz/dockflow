@@ -5,7 +5,7 @@
 import type { Command } from 'commander';
 import { printDebug, printWarning, createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
-import { createStackBackend } from '../../services/orchestrator/factory';
+import { SwarmStack } from '../../services/swarm/stack';
 import { loadConfig } from '../../utils/config';
 import { CLIError, DockerError, withServicesRequired, ConfigError } from '../../utils/errors';
 import { idleServices, requireAppService } from './service-name';
@@ -23,15 +23,15 @@ export function registerRestartCommand(program: Command): void {
 
       const config = loadConfig();
       if (!config) throw new ConfigError('No dockflow config found');
-      const orchestrator = createStackBackend(connection);
+      const swarm = new SwarmStack(connection);
 
       if (service) await requireAppService(connection, env, stackName, service, 'restart');
       const spinner = createSpinner();
 
       try {
         spinner.start(service ? `Restarting ${service}...` : 'Restarting all services...');
-        await orchestrator.restart(stackName, service, { detach: options.wait === false });
-        const services = await orchestrator.getServices(stackName);
+        await swarm.restart(stackName, service, { detach: options.wait === false });
+        const services = await swarm.getServices(stackName);
         const idle = idleServices(services, service ? [service] : services.map((s) => s.name));
         if (idle.length > 0) {
           spinner.warn(`Restarted, but ${idle.join(', ')} ${idle.length === 1 ? 'has' : 'have'} 0 replicas and ${idle.length === 1 ? 'was' : 'were'} not started`);
