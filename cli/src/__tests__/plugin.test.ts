@@ -440,7 +440,7 @@ describe('built-in plugins', () => {
     expect(expansion.files.get(upload.src)).toContain('ExecStart=/bin/true');
     expect(expansion.hooks['post-upload']?.[0]).toMatchObject({
       name: 'systemd enable',
-      run: 'sudo systemctl daemon-reload && sudo systemctl enable --now app.service',
+      run: "sudo systemctl daemon-reload && sudo systemctl enable --now 'app.service'",
     });
   });
 
@@ -453,7 +453,19 @@ describe('built-in plugins', () => {
 
     expect(expansion.uploads[0].dest).toBe('/etc/systemd/system/var-data.mount');
     expect(expansion.hooks['post-upload']?.[0]).toMatchObject({
-      run: 'sudo systemctl daemon-reload && sudo systemctl enable --now var-data.mount',
+      run: "sudo systemctl daemon-reload && sudo systemctl enable --now 'var-data.mount'",
+    });
+  });
+
+  it('systemd passes the unit name to the server as one quoted word', async () => {
+    const root = project({ '.dockflow/services/data.conf': '[Mount]\n' });
+    const expansion = await expandPlugins(
+      [{ use: 'systemd', with: { unit: '.dockflow/services/data.conf', name: "a.mount; touch /tmp/x'" } }],
+      { projectRoot: root, projectContext: context },
+    );
+
+    expect(expansion.hooks['post-upload']?.[0]).toMatchObject({
+      run: "sudo systemctl daemon-reload && sudo systemctl enable --now 'a.mount; touch /tmp/x'\\'''",
     });
   });
 

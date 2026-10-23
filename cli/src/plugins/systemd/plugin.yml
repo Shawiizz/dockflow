@@ -19,6 +19,6 @@ hooks:
     # enable --now starts a stopped unit but does not restart a running one, so a
     # changed unit file takes effect on the unit's next restart.
     - name: enable
-      run: sudo systemctl daemon-reload && sudo systemctl enable --now {{ inputs.name or (inputs.unit | basename) }}
+      run: sudo systemctl daemon-reload && sudo systemctl enable --now {{ (inputs.name or (inputs.unit | basename)) | shell }}
       fatal: true
       timeout: 60

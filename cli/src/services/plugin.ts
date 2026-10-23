@@ -22,6 +22,7 @@ import { getLayout, HOOK_PHASES, loadConfig } from '../utils/config';
 import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase, PluginUse, UploadItem } from '../utils/config';
 import { ConfigError } from '../utils/errors';
 import { posixRelative, toPosix } from '../utils/fs';
+import { shellQuote } from '../utils/ssh';
 
 const MANIFEST = 'plugin.yml';
 
@@ -49,6 +50,8 @@ export function pluginBasename(value: unknown): string {
 // the plugin, so it throws instead of rendering an empty string.
 const pluginEnv = new nunjucks.Environment(undefined, { autoescape: false, throwOnUndefined: true });
 pluginEnv.addFilter('basename', pluginBasename);
+// a value going into a hook's command line: one quoted word, whatever the project's config holds
+pluginEnv.addFilter('shell', (value: unknown) => shellQuote(String(value)));
 
 // A project's own override file is rendered like the project's other files.
 const projectEnv = new nunjucks.Environment(undefined, { autoescape: false });
