@@ -179,6 +179,14 @@ async function streamRemoteToTarget(
   }
 }
 
+/** Tags `image` on the node from the image of that id, when the node holds it; fails otherwise. */
+export function tagByIdCommand(imageId: string, image: string, runtime: ContainerRuntime): string {
+  // the bare hex id: docker and podman both take it, not both the sha256: form
+  const id = shellQuote(imageId.replace(/^sha256:/, ''));
+  return `${runtime} image inspect ${id} >/dev/null 2>&1 && ${runtime} tag ${id} ${shellQuote(image)}`;
+}
+
+/** The targets the image must be sent to: not those that hold it already, under this tag or another. */
 async function filterTargetsNeedingImage(
   image: string,
   sourceId: string,
@@ -188,19 +196,22 @@ async function filterTargetsNeedingImage(
   if (!sourceId) return targets;
 
   const checks = await Promise.all(
-    targets.map(async (t) => {
-      const targetId = await getRemoteImageId(t.connection, image, runtime);
-      return { target: t, needsUpdate: targetId !== sourceId };
+    targets.map(async (target) => {
+      if (await getRemoteImageId(target.connection, image, runtime) === sourceId) {
+        printDim(`Already up to date on ${target.name}: ${image}`);
+        return null;
+      }
+      // each deploy tags a new version: an unchanged image is already there under the previous tag
+      const tagged = await sshExec(target.connection, tagByIdCommand(sourceId, image, runtime));
+      if (tagged.exitCode === 0) {
+        printDim(`Already on ${target.name}, tagged ${image}`);
+        return null;
+      }
+      return target;
     }),
   );
 
-  for (const { target, needsUpdate } of checks) {
-    if (!needsUpdate) {
-      printDim(`Already up to date on ${target.name}: ${image}`);
-    }
-  }
-
-  return checks.filter((c) => c.needsUpdate).map((c) => c.target);
+  return checks.filter((target): target is DistributionTarget => target !== null);
 }
 
 async function transferImageToTargets(
@@ -301,51 +312,6 @@ export async function distributeFromRemote(
   runtime: ContainerRuntime = 'docker',
 ): Promise<void> {
   return distributeImages(images, targets, runtime, source);
-}
-
-export async function transferImage(
-  image: string,
-  target: DistributionTarget,
-  runtime: ContainerRuntime = 'docker',
-): Promise<void> {
-  const sourceId = await getLocalImageId(image, runtime);
-  if (sourceId) {
-    const targetId = await getRemoteImageId(target.connection, image, runtime);
-    if (sourceId === targetId) {
-      printDim(`Already up to date on ${target.name}: ${image}`);
-      return;
-    }
-  }
-
-  await transferImageToTargets(
-    image,
-    [target],
-    (img, t) => streamToTarget(img, t, runtime),
-    '',
-  );
-}
-
-export async function transferImageFromRemote(
-  image: string,
-  source: SSHKeyConnection,
-  target: DistributionTarget,
-  runtime: ContainerRuntime = 'docker',
-): Promise<void> {
-  const sourceId = await getRemoteImageId(source, image, runtime);
-  if (sourceId) {
-    const targetId = await getRemoteImageId(target.connection, image, runtime);
-    if (sourceId === targetId) {
-      printDim(`Already up to date on ${target.name}: ${image}`);
-      return;
-    }
-  }
-
-  await transferImageToTargets(
-    image,
-    [target],
-    (img, t) => streamRemoteToTarget(img, source, t, runtime),
-    ' (from remote)',
-  );
 }
 
 export interface RegistryLogin {

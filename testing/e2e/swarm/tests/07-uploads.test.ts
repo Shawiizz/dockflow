@@ -114,6 +114,11 @@ describe("uploads", () => {
     }
     expect(result.exitCode).toBe(53);
 
+    // the image did not change since V1: each node gets the new tag, not the image again
+    const output = result.stdout + result.stderr;
+    expect(output).toContain("Already on");
+    expect(output).not.toContain("Transferred");
+
     for (const node of NODES) {
       // Modified file restored to the previous content
       expect(await readRemote(node, CONF_PATH)).toContain("CONF_V1");
