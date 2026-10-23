@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { sshExec } from '../../utils/ssh';
+import { sshExec, sh } from '../../utils/ssh';
 import {
   printSection, printIntro, printInfo, printError,
   printSuccess, printDebug, printBlank, printRaw, printWarning, colors,
@@ -177,7 +177,7 @@ export function registerDiagnoseCommand(program: Command): void {
         try {
           const result = await sshExec(
             connection,
-            `docker events --since 5m --until 0s --filter "type=container" --filter "event=die" --filter "event=oom" --format '{{.Time}} {{.Actor.Attributes.name}} {{.Action}}' 2>/dev/null | tail -10`,
+            sh`docker events --since 5m --until 0s --filter "type=container" --filter "event=die" --filter "event=oom" --format '{{.Time}} {{.Actor.Attributes.name}} {{.Action}}' 2>/dev/null | tail -10`,
           );
           if (result.stdout.trim()) {
             printRaw(result.stdout);
@@ -192,7 +192,7 @@ export function registerDiagnoseCommand(program: Command): void {
       printSection('System Resources');
 
       try {
-        const df = await sshExec(connection, `df -h / | tail -1 | awk '{print $5}'`);
+        const df = await sshExec(connection, sh`df -h / | tail -1 | awk '{print $5}'`);
         const diskPct = parseInt(df.stdout.trim().replace('%', ''));
         if (diskPct >= 90) {
           printWarning(`Disk usage: ${colors.error(df.stdout.trim())}`);
@@ -208,7 +208,7 @@ export function registerDiagnoseCommand(program: Command): void {
       }
 
       try {
-        const mem = await sshExec(connection, `free -m | awk 'NR==2{printf "%.0f", $3*100/$2}'`);
+        const mem = await sshExec(connection, sh`free -m | awk 'NR==2{printf "%.0f", $3*100/$2}'`);
         const memPct = parseInt(mem.stdout.trim());
         if (memPct >= 90) {
           printError(`Memory usage: ${memPct}%`);

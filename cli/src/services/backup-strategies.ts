@@ -9,7 +9,7 @@
 import { posix } from 'path';
 import type { BackupAccessoryConfig, BackupDbType } from '../utils/config';
 import { ConfigError, ValidationError } from '../utils/errors';
-import { raw, sh } from '../utils/ssh';
+import { raw, sh, type ShellCommand } from '../utils/ssh';
 import { DOCKFLOW_BACKUPS_DIR } from '../constants';
 
 export interface MountInfo {
@@ -265,15 +265,12 @@ export function stripRefusalMarker(stderr: string): string {
  * exiting with the PRODUCER's status, or gzip's when the producer succeeded: without pipefail a gzip
  * pipeline reports gzip's alone, and a dump that dies midway becomes a CRC-valid truncated archive.
  */
-export function buildCapturePipeline(producer: string, remotePath: string, gzip: boolean): string {
+export function buildCapturePipeline(producer: ShellCommand, remotePath: string, gzip: boolean): ShellCommand {
   const dir = posix.dirname(remotePath);
   // `producer` is a command the caller built with `sh`
   if (!gzip) return sh`umask 077 && mkdir -p ${dir} && ${raw(producer)} > ${remotePath}`;
   const rc = `${remotePath}.rc`;
-  return (
-    sh`umask 077 && mkdir -p ${dir} && { ${raw(producer)}; echo "$?" > ${rc}; } | gzip -c > ${remotePath}; z=$?; ` +
-    sh`rc=$(cat ${rc} 2>/dev/null); rm -f ${rc}; [ "\${rc:-255}" -eq 0 ] || exit "\${rc:-255}"; exit "$z"`
-  );
+  return sh`umask 077 && mkdir -p ${dir} && { ${raw(producer)}; echo "$?" > ${rc}; } | gzip -c > ${remotePath}; z=$?; rc=$(cat ${rc} 2>/dev/null); rm -f ${rc}; [ "\${rc:-255}" -eq 0 ] || exit "\${rc:-255}"; exit "$z"`;
 }
 
 /** Mount point of the volume inside the helper container of a volume restore */
@@ -332,33 +329,33 @@ export function sanitizePathName(mountPath: string): string {
  * pipefail, so exit statuses inside pipelines are captured through a temporary file. `opaque`
  * runs only the existence and non-empty check.
  */
-export function buildVerifyScript(remotePath: string, compression: 'gzip' | 'none', integrity: ArchiveIntegrity): string {
-  const lines = [sh`f=${remotePath}`, `[ -s "$f" ] || { echo 'the file is missing or empty'; exit 1; }`];
+export function buildVerifyScript(remotePath: string, compression: 'gzip' | 'none', integrity: ArchiveIntegrity): ShellCommand {
+  const lines = [sh`f=${remotePath}`, sh`[ -s "$f" ] || { echo 'the file is missing or empty'; exit 1; }`];
   switch (integrity) {
     case 'tar':
       lines.push(
-        `t=$(mktemp) || { echo 'cannot create a temporary file'; exit 1; }`,
+        sh`t=$(mktemp) || { echo 'cannot create a temporary file'; exit 1; }`,
         compression === 'gzip'
-          ? 'n=$({ { gunzip -c "$f"; echo "$?" > "$t.z"; } | tar tf -; echo "$?" > "$t"; } | wc -l)'
-          : 'n=$({ tar tf - < "$f"; echo "$?" > "$t"; } | wc -l)',
-        'z=$(cat "$t.z" 2>/dev/null); r=$(cat "$t" 2>/dev/null); rm -f "$t" "$t.z"',
+          ? sh`n=$({ { gunzip -c "$f"; echo "$?" > "$t.z"; } | tar tf -; echo "$?" > "$t"; } | wc -l)`
+          : sh`n=$({ tar tf - < "$f"; echo "$?" > "$t"; } | wc -l)`,
+        sh`z=$(cat "$t.z" 2>/dev/null); r=$(cat "$t" 2>/dev/null); rm -f "$t" "$t.z"`,
         // tar first: a tar failure also kills gunzip with SIGPIPE
-        `[ "\${r:-255}" -eq 0 ] || { echo "tar cannot read the archive (exit \${r:-255})"; exit 1; }`,
-        `[ "\${z:-0}" -eq 0 ] || { echo 'the gzip stream is corrupt or truncated'; exit 1; }`,
-        `[ "$n" -ge 1 ] || { echo 'the archive has no entries'; exit 1; }`,
+        sh`[ "\${r:-255}" -eq 0 ] || { echo "tar cannot read the archive (exit \${r:-255})"; exit 1; }`,
+        sh`[ "\${z:-0}" -eq 0 ] || { echo 'the gzip stream is corrupt or truncated'; exit 1; }`,
+        sh`[ "$n" -ge 1 ] || { echo 'the archive has no entries'; exit 1; }`,
       );
       // an uncompressed archive cut exactly at an entry boundary lists cleanly; the two zero
       // end-of-archive blocks GNU and busybox tar both write are what is missing then
       if (compression === 'none') {
         lines.push(
-          `[ "$(tail -c 1024 "$f" | tr -d '\\000' | wc -c)" -eq 0 ] || { echo 'the archive has no end-of-archive marker (truncated)'; exit 1; }`,
+          sh`[ "$(tail -c 1024 "$f" | tr -d '\\000' | wc -c)" -eq 0 ] || { echo 'the archive has no end-of-archive marker (truncated)'; exit 1; }`,
         );
       }
       break;
     case 'gzip':
       lines.push(
-        `gunzip -t "$f" || { echo 'the gzip stream is corrupt or truncated'; exit 1; }`,
-        `[ "$(gunzip -c "$f" 2>/dev/null | head -c 1 | wc -c)" -eq 1 ] || { echo 'the backup is empty'; exit 1; }`,
+        sh`gunzip -t "$f" || { echo 'the gzip stream is corrupt or truncated'; exit 1; }`,
+        sh`[ "$(gunzip -c "$f" 2>/dev/null | head -c 1 | wc -c)" -eq 1 ] || { echo 'the backup is empty'; exit 1; }`,
       );
       break;
     case 'trailer':
@@ -367,8 +364,8 @@ export function buildVerifyScript(remotePath: string, compression: 'gzip' | 'non
     case 'opaque':
       break;
   }
-  lines.push('echo OK');
-  return lines.join('\n');
+  lines.push(sh`echo OK`);
+  return sh`${raw(lines.join('\n'))}`;
 }
 
 function shortVolumeName(volumeName: string, stackName: string): string {

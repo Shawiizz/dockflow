@@ -4,7 +4,7 @@
  */
 
 import { readFileSync } from 'fs';
-import { sh } from '../../utils/ssh';
+import { raw, sh, type ShellCommand } from '../../utils/ssh';
 import { CLIError, ErrorCode } from '../../utils/errors';
 import type { SetupOptions } from './types';
 
@@ -68,27 +68,28 @@ export function verifiedDownloadCommand(
   version: string,
   binaryName: string,
   dest: string,
-): string {
+): ShellCommand {
   const binaryUrl = buildBinaryDownloadUrl(releaseLatestUrl, version, binaryName);
   const sumsUrl = buildBinaryDownloadUrl(releaseLatestUrl, version, 'SHA256SUMS');
-  return [
-    'set -e',
+  const lines = [
+    sh`set -e`,
     sh`f=${dest}; s=${`${dest}.sha256sums`}; verified=`,
     // whatever stops the program, a binary that was not verified goes
-    `trap 'rm -f "$s"; [ -n "$verified" ] || rm -f "$f"' EXIT`,
-    'rm -f "$f" "$s"',
+    sh`trap 'rm -f "$s"; [ -n "$verified" ] || rm -f "$f"' EXIT`,
+    sh`rm -f "$f" "$s"`,
     sh`curl -fsSL ${binaryUrl} -o "$f"`,
     sh`curl -fsSL ${sumsUrl} -o "$s"`,
     sh`expected=$(awk -v name=${binaryName} '$2 == name || $2 == "*" name { print $1 }' "$s")`,
-    `actual=$(sha256sum "$f" | cut -d' ' -f1)`,
-    'if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then',
+    sh`actual=$(sha256sum "$f" | cut -d' ' -f1)`,
+    sh`if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then`,
     // the name is its own token between the two halves of the message
     sh`  echo "SHA-256 of "${binaryName}" does not match the release: expected \${expected:-nothing}, got $actual" >&2`,
-    '  exit 1',
-    'fi',
-    'chmod +x "$f"',
-    'verified=1',
-  ].join('\n');
+    sh`  exit 1`,
+    sh`fi`,
+    sh`chmod +x "$f"`,
+    sh`verified=1`,
+  ];
+  return sh`${raw(lines.join('\n'))}`;
 }
 
 export type RemoteArch = 'x64' | 'arm64';
@@ -108,7 +109,7 @@ export function archFromMachine(machine: string): RemoteArch | null {
 }
 
 /** A private directory (mode 0700, owned by the connecting user) for the binary that will run as root. */
-export const MAKE_TEMP_DIR_COMMAND = 'mktemp -d "${TMPDIR:-/tmp}/dockflow-setup.XXXXXXXX"';
+export const MAKE_TEMP_DIR_COMMAND = sh`mktemp -d "\${TMPDIR:-/tmp}/dockflow-setup.XXXXXXXX"`;
 
 /** The directory `MAKE_TEMP_DIR_COMMAND` printed, or null when the output is not a single absolute path. */
 export function tempDirFrom(stdout: string): string | null {
@@ -116,7 +117,7 @@ export function tempDirFrom(stdout: string): string | null {
   return lines.length === 1 && lines[0].trim().startsWith('/') ? lines[0].trim() : null;
 }
 
-export function removeDirCommand(dir: string): string {
+export function removeDirCommand(dir: string): ShellCommand {
   return sh`rm -rf -- ${dir}`;
 }
 
@@ -124,18 +125,19 @@ export function removeDirCommand(dir: string): string {
  * Shell program that turns the upload `<dir>/dockflow.part` into `<dir>/dockflow`, executable only
  * once its SHA-256 is the one of the local file; on a mismatch nothing executable is left.
  */
-export function installUploadCommand(dir: string, sha256: string): string {
-  return [
-    'set -e',
+export function installUploadCommand(dir: string, sha256: string): ShellCommand {
+  const lines = [
+    sh`set -e`,
     sh`cd ${dir}`,
     sh`if ! printf '%s  %s\\n' ${sha256} dockflow.part | sha256sum -c --status -; then`,
-    '  rm -f dockflow.part',
-    '  echo "SHA-256 of the uploaded binary does not match the local build" >&2',
-    '  exit 1',
-    'fi',
-    'chmod 700 dockflow.part',
-    'mv -f dockflow.part dockflow',
-  ].join('\n');
+    sh`  rm -f dockflow.part`,
+    sh`  echo "SHA-256 of the uploaded binary does not match the local build" >&2`,
+    sh`  exit 1`,
+    sh`fi`,
+    sh`chmod 700 dockflow.part`,
+    sh`mv -f dockflow.part dockflow`,
+  ];
+  return sh`${raw(lines.join('\n'))}`;
 }
 
 /** The version the uploaded or downloaded binary must print; null when it is the latest release of an unreleased CLI. */

@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { createGzip } from 'node:zlib';
 import { Readable } from 'node:stream';
 import type { SSHKeyConnection } from '../types';
-import { raw, sh, sshExec, sshExecChannel, sshExecChannelUnbuffered, type ShellValue } from '../utils/ssh';
+import { raw, sh, sshExec, sshExecChannel, sshExecChannelUnbuffered, type ShellCommand, type ShellValue } from '../utils/ssh';
 import { printDebug, printDim, printSuccess, printWarning, createTimedSpinner } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import { parseImageRef } from './compose';
@@ -22,11 +22,11 @@ export interface DistributionTarget {
 
 const TRANSFER_MAX_RETRIES = 2;
 
-function importCommand(runtime: ContainerRuntime): string {
+function importCommand(runtime: ContainerRuntime): ShellCommand {
   return sh`gunzip | ${runtime} load`;
 }
 
-function saveCommand(image: string, runtime: ContainerRuntime): string {
+function saveCommand(image: string, runtime: ContainerRuntime): ShellCommand {
   return sh`${runtime} save ${image} | gzip -1`;
 }
 
@@ -40,7 +40,7 @@ export const IMAGE_CONTENT_FORMAT =
   '{{json .Config.Labels}} {{json .Config.StopSignal}} {{json .Config.Healthcheck}} {{json .Os}} {{json .Architecture}}';
 
 /** The sha256 of an image's content, as the remote shell prints it; `ref` is quoted unless it is `raw`. */
-function contentKeyPipeline(ref: ShellValue, runtime: ContainerRuntime): string {
+function contentKeyPipeline(ref: ShellValue, runtime: ContainerRuntime): ShellCommand {
   return sh`${runtime} image inspect --format ${IMAGE_CONTENT_FORMAT} ${ref} 2>/dev/null | sha256sum | cut -d' ' -f1`;
 }
 
@@ -62,16 +62,11 @@ export async function getRemoteContentKey(connection: SSHKeyConnection, image: s
  * Tags `image` on a node from one of the images of its repository with the content `key`, the
  * previous version's most often; fails when the node holds none.
  */
-export function tagSameContentCommand(image: string, key: string, runtime: ContainerRuntime): string {
+export function tagSameContentCommand(image: string, key: string, runtime: ContainerRuntime): ShellCommand {
   const { name } = parseImageRef(image);
   // "$id" is the loop variable of the script itself, not a value
   const idKey = contentKeyPipeline(raw('"$id"'), runtime);
-  return (
-    sh`for id in $(${runtime} images -q --no-trunc ${name} 2>/dev/null | sort -u); do ` +
-    'id=${id#sha256:}; ' +
-    sh`[ "$(${raw(idKey)})" = ${key} ] && exec ${runtime} tag "$id" ${image}; ` +
-    'done; exit 1'
-  );
+  return sh`for id in $(${runtime} images -q --no-trunc ${name} 2>/dev/null | sort -u); do id=\${id#sha256:}; [ "$(${raw(idKey)})" = ${key} ] && exec ${runtime} tag "$id" ${image}; done; exit 1`;
 }
 
 async function pipeToChannel(

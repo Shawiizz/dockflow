@@ -1,7 +1,7 @@
 /** `dockflow list images`: the app's images on every node. */
 
 import type { Command } from 'commander';
-import { sshExec } from '../../utils/ssh';
+import { sshExec, sh } from '../../utils/ssh';
 import { printSection, printNote, printBlank, printRaw, colors } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { loadConfig } from '../../utils/config';
@@ -45,8 +45,8 @@ export function registerListImagesCommand(parent: Command): void {
 
       const perNode = await onEveryNode(nodesOf(env, { name: serverName, connection }), async (node) => {
         const [images, running] = await Promise.all([
-          sshExec(node.connection, 'docker images --format "{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"'),
-          sshExec(node.connection, 'docker ps --format "{{.Image}}"'),
+          sshExec(node.connection, sh`docker images --format "{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"`),
+          sshExec(node.connection, sh`docker ps --format "{{.Image}}"`),
         ]);
         if (images.exitCode !== 0) throw new Error(images.stderr.trim() || `exit ${images.exitCode}`);
         return imageRows(images.stdout, running.stdout, projectName, options.all === true);

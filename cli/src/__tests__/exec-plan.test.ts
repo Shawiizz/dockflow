@@ -89,14 +89,14 @@ describe('planExec', () => {
 
 describe('dockerExecCommand', () => {
   it('quotes every element, so nothing runs on the manager', () => {
-    expect(dockerExecCommand('c0ffee', ['sh', '-c', 'a; b'], { stdin: true, workdir: '/srv/app', user: 'www', env: { A: 'x y' } })).toBe(
+    expect<string>(dockerExecCommand('c0ffee', ['sh', '-c', 'a; b'], { stdin: true, workdir: '/srv/app', user: 'www', env: { A: 'x y' } })).toBe(
       "docker exec -i -w '/srv/app' -u 'www' -e 'A=x y' 'c0ffee' 'sh' '-c' 'a; b'",
     );
   });
 
   it('asks for a TTY only when the plan has one', () => {
-    expect(dockerExecCommand('c0ffee', ['id'], { tty: true, stdin: true })).toBe("docker exec -it 'c0ffee' 'id'");
-    expect(dockerExecCommand('c0ffee', ['id'])).toBe("docker exec 'c0ffee' 'id'");
+    expect<string>(dockerExecCommand('c0ffee', ['id'], { tty: true, stdin: true })).toBe("docker exec -it 'c0ffee' 'id'");
+    expect<string>(dockerExecCommand('c0ffee', ['id'])).toBe("docker exec 'c0ffee' 'id'");
   });
 });
 

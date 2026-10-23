@@ -9,7 +9,7 @@ import {
   checkManagerStatus
 } from '../../utils/servers';
 import type { ResolvedServer } from '../../types';
-import { sshExec } from '../../utils/ssh';
+import { sshExec, sh } from '../../utils/ssh';
 import { withTimeout } from './_helpers';
 import type { ServerConnectionStatus, ServerStatus, SwarmStatus } from '../types';
 
@@ -178,7 +178,7 @@ async function checkServerStatus(serverName: string, url: URL): Promise<Response
   };
 
   try {
-    const probe = await withTimeout(sshExec(connection, 'true'), STATUS_PROBE_TIMEOUT_MS, `${serverName} did not answer`);
+    const probe = await withTimeout(sshExec(connection, sh`true`), STATUS_PROBE_TIMEOUT_MS, `${serverName} did not answer`);
     const sshReachable = probe.exitCode === 0;
     const swarmStatus: SwarmStatus | undefined =
       sshReachable && resolvedServer.role === 'manager' ? await checkManagerStatus(connection) : undefined;

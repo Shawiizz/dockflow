@@ -11,7 +11,7 @@ import {
   getServerPrivateKey,
   getAvailableEnvironments
 } from '../../utils/servers';
-import { raw, sh, sshExec } from '../../utils/ssh';
+import { raw, sh, sshExec, type ShellCommand } from '../../utils/ssh';
 import { loadSecrets } from '../../utils/secrets';
 import { openPorts } from './firewall';
 import type { SSHKeyConnection, ResolvedServer } from '../../types';
@@ -43,7 +43,7 @@ export function swarmAddress(server: ResolvedServer): string {
 }
 
 /** `docker swarm join` for a worker; an IPv6 manager address is bracketed. */
-export function swarmJoinCommand(joinToken: string, managerAddress: string, advertiseAddress?: string): string {
+export function swarmJoinCommand(joinToken: string, managerAddress: string, advertiseAddress?: string): ShellCommand {
   const manager = managerAddress.includes(':') ? `[${managerAddress}]` : managerAddress;
   const advertise = advertiseAddress ? sh` --advertise-addr ${advertiseAddress}` : '';
   return sh`docker swarm join --token ${joinToken}${raw(advertise)} ${`${manager}:2377`}`;
@@ -55,7 +55,7 @@ export function swarmJoinCommand(joinToken: string, managerAddress: string, adve
  */
 async function warnIfAdvertisedElsewhere(connection: SSHKeyConnection, server: ResolvedServer): Promise<void> {
   if (!server.privateHost) return;
-  const result = await sshExec(connection, "docker info --format '{{.Swarm.NodeAddr}}'");
+  const result = await sshExec(connection, sh`docker info --format '{{.Swarm.NodeAddr}}'`);
   const advertised = result.stdout.trim();
   if (result.exitCode === 0 && advertised !== '' && advertised !== server.privateHost) {
     printWarning(
@@ -91,13 +91,13 @@ export async function initializeSwarm(
       // dev and E2E run against localhost; in Docker-in-Docker the nodes meet on the shared network,
       // so take the last address that is not on the default bridge (172.17.x.x)
       const ipResult = await sshExec(connection,
-        "hostname -I | tr ' ' '\\n' | grep -v '^172\\.17\\.' | grep -v '^$' | tail -1"
+        sh`hostname -I | tr ' ' '\\n' | grep -v '^172\\.17\\.' | grep -v '^$' | tail -1`
       );
       internalIp = ipResult.stdout.trim();
 
       // nothing left after the filter: take the last address
       if (!internalIp) {
-        const fallbackResult = await sshExec(connection, "hostname -I | awk '{print $NF}'");
+        const fallbackResult = await sshExec(connection, sh`hostname -I | awk '{print $NF}'`);
         internalIp = fallbackResult.stdout.trim();
       }
 
@@ -107,11 +107,11 @@ export async function initializeSwarm(
       }
     }
 
-    const stateResult = await sshExec(connection, "docker info --format '{{.Swarm.LocalNodeState}}'");
+    const stateResult = await sshExec(connection, sh`docker info --format '{{.Swarm.LocalNodeState}}'`);
     const state = stateResult.stdout.trim();
 
     if (state === 'active') {
-      const tokenResult = await sshExec(connection, 'docker swarm join-token worker -q');
+      const tokenResult = await sshExec(connection, sh`docker swarm join-token worker -q`);
       const token = tokenResult.stdout.trim();
       spinner.succeed(`Docker Swarm already active on ${managerName}`);
       await warnIfAdvertisedElsewhere(connection, manager);
@@ -127,7 +127,7 @@ export async function initializeSwarm(
       return null;
     }
 
-    const tokenResult = await sshExec(connection, 'docker swarm join-token worker -q');
+    const tokenResult = await sshExec(connection, sh`docker swarm join-token worker -q`);
     const token = tokenResult.stdout.trim();
 
     spinner.succeed(`Docker Swarm initialized on ${managerName} (${internalIp})`);
@@ -149,7 +149,7 @@ async function joinWorkerToSwarm(
   spinner.start(`Joining ${workerName} to Swarm cluster...`);
 
   try {
-    const stateResult = await sshExec(connection, "docker info --format '{{.Swarm.LocalNodeState}}'");
+    const stateResult = await sshExec(connection, sh`docker info --format '{{.Swarm.LocalNodeState}}'`);
     const state = stateResult.stdout.trim();
 
     if (state === 'active') {
@@ -160,7 +160,7 @@ async function joinWorkerToSwarm(
 
     // Leave any inactive swarm first
     if (state === 'inactive') {
-      await sshExec(connection, 'docker swarm leave --force 2>/dev/null || true');
+      await sshExec(connection, sh`docker swarm leave --force 2>/dev/null || true`);
     }
 
     const joinResult = await sshExec(connection, swarmJoinCommand(joinToken, managerHost, worker.privateHost));
@@ -229,7 +229,7 @@ export function readiness(nodeList: string): { ready: number; notReady: string[]
 async function waitForReadyNodes(connection: SSHKeyConnection, expected: number): Promise<string | null> {
   let last = { ready: 0, notReady: [] as string[] };
   for (let attempt = 0; attempt < 30; attempt++) {
-    const result = await sshExec(connection, `docker node ls --format '{{.Hostname}}|{{.Status}}'`);
+    const result = await sshExec(connection, sh`docker node ls --format '{{.Hostname}}|{{.Status}}'`);
     last = readiness(result.stdout);
     if (last.ready >= expected && last.notReady.length === 0) return null;
     await Bun.sleep(2000);
@@ -242,7 +242,7 @@ async function displayClusterStatus(connection: SSHKeyConnection): Promise<void>
   printInfo('Cluster Status:');
 
   try {
-    const nodesResult = await sshExec(connection, 'docker node ls');
+    const nodesResult = await sshExec(connection, sh`docker node ls`);
     printRaw(nodesResult.stdout);
   } catch (error) {
     printWarning('Could not retrieve cluster status');

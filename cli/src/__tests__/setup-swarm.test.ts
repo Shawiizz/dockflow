@@ -96,11 +96,11 @@ describe('private_host', () => {
   });
 
   it('builds the join of a worker with the manager address, and its own advertised address', () => {
-    expect(swarmJoinCommand('SWMTKN-1-abc', '10.0.0.5')).toBe("docker swarm join --token 'SWMTKN-1-abc' '10.0.0.5:2377'");
-    expect(swarmJoinCommand('SWMTKN-1-abc', '10.0.0.5', '10.0.0.6')).toBe(
+    expect<string>(swarmJoinCommand('SWMTKN-1-abc', '10.0.0.5')).toBe("docker swarm join --token 'SWMTKN-1-abc' '10.0.0.5:2377'");
+    expect<string>(swarmJoinCommand('SWMTKN-1-abc', '10.0.0.5', '10.0.0.6')).toBe(
       "docker swarm join --token 'SWMTKN-1-abc' --advertise-addr '10.0.0.6' '10.0.0.5:2377'",
     );
-    expect(swarmJoinCommand('t', 'fd00::5')).toBe("docker swarm join --token 't' '[fd00::5]:2377'");
+    expect<string>(swarmJoinCommand('t', 'fd00::5')).toBe("docker swarm join --token 't' '[fd00::5]:2377'");
   });
 
   it('joins a worker through the manager private address, advertising its own', async () => {

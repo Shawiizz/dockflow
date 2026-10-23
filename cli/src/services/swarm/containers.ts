@@ -5,7 +5,7 @@
 
 import { PassThrough, type Readable } from 'stream';
 import type { SSHKeyConnection } from '../../types';
-import { sshExec, sshExecStream, sshExecChannelUnbuffered, executeInteractiveSSH, raw, sh, type RawShell, type SSHUnbufferedChannelHandle } from '../../utils/ssh';
+import { sshExec, sshExecStream, sshExecChannelUnbuffered, executeInteractiveSSH, raw, sh, type RawShell, type ShellCommand, type SSHUnbufferedChannelHandle } from '../../utils/ssh';
 import { CLIError, ConnectionError, ErrorCode } from '../../utils/errors';
 import type { ExecRequest } from '../../utils/exec-plan';
 import { printWarning } from '../../utils/output';
@@ -20,7 +20,7 @@ export function dockerExecCommand(
   containerId: string,
   argv: readonly string[],
   options: Partial<Pick<ExecRequest, 'tty' | 'stdin' | 'workdir' | 'user' | 'env'>> = {},
-): string {
+): ShellCommand {
   // the flags are the code's own, every value after them is quoted
   const parts: (string | number | RawShell)[] = [raw('docker exec')];
   if (options.tty) parts.push(raw('-it'));
@@ -204,7 +204,7 @@ export class SwarmContainers {
     if (exitCode !== 0) throw copyFailure(stderr(), exitCode, `Copying into ${destDir} of ${serviceName}`, destDir, serviceName);
   }
 
-  private async openCopyChannel(connection: SSHKeyConnection, command: string): Promise<SSHUnbufferedChannelHandle> {
+  private async openCopyChannel(connection: SSHKeyConnection, command: ShellCommand): Promise<SSHUnbufferedChannelHandle> {
     try {
       return await sshExecChannelUnbuffered(connection, command);
     } catch (error) {

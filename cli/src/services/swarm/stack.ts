@@ -144,7 +144,7 @@ export class SwarmStack {
   }
 
   async listStacks(): Promise<StackInfo[]> {
-    const stdout = await runDockerQuery(this.conn, `docker stack ls --format '{{.Name}}\t{{.Services}}'`, 'docker stack ls');
+    const stdout = await runDockerQuery(this.conn, sh`docker stack ls --format '{{.Name}}\t{{.Services}}'`, 'docker stack ls');
     return (stdout ?? '')
       .trim()
       .split('\n')
@@ -185,7 +185,7 @@ export class SwarmStack {
   }
 
   async stackExists(stackName: string): Promise<boolean> {
-    const stdout = await runDockerQuery(this.conn, `docker stack ls --format '{{.Name}}'`, 'docker stack ls');
+    const stdout = await runDockerQuery(this.conn, sh`docker stack ls --format '{{.Name}}'`, 'docker stack ls');
     return (stdout ?? '').split('\n').map((line) => line.trim()).includes(stackName);
   }
 
@@ -203,9 +203,9 @@ export class SwarmStack {
       throw new DeployError('No services found', ErrorCode.STACK_NOT_FOUND);
     }
 
-    const cmd = services
+    const cmd = sh`${raw(services
       .map((s) => sh`${raw(update)} ${`${stackName}_${s.name}`}`)
-      .join(' && ');
+      .join(' && '))}`;
     const r = await sshExec(this.conn, cmd);
     if (r.exitCode !== 0) throw serviceCommandError(r, stackName, 'Some services failed to restart');
   }

@@ -5,14 +5,15 @@
 
 import type { SSHExecResult, SSHKeyConnection } from '../types';
 import { sshExec } from './ssh';
+import type { ShellCommand } from './ssh';
 
 export interface RemoteShell {
   /** runs `command`, `stdin` written to its standard input */
-  run(command: string, stdin?: string): Promise<SSHExecResult>;
+  run(command: ShellCommand, stdin?: string): Promise<SSHExecResult>;
 }
 
 export function sshShell(connection: SSHKeyConnection): RemoteShell {
   return {
-    run: (command: string, stdin?: string): Promise<SSHExecResult> => sshExec(connection, command, { stdin }),
+    run: (command: ShellCommand, stdin?: string): Promise<SSHExecResult> => sshExec(connection, command, { stdin }),
   };
 }

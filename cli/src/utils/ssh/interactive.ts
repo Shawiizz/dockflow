@@ -6,6 +6,7 @@
 import type { ConnectionInfo } from '../../types';
 import { channelResult } from './exit-status';
 import { connectDedicatedClient } from './connect';
+import type { ShellCommand } from './quoting';
 
 /** A login shell with the local terminal in raw mode; resolves with exit code 0 when it closes. */
 export async function sshShell(conn: ConnectionInfo): Promise<number> {
@@ -59,7 +60,7 @@ export async function sshShell(conn: ConnectionInfo): Promise<number> {
 /** A command on a PTY with the local terminal in raw mode; resolves with the command's exit code. */
 export async function executeInteractiveSSH(
   conn: ConnectionInfo,
-  command: string
+  command: ShellCommand
 ): Promise<number> {
   const client = await connectDedicatedClient(conn);
 
@@ -114,7 +115,7 @@ export async function executeInteractiveSSH(
  */
 export async function executePtySSH(
   conn: ConnectionInfo,
-  command: string,
+  command: ShellCommand,
 ): Promise<number> {
   const client = await connectDedicatedClient(conn);
 

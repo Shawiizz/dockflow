@@ -3,7 +3,7 @@
 import { jsonResponse, errorResponse } from '../server';
 import { getAccessoriesStackName, getStackName, loadConfig } from '../../utils/config';
 import { getAvailableEnvironments } from '../../utils/servers';
-import { sh, sshExec } from '../../utils/ssh';
+import { sh, sshExec, type ShellCommand } from '../../utils/ssh';
 import { arrangeLogLines, parseDockerLogLines } from '../../utils/docker-logs';
 import type { SSHExecResult } from '../../types';
 import { createEnvLock, type Lock } from '../../services/lock';
@@ -134,7 +134,7 @@ export function classifyTaskState(currentState: string): 'failed' | 'converging'
 export async function resolvePartialStates(
   conn: ManagerConnection,
   services: { name: string; state: ServiceInfo['state'] }[],
-  exec: (conn: ManagerConnection, command: string) => Promise<SSHExecResult> = sshExec,
+  exec: (conn: ManagerConnection, command: ShellCommand) => Promise<SSHExecResult> = sshExec,
 ): Promise<void> {
   const partial = services.filter((s) => s.state === 'starting');
   if (partial.length === 0) return;
@@ -156,7 +156,7 @@ export async function resolvePartialStates(
  * `docker service ls` for the services of one stack. The label matches the stack exactly,
  * where `--filter name=` is a prefix match that also lists other environments and the accessories.
  */
-export function serviceListCommand(stackName: string): string {
+export function serviceListCommand(stackName: string): ShellCommand {
   return sh`docker service ls --filter ${`label=com.docker.stack.namespace=${stackName}`} --format "table {{.ID}}  {{.Name}}  {{.Mode}}  {{.Replicas}}  {{.Image}}  {{.Ports}}"`;
 }
 
@@ -351,7 +351,7 @@ async function rollbackService(serviceName: string, url: URL): Promise<Response>
   }
 }
 
-export function serviceLogsCommand(nativeName: string, lines: number): string {
+export function serviceLogsCommand(nativeName: string, lines: number): ShellCommand {
   // stderr of the containers reaches docker's own stderr: merged, so a docker failure is told by the exit status
   return sh`docker service logs --tail ${lines} --timestamps --no-trunc ${nativeName} 2>&1`;
 }
@@ -363,7 +363,7 @@ export async function readServiceLogs(
   nativeName: string,
   service: string,
   lines: number,
-  exec: (conn: ManagerConnection, command: string) => Promise<SSHExecResult> = sshExec,
+  exec: (conn: ManagerConnection, command: ShellCommand) => Promise<SSHExecResult> = sshExec,
 ): Promise<{ logs: LogEntry[] } | { error: string; status: number }> {
   const result = await exec(conn, serviceLogsCommand(nativeName, lines));
   if (result.exitCode !== 0) {

@@ -11,7 +11,7 @@ import {
   isHostKeyFingerprint,
   localHostKey,
 } from '../utils/host-key';
-import { closeAllConnections, presentedHostKey, sshExecStream } from '../utils/ssh';
+import { closeAllConnections, presentedHostKey, sshExecStream, sh } from '../utils/ssh';
 import { ConnectionError, ErrorCode } from '../utils/errors';
 
 const dir = mkdtempSync(join(tmpdir(), 'dockflow-hostkey-'));
@@ -170,7 +170,7 @@ describe('an SSH connection', () => {
   // sshExecStream: other test files replace sshExec for the whole run
   async function run(conn: ReturnType<typeof connection>): Promise<{ output: string; exitCode: number }> {
     let output = '';
-    const { exitCode } = await sshExecStream(conn, 'echo hello', { onStdout: (data) => void (output += data) });
+    const { exitCode } = await sshExecStream(conn, sh`echo hello`, { onStdout: (data) => void (output += data) });
     return { output, exitCode };
   }
 

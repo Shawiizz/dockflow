@@ -4,7 +4,7 @@
  */
 
 import { printWarning } from '../../utils/output';
-import { sshExec } from '../../utils/ssh';
+import { sshExec, sh } from '../../utils/ssh';
 import * as Compose from '../../services/compose';
 import type { ParsedCompose } from '../../services/compose';
 import * as Build from '../../services/build';
@@ -78,7 +78,7 @@ export async function buildAndDistribute(
     );
 
     if (targets.length > 0) {
-      const archResult = await sshExec(ctx.cluster.manager.connection, 'uname -m');
+      const archResult = await sshExec(ctx.cluster.manager.connection, sh`uname -m`);
       const remoteArch = archResult.stdout.trim();
       const platform = (remoteArch === 'aarch64' || remoteArch === 'arm64') ? 'linux/arm64' : 'linux/amd64';
 

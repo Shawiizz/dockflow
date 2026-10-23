@@ -8,6 +8,7 @@ import type { ClientChannel } from 'ssh2';
 import type { ConnectionInfo } from '../../types';
 import { channelResult } from './exit-status';
 import { getPooledClient } from './pool';
+import type { ShellCommand } from './quoting';
 
 export interface SSHChannelHandle {
   /** writable stdin, readable stdout */
@@ -19,7 +20,7 @@ export interface SSHChannelHandle {
 /** Opens an exec channel on the pooled connection for piping data into the command; the caller owns the stream. */
 export async function sshExecChannel(
   conn: ConnectionInfo,
-  command: string,
+  command: ShellCommand,
 ): Promise<SSHChannelHandle> {
   const client = await getPooledClient(conn);
   return openChannelOnClient(client, command);
@@ -27,7 +28,7 @@ export async function sshExecChannel(
 
 export function openChannelOnClient(
   client: Pick<SSHClient, 'exec'>,
-  command: string,
+  command: ShellCommand,
 ): Promise<SSHChannelHandle> {
   return new Promise<SSHChannelHandle>((resolve, reject) => {
     client.exec(command, (err, stream) => {
@@ -75,14 +76,14 @@ export interface SSHUnbufferedChannelHandle {
 /** `sshExecChannel` without collecting the output, for streams too long to hold in memory. */
 export async function sshExecChannelUnbuffered(
   conn: ConnectionInfo,
-  command: string,
+  command: ShellCommand,
 ): Promise<SSHUnbufferedChannelHandle> {
   return openUnbufferedChannelOnClient(await getPooledClient(conn), command);
 }
 
 export function openUnbufferedChannelOnClient(
   client: Pick<SSHClient, 'exec'>,
-  command: string,
+  command: ShellCommand,
 ): Promise<SSHUnbufferedChannelHandle> {
   return new Promise<SSHUnbufferedChannelHandle>((resolve, reject) => {
     client.exec(command, (err, stream) => {

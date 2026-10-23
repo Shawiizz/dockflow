@@ -9,7 +9,7 @@ import { pipeline } from 'stream/promises';
 import { printDim, printWarning, formatBytes, createSpinner } from '../../utils/output';
 import { walkDir } from '../../utils/fs';
 import { packDirToTarGz, buildExcludeFilter } from '../../utils/tar';
-import { sh, sshExec, sshExecChannel } from '../../utils/ssh';
+import { raw, sh, sshExec, sshExecChannel } from '../../utils/ssh';
 import { DeployError, ErrorCode } from '../../utils/errors';
 import { DOCKFLOW_UPLOAD_BACKUPS_DIR } from '../../constants';
 import type { SSHKeyConnection } from '../../types';
@@ -87,11 +87,13 @@ export async function checkUploadPermissions(ctx: DeployContext): Promise<void> 
     .map(u => sh`check_path ${u.dest} ${uploadName(u)}`)
     .join('\n');
 
-  const script =
+  // checkFn is the code's own constant and checks are made with sh: both go in as shell syntax
+  const script = sh`${raw(
     'ERRORS=""\n' +
     checkFn + '\n' +
     checks + '\n' +
-    '[ -z "$ERRORS" ] || { printf "%b" "$ERRORS"; exit 1; }';
+    '[ -z "$ERRORS" ] || { printf "%b" "$ERRORS"; exit 1; }',
+  )}`;
 
   const nodes = activeNodes(ctx.cluster);
   const failures: string[] = [];
@@ -159,9 +161,7 @@ export async function uploadFiles(ctx: DeployContext): Promise<UploadRollbackPla
 
         await sshExec(conn, sh`mkdir -p ${dirname(backupPath)}`);
         const backupResult = await sshExec(conn,
-          sh`if [ -d ${destBase} ] && [ -n "$(ls -A ${destBase} 2>/dev/null)" ]; then ` +
-          sh`tar czf ${backupPath} -C ${destBase} . 2>/dev/null && echo backed_up; ` +
-          `else echo missing; fi`,
+          sh`if [ -d ${destBase} ] && [ -n "$(ls -A ${destBase} 2>/dev/null)" ]; then tar czf ${backupPath} -C ${destBase} . 2>/dev/null && echo backed_up; else echo missing; fi`,
         );
         if (backupResult.stdout.trim() === 'backed_up') {
           hostState.backedUpDirs.push({ dest: destBase, backup: backupPath });

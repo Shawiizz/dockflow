@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import { join, resolve } from 'path';
 import { Client as SSHClient } from 'ssh2';
 import { printIntro, printOutro, printSection, printError, printInfo, printBlank, printDim, createSpinner } from '../../utils/output';
-import { sshExec, sshExecChannel, executeInteractiveSSH, presentedHostKey, raw, sh } from '../../utils/ssh';
+import { sshExec, sshExecChannel, executeInteractiveSSH, presentedHostKey, raw, sh, type ShellCommand } from '../../utils/ssh';
 import { hostKeyCheck } from '../../utils/host-key';
 import { CLIError, ConnectionError, ErrorCode } from '../../utils/errors';
 import type { ConnectionInfo, SSHExecResult } from '../../types';
@@ -29,7 +29,7 @@ import { prompt, promptPassword, selectMenu, promptMultiline } from './prompts';
 import { parseConnectionString } from './connection';
 import type { RemoteSetupOptions } from './types';
 
-type Exec = (conn: ConnectionInfo, command: string) => Promise<SSHExecResult>;
+type Exec = (conn: ConnectionInfo, command: ShellCommand) => Promise<SSHExecResult>;
 
 /** What the operator should read for a failed SSH connection. */
 export function connectionFailureMessage(message: string, target: { host: string; port: number; privateKey?: string }): string {
@@ -50,7 +50,7 @@ export function connectionFailureMessage(message: string, target: { host: string
 
 /** Throws for a machine Dockflow publishes no binary for. */
 export async function detectRemoteArch(conn: ConnectionInfo, exec: Exec = sshExec): Promise<RemoteArch> {
-  const result = await exec(conn, 'uname -m');
+  const result = await exec(conn, sh`uname -m`);
   const machine = result.stdout.trim();
   const arch = result.exitCode === 0 ? archFromMachine(machine) : null;
   if (arch === null) {
@@ -313,7 +313,7 @@ export async function runRemoteSetup(opts: RemoteSetupOptions): Promise<void> {
     : { ...base, password: opts.password! };
 
   try {
-    const result = await sshExec(conn, 'echo ok');
+    const result = await sshExec(conn, sh`echo ok`);
     if (result.exitCode !== 0 || !result.stdout.includes('ok')) {
       throw new ConnectionError('Connected but command execution failed', 'Check that the user has shell access.');
     }

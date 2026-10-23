@@ -3,7 +3,7 @@
  * remove the images it built and word the error of a rollback.
  */
 
-import { sshExec } from '../../utils/ssh';
+import { sshExec, sh } from '../../utils/ssh';
 import { CLIError, DeployError, ErrorCode } from '../../utils/errors';
 import { removeImagesCommand } from '../../services/release';
 import type { ClusterConnection, ClusterNode } from '../../types';
@@ -17,7 +17,7 @@ import type { BuildResult } from './build';
  */
 export async function cleanupManager(
   cluster: ClusterConnection,
-  answers: (node: ClusterNode) => Promise<boolean> = (node) => sshExec(node.connection, 'true').then((r) => r.exitCode === 0, () => false),
+  answers: (node: ClusterNode) => Promise<boolean> = (node) => sshExec(node.connection, sh`true`).then((r) => r.exitCode === 0, () => false),
 ): Promise<ClusterNode | null> {
   for (const node of [cluster.manager, ...cluster.otherManagers]) {
     if (await answers(node)) return node;

@@ -3,7 +3,7 @@
  */
 
 import { createSpinner, printDim } from '../../utils/output';
-import { raw, sh, sshExec } from '../../utils/ssh';
+import { raw, sh, sshExec, type ShellCommand } from '../../utils/ssh';
 import type { SSHKeyConnection } from '../../types';
 
 export interface PortDefinition {
@@ -18,14 +18,14 @@ export type FirewallTool = 'ufw' | 'firewalld' | 'iptables';
  * The commands that open `ports` with `tool`, as the deploy user runs them over SSH: `sudo -n`
  * fails at once instead of waiting for a password the session cannot type.
  */
-export function openPortCommands(tool: FirewallTool, ports: readonly PortDefinition[]): string[] {
+export function openPortCommands(tool: FirewallTool, ports: readonly PortDefinition[]): ShellCommand[] {
   switch (tool) {
     case 'ufw':
-      return [...ports.map(({ port, protocol }) => sh`sudo -n ufw allow ${`${port}/${protocol}`}`), 'sudo -n ufw reload'];
+      return [...ports.map(({ port, protocol }) => sh`sudo -n ufw allow ${`${port}/${protocol}`}`), sh`sudo -n ufw reload`];
     case 'firewalld':
       return [
         ...ports.map(({ port, protocol }) => sh`sudo -n firewall-cmd --permanent --add-port=${`${port}/${protocol}`}`),
-        'sudo -n firewall-cmd --reload',
+        sh`sudo -n firewall-cmd --reload`,
       ];
     case 'iptables':
       // checked first, so running setup again does not stack duplicate rules

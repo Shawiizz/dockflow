@@ -504,7 +504,7 @@ export async function buildRemote(
       const remoteDockerfile = `${remoteContext}/${relDockerfile}`;
       const remoteEngine = target.engine || 'docker';
 
-      const buildResult = await sshExec(connection, 'sh -s', {
+      const buildResult = await sshExec(connection, sh`sh -s`, {
         stdin: remoteBuildScript(remoteEngine, target.args ?? {}, sh`-f ${remoteDockerfile} -t ${target.tag} ${remoteContext}`),
       });
 

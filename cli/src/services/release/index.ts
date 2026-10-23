@@ -121,14 +121,14 @@ export class Release {
 
     // leftovers of an interrupted create are dropped; the deploy lock rules out a concurrent one
     const prepared = await this.shell.run(
-      [
-        'umask 077',
+      sh`${raw([
+        sh`umask 077`,
         sh`mkdir -p ${stackDir} || exit 1`,
         // the quoted directory keeps the globs after it live
         sh`rm -rf ${stackDir}/${TEMP_PREFIX}* ${stackDir}/${BACKUP_PREFIX}*`,
         sh`mkdir ${tmp} || exit 1`,
         sh`readlink ${currentLink} 2>/dev/null || true`,
-      ].join('\n'),
+      ].join('\n'))}`,
     );
     if (prepared.exitCode !== 0) {
       throw new DeployError(
@@ -160,21 +160,21 @@ export class Release {
     }
 
     const committed = await this.shell.run(
-      [
-        'umask 077',
+      sh`${raw([
+        sh`umask 077`,
         sh`if [ -d ${dir} ]; then`,
         sh`  rm -rf ${backup} && cp -Rp ${dir} ${backup} || exit 1`,
-        '  echo replacing',
+        sh`  echo replacing`,
         sh`  for f in ${RELEASE_FILES}; do`,
         sh`    if [ -f ${tmp}/"$f" ]; then mv -f ${tmp}/"$f" ${dir}/"$f" || exit 1; else rm -f ${dir}/"$f"; fi`,
-        '  done',
+        sh`  done`,
         sh`  rm -rf ${tmp}`,
-        'else',
+        sh`else`,
         sh`  mv ${tmp} ${dir} || exit 1`,
-        'fi',
+        sh`fi`,
         // the `current` symlink is what rollback and partial deploys resolve
         sh`ln -sfn ${dir} ${currentLink} || exit 2`,
-      ].join('\n'),
+      ].join('\n'))}`,
     );
     const replacing = committed.stdout.includes('replacing');
     if (replacing) this.replaced.add(`${stackName}/${version}`);
@@ -221,10 +221,7 @@ export class Release {
   async listReleases(stackName: string): Promise<ReleaseMetadata[]> {
     const dir = this.stackDir(stackName);
     const result = await this.shell.run(
-      sh`cd ${dir} 2>/dev/null && for d in */; do ` +
-        '[ -L "${d%/}" ] && continue; ' +
-        sh`[ -f "\${d}"${METADATA_FILE} ] && printf '%s\\t' "\${d%/}" && tr -d '\\n' < "\${d}"${METADATA_FILE} && echo; ` +
-        'done || true',
+      sh`cd ${dir} 2>/dev/null && for d in */; do [ -L "\${d%/}" ] && continue; [ -f "\${d}"${METADATA_FILE} ] && printf '%s\\t' "\${d%/}" && tr -d '\\n' < "\${d}"${METADATA_FILE} && echo; done || true`,
     );
     return parseReleaseList(result.stdout, (directory) =>
       printWarning(`Skipping release directory ${directory} with corrupted metadata in ${dir}`),
@@ -417,9 +414,7 @@ export class Release {
 
     const [runningResult, keptResult, removeResult] = await Promise.all([
       this.shell.run(
-        `for stack in $(docker stack ls --format '{{.Name}}' 2>/dev/null); do ` +
-          `docker stack services "$stack" --format '{{.Image}}' 2>/dev/null; ` +
-        `done`,
+        sh`for stack in $(docker stack ls --format '{{.Name}}' 2>/dev/null); do docker stack services "$stack" --format '{{.Image}}' 2>/dev/null; done`,
       ),
       composeFiles(kept),
       composeFiles(removed),
@@ -453,16 +448,16 @@ export class Release {
     const dir = this.releaseDir(stackName, version);
     const backup = this.backupDir(stackName, version);
     const result = await this.shell.run(
-      [
-        'umask 077',
+      sh`${raw([
+        sh`umask 077`,
         sh`if [ -d ${backup} ]; then`,
         sh`  mkdir -p ${dir} || exit 1`,
         sh`  for f in ${RELEASE_FILES}; do`,
         sh`    if [ -f ${backup}/"$f" ]; then mv -f ${backup}/"$f" ${dir}/"$f" || exit 1; else rm -f ${dir}/"$f"; fi`,
-        '  done',
+        sh`  done`,
         sh`  rm -rf ${backup}`,
-        'fi',
-      ].join('\n'),
+        sh`fi`,
+      ].join('\n'))}`,
     );
     if (result.exitCode !== 0) {
       throw new DeployError(

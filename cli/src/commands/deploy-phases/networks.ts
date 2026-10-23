@@ -23,7 +23,7 @@ export async function ensureExternalNetworks(ctx: DeployContext): Promise<void> 
 
   if (networks.size === 0) return;
 
-  const listResult = await sshExec(ctx.cluster.manager.connection, `docker network ls --format '{{.Name}}'`);
+  const listResult = await sshExec(ctx.cluster.manager.connection, sh`docker network ls --format '{{.Name}}'`);
   if (listResult.exitCode !== 0) throw new DeployError(
     `Failed to list Docker networks: ${listResult.stderr.trim() || `exit ${listResult.exitCode}`}`,
     ErrorCode.DEPLOY_FAILED,

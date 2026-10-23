@@ -1,6 +1,7 @@
 import { sshExec } from './ssh';
 import { printDebug } from './output';
 import type { SSHKeyConnection, SSHExecResult } from '../types';
+import type { ShellCommand } from './ssh';
 
 /**
  * Runs a read on each node in turn, for data replicated on all of them (history, metrics), and
@@ -8,7 +9,7 @@ import type { SSHKeyConnection, SSHExecResult } from '../types';
  */
 export async function sshExecWithFallback(
   connections: SSHKeyConnection[],
-  command: string
+  command: ShellCommand
 ): Promise<SSHExecResult> {
   let lastResult: SSHExecResult = { stdout: '', stderr: '', exitCode: 1 };
 

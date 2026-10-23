@@ -28,7 +28,7 @@ export function registerDetailsCommand(program: Command): void {
         printRaw(servicesResult.stdout);
 
         printSection('Nodes');
-        const nodesResult = await sshExec(connection, 'docker node ls --format "table {{.Hostname}}\t{{.Status}}\t{{.Availability}}\t{{.ManagerStatus}}"');
+        const nodesResult = await sshExec(connection, sh`docker node ls --format "table {{.Hostname}}\t{{.Status}}\t{{.Availability}}\t{{.ManagerStatus}}"`);
         printRaw(nodesResult.exitCode === 0 ? nodesResult.stdout : colors.dim(`  docker node ls failed: ${nodesResult.stderr.trim()}`));
 
         // every node: the stack's containers run wherever Swarm put them
@@ -37,8 +37,7 @@ export function registerDetailsCommand(program: Command): void {
           // without ids docker stats would list every container of the node
           const result = await sshExec(
             node.connection,
-            sh`ids=$(docker ps -q --filter ${`label=com.docker.stack.namespace=${stackName}`}); ` +
-              `[ -z "$ids" ] || docker stats --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}" $ids`,
+            sh`ids=$(docker ps -q --filter ${`label=com.docker.stack.namespace=${stackName}`}); [ -z "$ids" ] || docker stats --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}" $ids`,
           );
           if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `exit ${result.exitCode}`);
           return result.stdout.split('\n').filter((line) => line.trim());

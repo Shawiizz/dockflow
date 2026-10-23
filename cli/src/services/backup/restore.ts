@@ -60,8 +60,7 @@ export async function replicaRefusal(
 ): Promise<BackupError | null> {
   const result = await sshExec(
     connection,
-    sh`docker service inspect ${qualifyServiceName(stackName, service)} ` +
-      `--format '{{if .Spec.Mode.Global}}global{{else if .Spec.Mode.Replicated}}{{.Spec.Mode.Replicated.Replicas}}{{end}}'`,
+    sh`docker service inspect ${qualifyServiceName(stackName, service)} --format '{{if .Spec.Mode.Global}}global{{else if .Spec.Mode.Replicated}}{{.Spec.Mode.Replicated.Replicas}}{{end}}'`,
   );
   const mode = result.exitCode === 0 ? result.stdout.trim() : '';
   const replicas = mode === 'global' ? (nodeCount > 1 ? nodeCount : 1) : Number(mode);

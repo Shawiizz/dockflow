@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { EventEmitter } from 'events';
 import type { Client } from 'ssh2';
-import { channelResult, NO_EXIT_STATUS, openChannelOnClient, openUnbufferedChannelOnClient } from '../utils/ssh';
+import { channelResult, NO_EXIT_STATUS, openChannelOnClient, openUnbufferedChannelOnClient, sh } from '../utils/ssh';
 
 // What ssh2 passes the 'close' and 'exit' events of an exec channel: (code) when the command
 // exited, (null, 'SIGKILL', ...) when a signal killed it, nothing when no exit status came.
@@ -49,7 +49,7 @@ function client(): { channel: EventEmitter & { stderr: EventEmitter }; client: P
 describe('openChannelOnClient', () => {
   it('keeps the error text a stream delivers right after the exit status', async () => {
     const { channel, client: fake } = client();
-    const handle = await openChannelOnClient(fake, 'docker stack deploy');
+    const handle = await openChannelOnClient(fake, sh`docker stack deploy`);
     channel.emit('exit', 1);
     process.nextTick(() => channel.stderr.emit('data', Buffer.from('network not found')));
 
@@ -61,7 +61,7 @@ describe('openUnbufferedChannelOnClient', () => {
 
   it('settles on the exit status and keeps nothing of the output', async () => {
     const { channel, client: fake } = client();
-    const handle = await openUnbufferedChannelOnClient(fake, 'cat file');
+    const handle = await openUnbufferedChannelOnClient(fake, sh`cat file`);
     channel.emit('data', Buffer.from('payload'));
     channel.emit('exit', 0);
     expect(await handle.done).toEqual({ exitCode: 0 });
@@ -70,19 +70,19 @@ describe('openUnbufferedChannelOnClient', () => {
 
   it('reads a signal and a missing status as channelResult does', async () => {
     const killed = client();
-    const handleKilled = await openUnbufferedChannelOnClient(killed.client, 'x');
+    const handleKilled = await openUnbufferedChannelOnClient(killed.client, sh`x`);
     killed.channel.emit('exit', null, 'SIGKILL');
     expect(await handleKilled.done).toEqual({ exitCode: 137 });
 
     const lost = client();
-    const handleLost = await openUnbufferedChannelOnClient(lost.client, 'x');
+    const handleLost = await openUnbufferedChannelOnClient(lost.client, sh`x`);
     lost.channel.emit('close');
     expect(await handleLost.done).toEqual({ exitCode: NO_EXIT_STATUS });
   });
 
   it('the first of exit and close wins', async () => {
     const { channel, client: fake } = client();
-    const handle = await openUnbufferedChannelOnClient(fake, 'x');
+    const handle = await openUnbufferedChannelOnClient(fake, sh`x`);
     channel.emit('exit', 3);
     channel.emit('close');
     expect(await handle.done).toEqual({ exitCode: 3 });
@@ -90,6 +90,6 @@ describe('openUnbufferedChannelOnClient', () => {
 
   it('an exec that cannot open its channel rejects', async () => {
     const failing = { exec: ((_command: string, callback: (error: Error | undefined) => void) => callback(new Error('channel open failure'))) as Client['exec'] };
-    await expect(openUnbufferedChannelOnClient(failing, 'x')).rejects.toThrow('channel open failure');
+    await expect(openUnbufferedChannelOnClient(failing, sh`x`)).rejects.toThrow('channel open failure');
   });
 });

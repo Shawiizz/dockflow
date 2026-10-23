@@ -1,7 +1,7 @@
 /** Routes for container resource stats and the deploy audit log. */
 
 import { jsonResponse, errorResponse } from '../server';
-import { raw, sh, sshExec } from '../../utils/ssh';
+import { raw, sh, sshExec, type ShellCommand } from '../../utils/ssh';
 import { sshExecWithFallback } from '../../utils/ssh-fallback';
 import { getAccessoriesStackName, getStackName } from '../../utils/config';
 import { getManagerConnection, getAllNodeConnections, resolveEnvironment, parseIntParam } from './_helpers';
@@ -63,19 +63,20 @@ export function parseDockerStatsLine(line: string): ParsedStatsLine | null {
  * Lists the containers of the stacks on a node (`C|id|service|stack` lines) and then their
  * resource usage (`S|...` lines). Fails when Docker does not answer.
  */
-export function statsCommand(stacks: string[]): string {
+export function statsCommand(stacks: string[]): ShellCommand {
   const psFormat = `C|{{.ID}}|{{.Label "${SERVICE_LABEL}"}}|{{.Label "${STACK_LABEL}"}}`;
   const lines = stacks.map(
     (stack, i) => sh`c${i}=$(docker ps --filter ${`label=${STACK_LABEL}=${stack}`} --format ${psFormat}) || exit 1`,
   );
   const all = stacks.map((_, i) => `"$c${i}"`).join(' ');
-  return [
+  const script = [
     ...lines,
     sh`containers=$(printf '%s\n' ${raw(all)} | grep '^C|')`,
-    '[ -n "$containers" ] || exit 0',
-    `printf '%s\n' "$containers"`,
-    `docker stats --no-stream --format 'S|{{.ID}}|{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}' $(printf '%s\n' "$containers" | cut -d'|' -f2)`,
+    sh`[ -n "$containers" ] || exit 0`,
+    sh`printf '%s\n' "$containers"`,
+    sh`docker stats --no-stream --format 'S|{{.ID}}|{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}|{{.BlockIO}}' $(printf '%s\n' "$containers" | cut -d'|' -f2)`,
   ].join('\n');
+  return sh`${raw(script)}`;
 }
 
 /** Stats entries of one node from the output of `statsCommand`. */

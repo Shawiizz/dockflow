@@ -16,4 +16,4 @@ export {
   type SSHUnbufferedChannelHandle,
 } from './channels';
 export { sshShell, executeInteractiveSSH, executePtySSH } from './interactive';
-export { escapeSingleQuotes, shellQuote, sh, raw, RawShell, type ShellValue } from './quoting';
+export { escapeSingleQuotes, shellQuote, sh, raw, userCommand, RawShell, type ShellValue, type ShellCommand } from './quoting';

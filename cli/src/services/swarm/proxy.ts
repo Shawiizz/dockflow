@@ -165,7 +165,7 @@ export class SwarmProxy {
   }
 
   private async managerNodes(): Promise<Set<string>> {
-    const result = await sshExec(this.connection, `docker node ls --filter role=manager --format '{{.Hostname}}' 2>/dev/null`);
+    const result = await sshExec(this.connection, sh`docker node ls --filter role=manager --format '{{.Hostname}}' 2>/dev/null`);
     return new Set(result.stdout.split('\n').map((line) => line.trim()).filter(Boolean));
   }
 
@@ -179,7 +179,7 @@ export class SwarmProxy {
 
   /** Listeners on the manager itself, by process name when `ss` may show it. Without `ss`, nothing is reported. */
   private async hostListeners(ports: number[]): Promise<PortHolder[]> {
-    const result = await sshExec(this.connection, 'ss -ltnp 2>/dev/null');
+    const result = await sshExec(this.connection, sh`ss -ltnp 2>/dev/null`);
     if (result.exitCode !== 0) {
       printDebug('ss is not available on the manager: the ports 80 and 443 were not checked for other listeners');
       return [];

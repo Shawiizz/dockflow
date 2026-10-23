@@ -16,7 +16,7 @@
 
 import { randomBytes } from 'crypto';
 import type { SSHExecResult, SSHKeyConnection } from '../types';
-import { raw, sh } from '../utils/ssh';
+import { raw, sh, type ShellCommand } from '../utils/ssh';
 import { sshShell, type RemoteShell } from '../utils/remote-shell';
 import { ok, err, type Result } from '../types';
 import { DOCKFLOW_LOCKS_DIR } from '../constants';
@@ -270,51 +270,50 @@ export class Lock {
   /** `ln` refuses an existing target: the create-if-absent step, with the content already complete. */
   private async tryCreate(content: string): Promise<boolean | CLIError> {
     const tmp = this.tempFile();
-    const result = await this.shell.run(
-      [
-        sh`mkdir -p ${this.locksDir} && cat > ${tmp} || { rm -f ${tmp}; exit 1; }`,
-        sh`ln ${tmp} ${this.lockFile} 2>/dev/null && r=${R_ACQUIRED} || r=LOCKED`,
-        sh`rm -f ${tmp}`,
-        'echo "$r"',
-      ].join('\n'),
-      content,
-    );
+    const lines = [
+      sh`mkdir -p ${this.locksDir} && cat > ${tmp} || { rm -f ${tmp}; exit 1; }`,
+      sh`ln ${tmp} ${this.lockFile} 2>/dev/null && r=${R_ACQUIRED} || r=LOCKED`,
+      sh`rm -f ${tmp}`,
+      sh`echo "$r"`,
+    ];
+    const result = await this.shell.run(sh`${raw(lines.join('\n'))}`, content);
     if (result.exitCode !== 0) return this.writeFailed(result);
     return result.stdout.trim() === ACQUIRED;
   }
 
-  private forceCommand(): string {
+  private forceCommand(): ShellCommand {
     const tmp = this.tempFile();
     return sh`mkdir -p ${this.locksDir} && cat > ${tmp} && mv -f ${tmp} ${this.lockFile} || { rm -f ${tmp}; exit 1; }`;
   }
 
-  private ownReleaseCommand(own: string): string {
+  private ownReleaseCommand(own: string): ShellCommand {
     const file = this.lockFile;
     const guard = `${this.lockFile}.takeover`;
-    return [
+    const lines = [
       sh`r=${R_TAKEN}`,
       sh`find ${guard} -prune -type d -mmin +${ABANDONED_GUARD_MINUTES} -exec rmdir {} + 2>/dev/null`,
       sh`if [ ! -e ${file} ]; then r=REMOVED`,
       sh`elif mkdir ${guard} 2>/dev/null; then`,
       sh`  if [ "$(cat ${file} 2>/dev/null)" = ${own} ]; then`,
       sh`    rm -f ${file}; if [ -e ${file} ]; then r=EXISTS; else r=REMOVED; fi`,
-      '  fi',
+      sh`  fi`,
       sh`  rmdir ${guard}`,
-      'fi',
-      'echo "$r"',
-    ].join('\n');
+      sh`fi`,
+      sh`echo "$r"`,
+    ];
+    return sh`${raw(lines.join('\n'))}`;
   }
 
   /**
    * Replaces the lock only if it still holds `expected`; a lock that disappeared in the meantime
    * is created only when `createIfMissing`. Prints ACQUIRED, TAKEN, or BUSY while another swap runs.
    */
-  private swapCommand(expected: string, { createIfMissing }: { createIfMissing: boolean }): string {
+  private swapCommand(expected: string, { createIfMissing }: { createIfMissing: boolean }): ShellCommand {
     const file = this.lockFile;
     const guard = `${this.lockFile}.takeover`;
     const tmp = this.tempFile();
-    const create = createIfMissing ? sh`ln ${tmp} ${file} 2>/dev/null && r=${R_ACQUIRED}` : ':';
-    return [
+    const create = createIfMissing ? sh`ln ${tmp} ${file} 2>/dev/null && r=${R_ACQUIRED}` : sh`:`;
+    const lines = [
       sh`r=${R_BUSY}`,
       sh`if cat > ${tmp}; then`,
       sh`  find ${guard} -prune -type d -mmin +${ABANDONED_GUARD_MINUTES} -exec rmdir {} + 2>/dev/null`,
@@ -322,13 +321,14 @@ export class Lock {
       sh`    r=${R_TAKEN}`,
       sh`    if [ ! -e ${file} ]; then ${raw(create)}`,
       sh`    elif [ "$(cat ${file} 2>/dev/null)" = ${expected} ]; then mv -f ${tmp} ${file} && r=${R_ACQUIRED}`,
-      '    fi',
+      sh`    fi`,
       sh`    rmdir ${guard}`,
-      '  fi',
-      'fi',
+      sh`  fi`,
+      sh`fi`,
       sh`rm -f ${tmp}`,
-      'echo "$r"',
-    ].join('\n');
+      sh`echo "$r"`,
+    ];
+    return sh`${raw(lines.join('\n'))}`;
   }
 }
 
@@ -346,7 +346,7 @@ export function createLock(
  */
 export async function lockManager(
   managers: readonly SSHKeyConnection[],
-  answers: (connection: SSHKeyConnection) => Promise<boolean> = (connection) => sshExec(connection, 'true').then((r) => r.exitCode === 0, () => false),
+  answers: (connection: SSHKeyConnection) => Promise<boolean> = (connection) => sshExec(connection, sh`true`).then((r) => r.exitCode === 0, () => false),
 ): Promise<SSHKeyConnection> {
   if (managers.length === 1) return managers[0];
   for (const connection of managers) {

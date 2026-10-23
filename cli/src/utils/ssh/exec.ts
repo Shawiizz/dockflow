@@ -10,10 +10,11 @@ import { channelResult } from './exit-status';
 import { isTransportError } from './connect';
 import { evictClient, getPooledClient } from './pool';
 import { sshExecChannel } from './channels';
+import type { ShellCommand } from './quoting';
 
 function execOnClient(
   client: SSHClient,
-  command: string,
+  command: ShellCommand,
   options?: { collectBinary?: boolean },
 ): Promise<SSHExecResult> {
   return new Promise<SSHExecResult>((resolve, reject) => {
@@ -51,7 +52,7 @@ function execOnClient(
 
 function execStreamOnClient(
   client: SSHClient,
-  command: string,
+  command: ShellCommand,
   options: {
     onStdout?: (data: string) => void;
     onStderr?: (data: string) => void;
@@ -89,7 +90,7 @@ function execStreamOnClient(
 /** Runs `command` and collects its output; `stdin`, when given, is written to its standard input. */
 export async function sshExec(
   conn: ConnectionInfo,
-  command: string,
+  command: ShellCommand,
   options?: { collectBinary?: boolean; stdin?: string | Buffer },
 ): Promise<SSHExecResult> {
   if (options?.stdin !== undefined) {
@@ -114,7 +115,7 @@ export async function sshExec(
 /** Streams the output to `onStdout` and `onStderr`, or to this process's stdout and stderr when absent. */
 export async function sshExecStream(
   conn: ConnectionInfo,
-  command: string,
+  command: ShellCommand,
   options: {
     onStdout?: (data: string) => void;
     onStderr?: (data: string) => void;

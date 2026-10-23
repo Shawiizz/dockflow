@@ -26,6 +26,22 @@ export function shellQuote(value: string): string {
   return `'${escapeSingleQuotes(value)}'`;
 }
 
+declare const SHELL_COMMAND: unique symbol;
+
+/**
+ * A remote command built with `sh`. The SSH calls take only this type, so a command written as a
+ * plain string, whose values nobody quoted, does not compile. At run time it is a plain string.
+ */
+export type ShellCommand = string & { readonly [SHELL_COMMAND]: true };
+
+/**
+ * What the user typed for the remote shell to run as it is (`dockflow ssh <env> <command>`): their
+ * own shell syntax, deliberately not quoted.
+ */
+export function userCommand(text: string): ShellCommand {
+  return text as ShellCommand;
+}
+
 /** Shell syntax the code builds itself, which `sh` inserts as it is. */
 export class RawShell {
   constructor(readonly text: string) {}
@@ -56,10 +72,10 @@ function shellValue(value: ShellValue): string {
  * sh`rm -rf ${dir}/tmp` can never become another command. A number goes in as it is, an array as
  * its elements quoted one by one, and shell syntax the code builds through `raw()`.
  */
-export function sh(strings: TemplateStringsArray, ...values: ShellValue[]): string {
+export function sh(strings: TemplateStringsArray, ...values: ShellValue[]): ShellCommand {
   let command = strings[0];
   values.forEach((value, i) => {
     command += shellValue(value) + strings[i + 1];
   });
-  return command;
+  return command as ShellCommand;
 }

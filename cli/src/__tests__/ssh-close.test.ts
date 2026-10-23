@@ -5,7 +5,7 @@ import type * as SshModule from '../utils/ssh';
 
 // Other files mock utils/ssh; the query suffix loads its own instance, whose pool this file closes.
 const UNMOCKED_SSH = '../utils/ssh/index.ts?unmocked';
-const { closeAllConnections, sshExec } = (await import(UNMOCKED_SSH)) as typeof SshModule;
+const { closeAllConnections, sh, sshExec } = (await import(UNMOCKED_SSH)) as typeof SshModule;
 
 describe('closeAllConnections: a handshake in progress', () => {
   it('is abandoned at once, not retried until its timeouts run out (a down node kept each command alive ~30s)', async () => {
@@ -20,7 +20,7 @@ describe('closeAllConnections: a handshake in progress', () => {
     });
     const privateKey = utils.generateKeyPairSync('ed25519').private;
     try {
-      const pending = sshExec({ host: '127.0.0.1', port, user: 'deploy', privateKey }, 'never-runs').then(
+      const pending = sshExec({ host: '127.0.0.1', port, user: 'deploy', privateKey }, sh`never-runs`).then(
         () => undefined,
         (error: unknown) => error,
       );

@@ -72,10 +72,7 @@ export async function pruneBackups(
 async function pruneOrphans(stackName: string, service: string | undefined, nodes: ClusterNode[]): Promise<{ files: number; bytes: number }> {
   const base = service ? buildBackupDir(stackName, service) : `${DOCKFLOW_BACKUPS_DIR}/${stackName}`;
   // backup ids start with the date, so only files named after one are candidates
-  const command =
-    sh`find ${base} -type f -name '[0-9]*' ! -name '*.meta.json' -mmin +${BACKUP_ORPHAN_GRACE_H * 60} 2>/dev/null | ` +
-    `while IFS= read -r f; do b=\${f##*/}; [ -e "\${f%/*}/\${b%%.*}.meta.json" ] && continue; ` +
-    `s=$(stat -c %s "$f" 2>/dev/null || echo 0); rm -f -- "$f" && printf '%s\\t%s\\n' "$s" "$f"; done`;
+  const command = sh`find ${base} -type f -name '[0-9]*' ! -name '*.meta.json' -mmin +${BACKUP_ORPHAN_GRACE_H * 60} 2>/dev/null | while IFS= read -r f; do b=\${f##*/}; [ -e "\${f%/*}/\${b%%.*}.meta.json" ] && continue; s=$(stat -c %s "$f" 2>/dev/null || echo 0); rm -f -- "$f" && printf '%s\\t%s\\n' "$s" "$f"; done`;
 
   let files = 0;
   let bytes = 0;

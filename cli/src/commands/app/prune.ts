@@ -3,7 +3,7 @@
  */
 
 import type { Command } from 'commander';
-import { sshExec } from '../../utils/ssh';
+import { sshExec, sh, type ShellCommand } from '../../utils/ssh';
 import { printIntro, printOutro, printInfo, printSection, printWarning, printDebug, printBlank, printRaw, printSuccess, createSpinner } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { DockerError, withServicesRequired } from '../../utils/errors';
@@ -12,11 +12,11 @@ import { type NodeRef, nodesOf } from './nodes';
 
 type PruneTarget = 'containers' | 'images' | 'volumes' | 'networks';
 
-const PRUNE_COMMANDS: Record<PruneTarget, (all: boolean) => string> = {
-  containers: () => 'docker container prune -f',
-  images: (all) => (all ? 'docker image prune -f -a' : 'docker image prune -f'),
-  volumes: () => 'docker volume prune -f',
-  networks: () => 'docker network prune -f',
+const PRUNE_COMMANDS: Record<PruneTarget, (all: boolean) => ShellCommand> = {
+  containers: () => sh`docker container prune -f`,
+  images: (all) => (all ? sh`docker image prune -f -a` : sh`docker image prune -f`),
+  volumes: () => sh`docker volume prune -f`,
+  networks: () => sh`docker network prune -f`,
 };
 
 /** What each target reclaimed on `node`; a failed prune throws, it must not read as a success. */
@@ -105,7 +105,7 @@ export function registerPruneCommand(program: Command): void {
 
       printSection('Current Disk Usage');
       for (const node of nodes) {
-        const df = await sshExec(node.connection, 'docker system df');
+        const df = await sshExec(node.connection, sh`docker system df`);
         printRaw(`${node.name}\n${df.stdout}`);
       }
     })));

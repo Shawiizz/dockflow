@@ -4,7 +4,7 @@
  */
 
 import type { SSHKeyConnection } from '../../types';
-import { raw, sh, sshExec } from '../../utils/ssh';
+import { raw, sh, sshExec, type ShellCommand } from '../../utils/ssh';
 import { printDebug } from '../../utils/output';
 import { DockerError, ErrorCode } from '../../utils/errors';
 
@@ -62,9 +62,7 @@ export async function listSwarmTasks(
   serviceName: string,
   conn: SSHKeyConnection,
 ): Promise<SwarmTask[]> {
-  const cmd =
-    sh`docker service ps ${qualifyServiceName(stackName, serviceName)} --no-trunc ` +
-    `--format '{{.ID}}\t{{.Node}}\t{{.Name}}\t{{.DesiredState}}\t{{.CurrentState}}\t{{.Error}}' 2>/dev/null`;
+  const cmd = sh`docker service ps ${qualifyServiceName(stackName, serviceName)} --no-trunc --format '{{.ID}}\t{{.Node}}\t{{.Name}}\t{{.DesiredState}}\t{{.CurrentState}}\t{{.Error}}' 2>/dev/null`;
 
   const result = await sshExec(conn, cmd);
   if (result.exitCode !== 0) return [];
@@ -116,7 +114,7 @@ export function dockerQueryError(host: string, result: { stdout: string; stderr:
 }
 
 /** Runs a read-only docker command; null when docker says the stack holds nothing. */
-export async function runDockerQuery(connection: SSHKeyConnection, command: string, what: string): Promise<string | null> {
+export async function runDockerQuery(connection: SSHKeyConnection, command: ShellCommand, what: string): Promise<string | null> {
   const result = await sshExec(connection, command);
   if (NOTHING_FOUND.test(result.stderr) || NOTHING_FOUND.test(result.stdout)) return null;
   if (result.exitCode !== 0) throw dockerQueryError(connection.host, result, what);

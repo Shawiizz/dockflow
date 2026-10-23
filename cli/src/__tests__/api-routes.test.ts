@@ -164,8 +164,8 @@ describe('prune targets', () => {
   });
 
   it('prunes all unused images only when asked to', () => {
-    expect(pruneCommand('images', false)).toBe('docker image prune -f');
-    expect(pruneCommand('images', true)).toBe('docker image prune -f -a');
+    expect<string>(pruneCommand('images', false)).toBe('docker image prune -f');
+    expect<string>(pruneCommand('images', true)).toBe('docker image prune -f -a');
   });
 });
 
@@ -389,7 +389,7 @@ describe('readServiceLogs', () => {
   const replyWith = (stdout: string, exitCode = 0) => async () => ({ stdout, stderr: '', exitCode });
 
   it('asks for timestamps and merges the containers stderr', () => {
-    expect(serviceLogsCommand('shop-production_web', 50)).toBe(
+    expect<string>(serviceLogsCommand('shop-production_web', 50)).toBe(
       "docker service logs --tail 50 --timestamps --no-trunc 'shop-production_web' 2>&1",
     );
   });

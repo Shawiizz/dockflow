@@ -127,7 +127,7 @@ export async function deployStack(
     .filter(Boolean)
     .join(' ');
 
-  const serverNow = await sshExec(connection, 'date -u +%s').catch(() => null);
+  const serverNow = await sshExec(connection, sh`date -u +%s`).catch(() => null);
   const seconds = Number(serverNow?.stdout.trim());
   const startedAt = serverNow && Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
 
@@ -207,7 +207,7 @@ export async function deployAccessories(
 
   // pulled first (best-effort), from stdin like the deploy itself
   try {
-    await sshExec(connection, `docker compose -f - pull 2>/dev/null || true`, { stdin: accessoriesComposeYaml });
+    await sshExec(connection, sh`docker compose -f - pull 2>/dev/null || true`, { stdin: accessoriesComposeYaml });
   } catch {
     printDebug('Accessories image pull skipped (compose v2 not available or pull failed)');
   }

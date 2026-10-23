@@ -3,7 +3,7 @@
  */
 
 import type { Command } from 'commander';
-import { sshShell, sshExecStream } from '../../utils/ssh';
+import { sshShell, sshExecStream, userCommand } from '../../utils/ssh';
 import { printInfo, printBlank } from '../../utils/output';
 import { resolveEnv, withResolvedEnv } from '../../utils/validation';
 import { ConnectionError, ExecExitError, withServicesRequired } from '../../utils/errors';
@@ -24,7 +24,8 @@ export function registerSshCommand(program: Command): void {
 
         let exitCode: number;
         try {
-          ({ exitCode } = await sshExecStream(connection, command));
+          // the user's own command line, run as they typed it: not quoted on purpose
+          ({ exitCode } = await sshExecStream(connection, userCommand(command)));
         } catch (error) {
           throw new ConnectionError(`SSH command failed: ${error instanceof Error ? error.message : String(error)}`);
         }

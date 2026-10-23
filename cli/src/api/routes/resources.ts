@@ -1,7 +1,7 @@
 /** Routes to prune Docker resources and read disk usage on every node, and to read and take deploy locks. */
 
 import { jsonResponse, errorResponse } from '../server';
-import { sshExec } from '../../utils/ssh';
+import { sshExec, sh, type ShellCommand } from '../../utils/ssh';
 import { createEnvLock } from '../../services/lock';
 import { loadConfig } from '../../utils/config';
 import { getManagerConnection, resolveEnvironment } from './_helpers';
@@ -69,16 +69,16 @@ export function unknownPruneTargets(targets: unknown[]): string[] {
   return targets.filter((target) => !PRUNE_TARGETS.includes(target as PruneTarget)).map(String);
 }
 
-export function pruneCommand(target: PruneTarget, all: boolean): string {
+export function pruneCommand(target: PruneTarget, all: boolean): ShellCommand {
   switch (target) {
     case 'containers':
-      return 'docker container prune -f';
+      return sh`docker container prune -f`;
     case 'images':
-      return all ? 'docker image prune -f -a' : 'docker image prune -f';
+      return all ? sh`docker image prune -f -a` : sh`docker image prune -f`;
     case 'volumes':
-      return 'docker volume prune -f';
+      return sh`docker volume prune -f`;
     case 'networks':
-      return 'docker network prune -f';
+      return sh`docker network prune -f`;
   }
 }
 
@@ -105,7 +105,7 @@ export function sumDockerSizes(sizes: string[]): string | null {
   return `${Number((total / 1000 ** unit).toPrecision(4))}${unitName}`;
 }
 
-export type NodeExec = (connection: SSHKeyConnection, command: string) => Promise<SSHExecResult>;
+export type NodeExec = (connection: SSHKeyConnection, command: ShellCommand) => Promise<SSHExecResult>;
 
 /**
  * Prune each target on every node, one target at a time. A target succeeds when it did on every
@@ -191,7 +191,7 @@ async function getDiskUsage(url: URL): Promise<Response> {
   if (apiNodes.length === 0) return errorResponse('No server with credentials found', 404);
 
   const outcomes = await settleOnEveryNode(apiNodes, async ({ connection }) => {
-    const result = await sshExec(connection, 'docker system df');
+    const result = await sshExec(connection, sh`docker system df`);
     if (result.exitCode !== 0) throw new Error(result.stderr.trim() || 'Failed to get disk usage');
     return result.stdout.trim();
   });

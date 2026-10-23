@@ -18,7 +18,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs
 import { join } from 'path';
 import { tmpdir } from 'os';
 import type { SSHKeyConnection } from '../types';
-import { raw, sh, sshExec } from '../utils/ssh';
+import { raw, sh, sshExec, type ShellCommand } from '../utils/ssh';
 import { printDebug, printDim, printRaw, printWarning } from '../utils/output';
 import { DeployError, ErrorCode } from '../utils/errors';
 import type { DockflowConfig, HookEntry, HookEntryInput, HookPhase, HooksConfig } from '../utils/config';
@@ -191,22 +191,23 @@ export function remoteHookProgram(opts: {
   env: Record<string, string>;
   timeoutS: number;
   kind: 'script' | 'run';
-}): string {
+}): ShellCommand {
   const runner = opts.kind === 'run' ? 'bash ' : '';
-  return [
-    'umask 077',
-    'tmp=$(mktemp /tmp/dockflow-hook.XXXXXXXX) || exit 125',
-    `trap 'rm -f "$tmp"' EXIT`,
-    'cat > "$tmp"',
-    'chmod 700 "$tmp"',
+  const lines = [
+    sh`umask 077`,
+    sh`tmp=$(mktemp /tmp/dockflow-hook.XXXXXXXX) || exit 125`,
+    sh`trap 'rm -f "$tmp"' EXIT`,
+    sh`cat > "$tmp"`,
+    sh`chmod 700 "$tmp"`,
     sh`cd ${opts.stackDir} 2>/dev/null || cd /tmp`,
     sh`${raw(remoteEnvPrefix(opts.env))}timeout ${opts.timeoutS} ${raw(runner)}"$tmp" < /dev/null 2>&1`,
-  ].join('\n');
+  ];
+  return sh`${raw(lines.join('\n'))}`;
 }
 
 async function execRemote(
   connection: SSHKeyConnection,
-  program: string,
+  program: ShellCommand,
   input: string,
   fatal: boolean,
   label: string,

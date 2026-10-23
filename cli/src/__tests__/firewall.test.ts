@@ -39,11 +39,11 @@ beforeEach(() => {
 
 describe('openPortCommands', () => {
   it('opens each port with ufw, then reloads it', () => {
-    expect(openPortCommands('ufw', PORTS)).toEqual(["sudo -n ufw allow '2377/tcp'", "sudo -n ufw allow '4789/udp'", 'sudo -n ufw reload']);
+    expect<string[]>(openPortCommands('ufw', PORTS)).toEqual(["sudo -n ufw allow '2377/tcp'", "sudo -n ufw allow '4789/udp'", 'sudo -n ufw reload']);
   });
 
   it('adds permanent firewalld ports, then reloads', () => {
-    expect(openPortCommands('firewalld', PORTS)).toEqual([
+    expect<string[]>(openPortCommands('firewalld', PORTS)).toEqual([
       "sudo -n firewall-cmd --permanent --add-port='2377/tcp'",
       "sudo -n firewall-cmd --permanent --add-port='4789/udp'",
       'sudo -n firewall-cmd --reload',
@@ -51,7 +51,7 @@ describe('openPortCommands', () => {
   });
 
   it('inserts an iptables rule only when it is not there yet', () => {
-    expect(openPortCommands('iptables', PORTS)[0]).toBe(
+    expect<string>(openPortCommands('iptables', PORTS)[0]).toBe(
       "sudo -n iptables -C INPUT -p 'tcp' --dport 2377 -j ACCEPT 2>/dev/null || sudo -n iptables -I INPUT -p 'tcp' --dport 2377 -j ACCEPT",
     );
   });

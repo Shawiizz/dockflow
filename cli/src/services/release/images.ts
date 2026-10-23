@@ -4,7 +4,7 @@
  */
 
 import { parseAllDocuments } from 'yaml';
-import { sh } from '../../utils/ssh';
+import { sh, type ShellCommand } from '../../utils/ssh';
 import type { RemoteShell } from '../../utils/remote-shell';
 import { printDebug } from '../../utils/output';
 import { parseImageRef } from '../compose';
@@ -47,7 +47,7 @@ function hasBuildSection(service: Record<string, unknown>): boolean {
 }
 
 /** Prints, one per line, the images among `images` the node does not have. */
-export function missingImagesCommand(images: string[]): string {
+export function missingImagesCommand(images: string[]): ShellCommand {
   return sh`for img in ${images}; do docker image inspect "$img" >/dev/null 2>&1 || echo "$img"; done`;
 }
 
@@ -56,14 +56,8 @@ export function missingImagesCommand(images: string[]): string {
  * which a kept release shares when its build came from the same cache: a running container is
  * never removed, and `docker rmi` of a shared id only drops the tag.
  */
-export function removeImagesCommand(images: string[]): string {
-  return (
-    sh`for img in ${images}; do ` +
-      `ids=$(docker ps -a --filter "ancestor=$img" --filter status=exited --filter status=created --filter status=dead -q 2>/dev/null); ` +
-      `[ -n "$ids" ] && docker rm $ids 2>/dev/null; ` +
-      `timeout 60 docker rmi "$img" 2>/dev/null; ` +
-    `done; true`
-  );
+export function removeImagesCommand(images: string[]): ShellCommand {
+  return sh`for img in ${images}; do ids=$(docker ps -a --filter "ancestor=$img" --filter status=exited --filter status=created --filter status=dead -q 2>/dev/null); [ -n "$ids" ] && docker rm $ids 2>/dev/null; timeout 60 docker rmi "$img" 2>/dev/null; done; true`;
 }
 
 /** The images of removed releases that no running stack or kept release refers to, never `:latest`, without duplicates. */
@@ -153,8 +147,8 @@ export async function sweepStaleTags(
   const swept = await Promise.allSettled(
     nodes.map(async (node) => {
       const [images, containers] = await Promise.all([
-        node.run(`docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null`),
-        node.run(`docker ps --format '{{.Image}}' 2>/dev/null`),
+        node.run(sh`docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null`),
+        node.run(sh`docker ps --format '{{.Image}}' 2>/dev/null`),
       ]);
       if (images.exitCode !== 0 || containers.exitCode !== 0) return 0;
       const stale = computeStaleTags(images.stdout, repositories, [...referenced, ...lines(containers.stdout)]);

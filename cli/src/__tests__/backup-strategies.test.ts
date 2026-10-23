@@ -34,6 +34,7 @@ import {
 import type { ArchiveIntegrity } from '../services/backup-strategies';
 import type { BackupAccessoryConfig } from '../utils/config';
 import { ConfigError, ValidationError } from '../utils/errors';
+import { sh } from '../utils/ssh';
 
 // ---------------------------------------------------------------------------
 // Golden in-container scripts, written out independently of the module
@@ -374,26 +375,26 @@ function freshDir(name: string): string {
 
 describe('buildCapturePipeline', () => {
   it('gzip: the producer status is returned and the output still written', () => {
-    expect(buildCapturePipeline("docker exec 'c1' sh -c 'x'", '/b/s/db/1.sql.gz', true)).toBe(
+    expect<string>(buildCapturePipeline(sh`docker exec 'c1' sh -c 'x'`, '/b/s/db/1.sql.gz', true)).toBe(
       "umask 077 && mkdir -p '/b/s/db' && { docker exec 'c1' sh -c 'x'; echo \"$?\" > '/b/s/db/1.sql.gz.rc'; } | gzip -c > '/b/s/db/1.sql.gz'; z=$?; " +
         "rc=$(cat '/b/s/db/1.sql.gz.rc' 2>/dev/null); rm -f '/b/s/db/1.sql.gz.rc'; [ \"${rc:-255}\" -eq 0 ] || exit \"${rc:-255}\"; exit \"$z\"",
     );
   });
 
   it('none: a plain redirection', () => {
-    expect(buildCapturePipeline("docker exec 'c1' sh -c 'x'", '/b/s/db/1.sql', false)).toBe(
+    expect<string>(buildCapturePipeline(sh`docker exec 'c1' sh -c 'x'`, '/b/s/db/1.sql', false)).toBe(
       "umask 077 && mkdir -p '/b/s/db' && docker exec 'c1' sh -c 'x' > '/b/s/db/1.sql'",
     );
   });
 
   it('paths are shell-quoted', () => {
-    expect(buildCapturePipeline('true', "/b/it's/1.gz", true)).toContain("mkdir -p '/b/it'\\''s'");
+    expect(buildCapturePipeline(sh`true`, "/b/it's/1.gz", true)).toContain("mkdir -p '/b/it'\\''s'");
   });
 
   describe.if(hasPosixShell)('executed', () => {
     it('a producer that fails midway fails the pipeline, and the partial output is on disk for the caller to remove', () => {
       const file = join(freshDir('capture-fail'), 'out', '1.sql.gz');
-      const result = runSh(buildCapturePipeline("sh -c 'printf partial; exit 3'", file, true));
+      const result = runSh(buildCapturePipeline(sh`sh -c 'printf partial; exit 3'`, file, true));
       expect(result.exitCode).toBe(3);
       expect(runSh(`gunzip -c '${file}'`).stdout).toBe('partial');
       expect(readdirSync(join(file, '..'))).toEqual(['1.sql.gz']);
@@ -401,7 +402,7 @@ describe('buildCapturePipeline', () => {
 
     it('a producer that succeeds gives 0, and the rc file is gone', () => {
       const file = join(freshDir('capture-ok'), 'out', '1.sql.gz');
-      expect(runSh(buildCapturePipeline("sh -c 'printf payload'", file, true)).exitCode).toBe(0);
+      expect(runSh(buildCapturePipeline(sh`sh -c 'printf payload'`, file, true)).exitCode).toBe(0);
       expect(runSh(`gunzip -c '${file}'`).stdout).toBe('payload');
       expect(readdirSync(join(file, '..'))).toEqual(['1.sql.gz']);
     });
@@ -412,21 +413,21 @@ describe('buildCapturePipeline', () => {
       mkdirSync(bin);
       writeFileSync(join(bin, 'gzip'), ['#!/bin/sh', 'cat > /dev/null', 'exit 7', ''].join('\n'));
       chmodSync(join(bin, 'gzip'), 0o755);
-      const result = runSh(`PATH='${bin}':$PATH; ${buildCapturePipeline("sh -c 'printf x'", join(dir, 'out', '1.gz'), true)}`);
+      const result = runSh(`PATH='${bin}':$PATH; ${buildCapturePipeline(sh`sh -c 'printf x'`, join(dir, 'out', '1.gz'), true)}`);
       expect(result.exitCode).toBe(7);
     });
 
     it('a producer that dies of a signal is not mistaken for success', () => {
       const file = join(freshDir('capture-kill'), 'out', '1.gz');
-      expect(runSh(buildCapturePipeline("sh -c 'printf x; kill -9 $$'", file, true)).exitCode).toBe(137);
+      expect(runSh(buildCapturePipeline(sh`sh -c 'printf x; kill -9 $$'`, file, true)).exitCode).toBe(137);
     });
 
     it('files are 0600 and new directories 0700; none has no rc file', () => {
       const dir = freshDir('capture-mode');
       const gz = join(dir, 'new', 'sub', '1.gz');
       const plain = join(dir, 'new', 'sub', '2.sql');
-      expect(runSh(buildCapturePipeline("sh -c 'printf x'", gz, true)).exitCode).toBe(0);
-      expect(runSh(buildCapturePipeline("sh -c 'printf plain; exit 0'", plain, false)).exitCode).toBe(0);
+      expect(runSh(buildCapturePipeline(sh`sh -c 'printf x'`, gz, true)).exitCode).toBe(0);
+      expect(runSh(buildCapturePipeline(sh`sh -c 'printf plain; exit 0'`, plain, false)).exitCode).toBe(0);
       expect(statSync(gz).mode & 0o777).toBe(0o600);
       expect(statSync(plain).mode & 0o777).toBe(0o600);
       expect(statSync(join(dir, 'new', 'sub')).mode & 0o777).toBe(0o700);
@@ -435,7 +436,7 @@ describe('buildCapturePipeline', () => {
     });
 
     it('a producer failing with none still fails', () => {
-      expect(runSh(buildCapturePipeline("sh -c 'exit 5'", join(freshDir('capture-none'), '1.sql'), false)).exitCode).toBe(5);
+      expect(runSh(buildCapturePipeline(sh`sh -c 'exit 5'`, join(freshDir('capture-none'), '1.sql'), false)).exitCode).toBe(5);
     });
   });
 });
@@ -685,13 +686,13 @@ describe('buildVerifyScript', () => {
   ];
 
   it('tar, gzip: full listing, gunzip and tar exit statuses, entry count', () => {
-    expect(buildVerifyScript('/b/x', 'gzip', 'tar')).toBe(
+    expect<string>(buildVerifyScript('/b/x', 'gzip', 'tar')).toBe(
       [...head, ...tarChecks('n=$({ { gunzip -c "$f"; echo "$?" > "$t.z"; } | tar tf -; echo "$?" > "$t"; } | wc -l)'), 'echo OK'].join('\n'),
     );
   });
 
   it('tar, none: plus the end-of-archive blocks', () => {
-    expect(buildVerifyScript('/b/x', 'none', 'tar')).toBe(
+    expect<string>(buildVerifyScript('/b/x', 'none', 'tar')).toBe(
       [
         ...head,
         ...tarChecks('n=$({ tar tf - < "$f"; echo "$?" > "$t"; } | wc -l)'),
@@ -702,7 +703,7 @@ describe('buildVerifyScript', () => {
   });
 
   it('gzip: CRC over the whole file and at least one byte of payload', () => {
-    expect(buildVerifyScript('/b/x', 'gzip', 'gzip')).toBe(
+    expect<string>(buildVerifyScript('/b/x', 'gzip', 'gzip')).toBe(
       [
         ...head,
         `gunzip -t "$f" || { echo 'the gzip stream is corrupt or truncated'; exit 1; }`,
@@ -713,13 +714,13 @@ describe('buildVerifyScript', () => {
   });
 
   it('trailer: the last line is the marker', () => {
-    expect(buildVerifyScript('/b/x', 'none', 'trailer')).toBe(
+    expect<string>(buildVerifyScript('/b/x', 'none', 'trailer')).toBe(
       [...head, `[ "$(tail -n 1 "$f")" = '-- DOCKFLOW_DUMP_END' ] || { echo 'the dump has no integrity marker'; exit 1; }`, 'echo OK'].join('\n'),
     );
   });
 
   it('opaque: existence and non-empty only', () => {
-    expect(buildVerifyScript('/b/x', 'none', 'opaque')).toBe([...head, 'echo OK'].join('\n'));
+    expect<string>(buildVerifyScript('/b/x', 'none', 'opaque')).toBe([...head, 'echo OK'].join('\n'));
   });
 
   it('the path is shell-quoted', () => {

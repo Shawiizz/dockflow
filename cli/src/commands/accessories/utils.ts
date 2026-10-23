@@ -18,7 +18,7 @@ export async function validateAccessoriesStack(
 ): Promise<StackValidation> {
   const stackName = getAccessoriesStackName(env)!;
 
-  const stacks = (await runDockerQuery(connection, `docker stack ls --format '{{.Name}}'`, 'docker stack ls') ?? '')
+  const stacks = (await runDockerQuery(connection, sh`docker stack ls --format '{{.Name}}'`, 'docker stack ls') ?? '')
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);

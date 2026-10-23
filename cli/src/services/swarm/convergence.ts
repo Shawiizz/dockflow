@@ -204,10 +204,7 @@ async function serviceUpdateStates(connection: SSHKeyConnection, serviceLines: s
 
   const result = await sshExec(
     connection,
-    sh`for svc in ${serviceNames}; do ` +
-      `STATE=$(docker service inspect "$svc" --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}|{{.UpdateStatus.StartedAt}}{{end}}' 2>/dev/null); ` +
-      `echo "$svc\t$STATE"; ` +
-    `done`,
+    sh`for svc in ${serviceNames}; do STATE=$(docker service inspect "$svc" --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}|{{.UpdateStatus.StartedAt}}{{end}}' 2>/dev/null); echo "$svc\t$STATE"; done`,
   );
 
   const states = new Map<string, UpdateState>();

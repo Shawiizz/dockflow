@@ -7,7 +7,7 @@ import type { ClusterNode, SSHKeyConnection } from '../../types';
 import { ok, err, type Result } from '../../types';
 import { createHash } from 'crypto';
 import { BackupError, ErrorCode } from '../../utils/errors';
-import { raw, sh, sshExec } from '../../utils/ssh';
+import { raw, sh, sshExec, type ShellCommand } from '../../utils/ssh';
 import { printDebug } from '../../utils/output';
 import {
   RESTORE_MOUNT_DIR,
@@ -114,7 +114,7 @@ async function restoreVolumesOn(
   }
 
   const id8 = restoreId(backupDir, backupId);
-  const helper = (plan: RestorePlan, script: string, interactive: boolean): string =>
+  const helper = (plan: RestorePlan, script: string, interactive: boolean): ShellCommand =>
     // `-i ` and the mount point are the code's own
     sh`docker run --rm ${raw(interactive ? '-i ' : '')}-v ${plan.source}:${raw(RESTORE_MOUNT_DIR)} alpine sh -c ${script}`;
 
@@ -154,7 +154,7 @@ async function restoreVolumesOn(
 }
 
 async function dockerVolumeNames(conn: SSHKeyConnection): Promise<Set<string>> {
-  const result = await sshExec(conn, `docker volume ls --format '{{.Name}}'`);
+  const result = await sshExec(conn, sh`docker volume ls --format '{{.Name}}'`);
   return new Set(result.stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean));
 }
 

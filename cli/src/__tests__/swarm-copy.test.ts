@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Duplex } from 'node:stream';
 import type { SSHKeyConnection } from '../types';
+import type { ShellCommand } from '../utils/ssh';
 import { ContainerPathError, planCopyIn, probeContainerPath } from '../services/swarm/copy';
 import { extractTar, packPathToTar } from '../utils/tar';
 import { hasPosixShell } from './helpers/local-shell';
@@ -63,12 +64,12 @@ function fakeChannel(command: string) {
 const realSsh = await import('../utils/ssh');
 const unmockedSsh = { ...realSsh };
 const sshSpies = [
-  spyOn(realSsh, 'sshExec').mockImplementation(((conn: unknown, command: string) => {
+  spyOn(realSsh, 'sshExec').mockImplementation(((conn: unknown, command: ShellCommand) => {
     if (!intercept) return unmockedSsh.sshExec(conn as never, command);
     psCalls += 1;
     return Promise.resolve({ stdout: 'abc123\n', stderr: '', exitCode: 0 });
   }) as never),
-  spyOn(realSsh, 'sshExecChannelUnbuffered').mockImplementation(((conn: unknown, command: string) =>
+  spyOn(realSsh, 'sshExecChannelUnbuffered').mockImplementation(((conn: unknown, command: ShellCommand) =>
     intercept ? Promise.resolve(fakeChannel(command)) : unmockedSsh.sshExecChannelUnbuffered(conn as never, command)) as never),
 ];
 afterAll(() => {

@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { sshExec, sh } from '../../utils/ssh';
+import { sshExec, sh, type ShellCommand } from '../../utils/ssh';
 import type { SSHKeyConnection } from '../../types/connection';
 import { createEnvLock, type Lock } from '../../services/lock';
 import { stopIfInterrupted, withDeployLock } from '../with-lock';
@@ -183,7 +183,7 @@ async function removeStack(connection: SSHKeyConnection, stackName: string): Pro
 }
 
 /** Waits up to a minute for the stack's containers to leave the node: until then they hold their volumes. */
-export function containersGoneCommand(stackName: string): string {
+export function containersGoneCommand(stackName: string): ShellCommand {
   const filter = `label=com.docker.stack.namespace=${stackName}`;
   return sh`for i in $(seq 1 30); do [ -z "$(docker ps -aq --filter ${filter})" ] && exit 0; sleep 2; done; exit 1`;
 }
