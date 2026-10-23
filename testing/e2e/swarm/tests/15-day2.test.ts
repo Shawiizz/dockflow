@@ -120,10 +120,11 @@ describe("day-2 commands", () => {
     }, 300_000);
 
     test("the app reaches its accessory by name over the accessories network", async () => {
-      const result = await run(["exec", TEST_ENV, "web", "-T", "--", "nslookup", "cache"]);
+      // ping resolves through the container's resolver; busybox nslookup tries the host's search domains first
+      const result = await run(["exec", TEST_ENV, "web", "-T", "--", "ping", "-c", "1", "-W", "5", "cache"]);
 
-      expectSuccess("exec nslookup cache", result);
-      expect(result.stdout).toMatch(/Name:\s+cache/);
+      expectSuccess("exec ping cache", result);
+      expect(result.stdout).toMatch(/PING cache \(\d+\.\d+\.\d+\.\d+\)/);
     }, 60_000);
 
     test("status shows the version and the replicas of the stack", async () => {
