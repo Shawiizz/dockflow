@@ -27,6 +27,7 @@ describe('run', () => {
   it('stops a command that exceeds the maxBuffer it was given', () => {
     const chatty = run([bun, '-e', 'process.stdout.write("x".repeat(100000))'], { quiet: true, maxBuffer: 1000 });
     expect(chatty.ok).toBe(false);
+    expect(chatty.stderr).toContain('output larger than 1000 bytes');
   });
 });
 

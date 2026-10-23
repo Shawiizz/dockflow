@@ -82,6 +82,10 @@ export function run(args: readonly string[], opts: RunOptions = {}): RunResult {
   } else if (code === 'ENOENT') {
     exitCode = NOT_FOUND_EXIT;
     stderr = `${args[0]}: command not found`;
+  } else if (code === 'ENOBUFS') {
+    // the output was cut at maxBuffer: whatever the exit status, it is not the command's whole answer
+    exitCode = exitCode === 0 ? 1 : exitCode;
+    stderr = `${stderr}${stderr ? '\n' : ''}${args[0]}: output larger than ${opts.maxBuffer ?? RUN_MAX_BUFFER} bytes`;
   }
   return { ok: exitCode === 0 && !timedOut, exitCode, stdout: result.stdout ?? '', stderr, timedOut };
 }
