@@ -1,7 +1,4 @@
-/**
- * Result type for functional error handling.
- * Enables explicit success/failure states without exceptions.
- */
+/** A success or a failure returned as a value, for code that reports errors without throwing. */
 
 export type Result<T, E = Error> =
   | { success: true; data: T }

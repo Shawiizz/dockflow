@@ -1,20 +1,10 @@
-/**
- * Application-wide constants
- */
-
-// Read version from root package.json (single source of truth)
+// the version is only ever written in the root package.json
 import rootPackageJson from '../../package.json';
 
 export const DOCKFLOW_VERSION = rootPackageJson.version;
 
-/**
- * GitHub repository URLs
- */
 export const DOCKFLOW_RELEASE_URL = 'https://github.com/Shawiizz/dockflow/releases/latest/download';
 
-/**
- * Directory paths
- */
 export const DOCKFLOW_STACKS_DIR = '/var/lib/dockflow/stacks';
 /** The stack a release re-applies on rollback, as the swarm received it. */
 export const RELEASE_STACK_FILE = 'stack.yml';
@@ -28,9 +18,7 @@ export const DOCKFLOW_ACCESSORIES_DIR = '/var/lib/dockflow/accessories';
 export const DOCKFLOW_UPLOAD_BACKUPS_DIR = '/var/lib/dockflow/upload-backups';
 export const NGINX_SITES_ENABLED = '/etc/nginx/sites-enabled';
 
-/**
- * Filter of the internet traffic to published container ports (Swarm hosts), installed by setup
- */
+/** The script that filters internet traffic to published container ports on Swarm hosts, installed by setup */
 export const PUBLIC_PORTS_BIN = '/usr/local/sbin/dockflow-public-ports';
 /** The public ports each project recorded, one file per project (root-owned) */
 export const PUBLIC_PORTS_STATE_DIR = '/etc/dockflow/public-ports';
@@ -39,14 +27,9 @@ export const PUBLIC_PORTS_UNIT_PATH = `/etc/systemd/system/${PUBLIC_PORTS_UNIT}`
 /** Left by `setup --no-port-filter`, so deploys know the host is unfiltered on purpose */
 export const PUBLIC_PORTS_OFF_MARKER = '/etc/dockflow/public-ports.off';
 
-/**
- * Default values
- */
 export const DEFAULT_SSH_PORT = 22;
 
-/**
- * File paths (relative to project root)
- */
+// the paths below are relative to the project root
 export const DOCKFLOW_LOCAL_DIR = '.dockflow';
 export const DOCKFLOW_HOOKS_DIR = '.dockflow/hooks';
 /** Where a project keeps its own plugins, one directory each. */
@@ -55,9 +38,6 @@ export const DOCKFLOW_PLUGINS_DIR = '.dockflow/plugins';
 export const DOCKFLOW_PLUGIN_INSTANCES_DIR = '.dockflow/plugins/.instances';
 export const ENV_FILE_PATH = '.env.dockflow';
 
-/**
- * CLI magic numbers
- */
 /** Minutes after which a deployment lock is considered stale */
 export const LOCK_STALE_THRESHOLD_MINUTES = 30;
 /** Max polling attempts when waiting for stack removal */
@@ -70,9 +50,6 @@ export const CONVERGENCE_TIMEOUT_S = 300;
 /** Default polling interval (s) for convergence checks */
 export const CONVERGENCE_INTERVAL_S = 5;
 
-/**
- * SSH connection defaults
- */
 /** Timeout (ms) for SSH handshake */
 export const SSH_READY_TIMEOUT_MS = 10000;
 /** Interval (ms) between SSH keepalive packets */
@@ -80,17 +57,11 @@ export const SSH_KEEPALIVE_INTERVAL_MS = 15000;
 /** Max missed keepalives before declaring connection dead */
 export const SSH_KEEPALIVE_COUNT_MAX = 3;
 
-/**
- * SSH connection retry settings
- */
 /** Number of connection attempts before giving up */
 export const SSH_CONNECT_RETRIES = 3;
 /** Base delay (ms) before first retry — doubles on each attempt (exponential backoff) */
 export const SSH_CONNECT_RETRY_BASE_DELAY_MS = 1000;
 
-/**
- * Traefik defaults
- */
 export const TRAEFIK_STACK_NAME = 'traefik';
 export const TRAEFIK_NETWORK_NAME = 'traefik-public';
 export const TRAEFIK_CERTS_VOLUME = 'traefik-certs';

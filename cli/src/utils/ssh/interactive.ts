@@ -7,9 +7,7 @@ import type { ConnectionInfo } from '../../types';
 import { channelResult } from './exit-status';
 import { connectDedicatedClient } from './connect';
 
-/**
- * Open an interactive SSH session (NOT pooled — dedicated connection).
- */
+/** A login shell with the local terminal in raw mode; resolves with exit code 0 when it closes. */
 export async function sshShell(conn: ConnectionInfo): Promise<number> {
   const client = await connectDedicatedClient(conn);
 
@@ -58,9 +56,7 @@ export async function sshShell(conn: ConnectionInfo): Promise<number> {
   });
 }
 
-/**
- * Execute an interactive command via SSH (NOT pooled — dedicated connection).
- */
+/** A command on a PTY with the local terminal in raw mode; resolves with the command's exit code. */
 export async function executeInteractiveSSH(
   conn: ConnectionInfo,
   command: string
@@ -113,12 +109,8 @@ export async function executeInteractiveSSH(
 }
 
 /**
- * Execute a command via SSH with a PTY but without raw stdin mode.
- * The PTY ensures the remote process sees a terminal (colours, prompts),
- * while cooked-mode stdin lets the local terminal handle line editing,
- * Ctrl+C, etc. — which prevents issues with sub-processes like Ansible.
- *
- * NOT pooled — dedicated connection.
+ * A command on a PTY, so the remote process sees a terminal (colours, prompts), while the local
+ * terminal stays in cooked mode and keeps handling line editing and Ctrl+C.
  */
 export async function executePtySSH(
   conn: ConnectionInfo,
@@ -140,7 +132,6 @@ export async function executePtySSH(
         return;
       }
 
-      // Pipe stdin in normal (cooked) mode — no setRawMode
       process.stdin.resume();
       process.stdin.pipe(stream);
       stream.pipe(process.stdout);

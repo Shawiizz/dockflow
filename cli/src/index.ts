@@ -1,9 +1,6 @@
 #!/usr/bin/env bun
 
-/**
- * Dockflow CLI - Main entry point
- * A deployment framework for Docker applications, leveraging Swarm for orchestration
- */
+/** Entry point: the Commander program, with a help that groups the commands. */
 
 import { Command } from 'commander';
 import { version } from '../package.json';
@@ -27,10 +24,8 @@ program
 
 registerAllCommands(program);
 
-// Ordered group display sequence — groups are declared in each command file via .helpGroup()
+// the order of the help groups; each command file names its own with .helpGroup()
 const GROUP_ORDER = ['Setup', 'Deploy', 'Inspect', 'Operate', 'Resources', 'Other'];
-
-// ─── Dynamic help ──────────────────────────────────────────────────────────────
 
 function showHelp(): void {
   printSuccess('========================================================');
@@ -40,11 +35,10 @@ function showHelp(): void {
   printRaw(colors.dim('  Run `dockflow <command> --help` for command-specific options.'));
   printBlank();
 
-  // Group commands from the live Commander tree
   const grouped = new Map<string, Command[]>();
   for (const cmd of program.commands) {
     if (cmd.name() === 'help') continue;
-    // _helpGroupHeading is set by helpGroup() — fall back to 'Other'
+    // Commander keeps the .helpGroup() heading in this private field
     const group = (cmd as unknown as { _helpGroupHeading?: string })._helpGroupHeading ?? 'Other';
     if (!grouped.has(group)) grouped.set(group, []);
     grouped.get(group)!.push(cmd);
@@ -66,8 +60,6 @@ function showHelp(): void {
     printBlank();
   }
 }
-
-// ─── Help & default action ─────────────────────────────────────────────────────
 
 program
   .command('help [command]')

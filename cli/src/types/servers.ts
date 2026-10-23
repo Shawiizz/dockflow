@@ -1,58 +1,34 @@
 /**
- * Server configuration type definitions for servers.yml
- * 
- * Architecture: Docker Swarm cluster with manager(s) and workers
- * - One or more managers per environment (multi-manager for HA)
- * - Workers join the swarm and receive workloads automatically
- * - Deploy command targets the active leader manager
- * - If multiple managers: automatic failover to next available
+ * The shapes of servers.yml and of its resolved form. An environment has one or more managers
+ * (several for HA) and workers; deploys go to the active manager, with failover to the next one.
  */
 
-/**
- * Environment variables dictionary
- */
 export type EnvVars = Record<string, string>;
 
-/**
- * Server role in the Swarm cluster
- * - manager: Receives deployments, orchestrates the cluster
- * - worker: Joins the swarm, runs containers distributed by manager
- */
+/** A manager receives deployments and orchestrates the Swarm; a worker joins it and runs containers. */
 export type ServerRole = 'manager' | 'worker';
 
-/**
- * Server definition in servers.yml
- */
 export interface ServerConfig {
-  /** Role in Swarm cluster: manager or worker (default: manager) */
+  /** default: manager */
   role?: ServerRole;
-  /** Server hostname or IP (can be overridden by CI secret) */
+  /** can be overridden by a CI secret */
   host?: string;
   /** Private IP of the server: Swarm traffic between nodes goes through it, SSH still uses `host` */
   private_host?: string;
   /** Environment tags this server belongs to (e.g., production, staging) */
   tags: string[];
-  /** SSH user (overrides defaults.user) */
+  /** overrides defaults.user */
   user?: string;
-  /** SSH port (overrides defaults.port) */
+  /** overrides defaults.port */
   port?: number;
-  /** Server-specific environment variables */
   env?: EnvVars;
 }
 
-/**
- * Default SSH configuration
- */
 export interface ServerDefaults {
-  /** Default SSH user */
   user: string;
-  /** Default SSH port */
   port: number;
 }
 
-/**
- * Environment variables grouped by tag
- */
 export interface EnvByTag {
   /** Variables applied to all environments */
   all?: EnvVars;
@@ -60,31 +36,20 @@ export interface EnvByTag {
   [tag: string]: EnvVars | undefined;
 }
 
-/**
- * Complete servers.yml configuration
- */
 export interface ServersConfig {
-  /** Server definitions keyed by server name */
+  /** keyed by server name */
   servers: Record<string, ServerConfig>;
-  /** Default SSH settings */
   defaults?: ServerDefaults;
-  /** Environment variables by tag */
   env?: EnvByTag;
 }
 
-/**
- * Resolved server with all variables merged
- */
+/** A server with its connection settled and its variables merged. */
 export interface ResolvedServer {
-  /** Server name (key in servers.yml) */
+  /** key in servers.yml */
   name: string;
-  /** Role in Swarm cluster */
   role: ServerRole;
-  /** Server hostname or IP */
   host: string;
-  /** SSH port */
   port: number;
-  /** SSH user */
   user: string;
   /** Private IP Swarm advertises and joins through, when servers.yml sets one */
   privateHost?: string;
@@ -92,82 +57,56 @@ export interface ResolvedServer {
   hostKey?: string;
   /** Merged environment variables (all → tag → server → CI) */
   env: EnvVars;
-  /** Tags this server belongs to */
   tags: string[];
 }
 
-/**
- * Result of resolving servers for a deployment
- */
 export interface ResolvedDeployment {
-  /** The active manager server (deployment target) - leader or first reachable */
+  /** the deployment target: the first manager listed, until findActiveManager picks another */
   manager: ResolvedServer;
-  /** All manager servers (for failover info) */
+  /** all managers, for failover */
   managers: ResolvedServer[];
-  /** Worker servers (for image distribution if no registry) */
+  /** workers, which get the image when there is no registry */
   workers: ResolvedServer[];
-  /** The environment/tag being deployed */
   environment: string;
 }
 
-/**
- * Default values for server configuration
- */
 export const SERVER_DEFAULTS: ServerDefaults = {
   user: 'dockflow',
   port: 22,
 };
 
-/**
- * Safe server info for Jinja2 templates (no sensitive data)
- * This is what's available in {{ servers.servername }}
- */
+/** A server as templates see it in `{{ servers.<name> }}`: no private host, host key or key. */
 export interface SafeServer {
-  /** Server name (key in servers.yml) */
+  /** key in servers.yml */
   name: string;
-  /** Role in Swarm cluster */
   role: ServerRole;
-  /** Server hostname or IP (hydrated from CI secrets) */
+  /** hydrated from CI secrets */
   host: string;
-  /** SSH port */
   port: number;
-  /** SSH user */
   user: string;
-  /** Tags this server belongs to */
   tags: string[];
-  /** Merged environment variables (no secrets like passwords) */
+  /** merged variables, with lowercased keys */
   env: EnvVars;
 }
 
-/**
- * Current server context for Jinja2 templates
- * This is what's available in {{ current }}
- */
+/** The server being deployed to, as `{{ current }}`. */
 export interface CurrentServer extends SafeServer {
-  /** Indicates this is the current deployment target */
   is_current: true;
 }
 
-/**
- * Complete template context for Jinja2 rendering
- * Combines current server, all servers, and cluster metadata
- */
+/** What `{{ current }}`, `{{ servers }}` and `{{ cluster }}` hold in a template. */
 export interface TemplateContext {
-  /** Current server being deployed to */
   current: CurrentServer;
-  /** All servers in this environment (keyed by name) - hydrated with CI secrets */
+  /** all servers of the environment, by name */
   servers: Record<string, SafeServer>;
-  /** Cluster metadata */
   cluster: {
-    /** Total number of nodes in the environment */
+    /** total number of nodes */
     size: number;
-    /** Number of manager nodes */
     manager_count: number;
-    /** Number of worker nodes */
     worker_count: number;
-    /** List of manager hostnames/IPs */
+    /** hostnames or IPs */
     managers: string[];
-    /** List of worker hostnames/IPs */
+    /** hostnames or IPs */
     workers: string[];
   };
 }

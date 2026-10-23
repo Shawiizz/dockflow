@@ -1,24 +1,17 @@
-/**
- * SSH Key utilities
- *
- * Handles private key normalization and validation.
- */
+/** Normalizes, checks and reads the public half of SSH private keys. */
 
 import { existsSync, readFileSync } from 'fs';
 import { utils } from 'ssh2';
 import { CLIError, ErrorCode } from './errors';
 
-/**
- * Normalize SSH private key format.
- * Handles escaped newlines and different line ending formats.
- */
+/** Turns a key as CI secrets and env files hold it (literal `\n`, CRLF) into LF lines ending in a newline. */
 export function normalizePrivateKey(privateKey: string): string {
   let normalized = privateKey
-    .replace(/\\n/g, '\n')       // Handle escaped newlines
-    .replace(/\r\n/g, '\n')      // Normalize Windows line endings
-    .replace(/\r/g, '\n');       // Handle old Mac line endings
+    .replace(/\\n/g, '\n')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
 
-  // Ensure the key ends with a newline (required by SSH)
+  // SSH rejects a key without the final newline
   if (!normalized.endsWith('\n')) {
     normalized += '\n';
   }
@@ -26,9 +19,7 @@ export function normalizePrivateKey(privateKey: string): string {
   return normalized;
 }
 
-/**
- * Validate SSH private key format
- */
+/** A shape check only (PEM header and footer); the key itself is not parsed. */
 export function isValidPrivateKey(key: string): boolean {
   const normalized = normalizePrivateKey(key);
   return normalized.includes('-----BEGIN') && normalized.includes('PRIVATE KEY-----');

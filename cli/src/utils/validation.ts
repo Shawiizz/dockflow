@@ -1,9 +1,4 @@
-/**
- * Environment Validation Helpers
- * 
- * Provides reusable validation for deployment environment configuration,
- * returning typed errors instead of exiting the process.
- */
+/** Checks that an environment can be deployed to and picks the server a command runs on. */
 
 import { loadConfig, getStackName, hasServersConfig, getLayout, type DockflowConfig } from './config';
 import {
@@ -24,9 +19,6 @@ import {
 } from './errors';
 import type { SSHKeyConnection } from '../types';
 
-/**
- * Validation result containing all necessary deployment context
- */
 export interface EnvironmentContext {
   config: DockflowConfig;
   stackName: string;
@@ -35,9 +27,6 @@ export interface EnvironmentContext {
   serverName: string;
 }
 
-/**
- * Internal validation error types (used by validateEnvironment)
- */
 enum ValidationErrorType {
   CONFIG_NOT_FOUND = 'CONFIG_NOT_FOUND',
   PROJECT_NAME_MISSING = 'PROJECT_NAME_MISSING',
@@ -46,9 +35,7 @@ enum ValidationErrorType {
   CONNECTION_NOT_FOUND = 'CONNECTION_NOT_FOUND',
 }
 
-/**
- * Internal validation error structure
- */
+/** A failed check, returned as a value; toCliError turns it into a CLIError. */
 interface ValidationError {
   type: ValidationErrorType;
   message: string;
@@ -56,9 +43,8 @@ interface ValidationError {
 }
 
 /**
- * Resolve an environment name from a prefix.
- * Returns the exact env if found, or the unique prefix match.
- * Throws CLIError on ambiguous or no match.
+ * The exact environment, or the one it is the unique prefix of. Throws a CLIError when the prefix
+ * is ambiguous; with no match the name comes back as is.
  */
 export function resolveEnvironmentPrefix(env: string): string {
   const availableEnvs = getAvailableEnvironments();
@@ -75,7 +61,7 @@ export function resolveEnvironmentPrefix(env: string): string {
     );
   }
 
-  // No match — return as-is and let downstream validation handle the error
+  // let the later checks report the unknown name
   return env;
 }
 
@@ -86,7 +72,7 @@ export interface ServerChoice {
 
 /**
  * The server a command talks to: the named one, which must be a manager unless `anyServer`, or the
- * first manager this machine has credentials for (a worker listed first used to be picked).
+ * first manager this machine has credentials for, else the first manager.
  */
 export function chooseServer(
   env: string,
@@ -118,14 +104,12 @@ export function chooseServer(
 }
 
 /**
- * Validate environment and return context or error
- * Does NOT exit process - caller decides what to do on failure
+ * Loads the secrets and runs the checks in order, returning the first one that fails instead of
+ * exiting. A config file that exists but is invalid still throws a ConfigError (strict load).
  */
 export function validateEnvironment(env: string, serverName?: string, choice: ServerChoice = {}): EnvironmentContext | ValidationError {
-  // Load secrets from .env.dockflow or CI environment
   loadSecrets();
 
-  // Check config exists
   const layout = getLayout();
   const flat = layout.type === 'flat';
 
@@ -138,7 +122,6 @@ export function validateEnvironment(env: string, serverName?: string, choice: Se
     };
   }
 
-  // Check servers config exists
   if (!hasServersConfig()) {
     return {
       type: ValidationErrorType.SERVERS_NOT_FOUND,
@@ -147,10 +130,8 @@ export function validateEnvironment(env: string, serverName?: string, choice: Se
     };
   }
 
-  // Resolve prefix matching (pr → production)
   const resolvedEnv = resolveEnvironmentPrefix(env);
 
-  // Check project name
   const stackName = getStackName(resolvedEnv);
   if (!stackName) {
     return {
@@ -160,7 +141,6 @@ export function validateEnvironment(env: string, serverName?: string, choice: Se
     };
   }
 
-  // Get servers for this environment
   const servers = resolveServersForEnvironment(resolvedEnv);
   if (servers.length === 0) {
     const envs = getAvailableEnvironments();
@@ -177,7 +157,6 @@ export function validateEnvironment(env: string, serverName?: string, choice: Se
   if ('type' in chosen) return chosen;
   const targetServerName = chosen.name;
 
-  // Get full connection info (with private key)
   const connection = getFullConnectionInfo(resolvedEnv, targetServerName);
   if (!connection) {
     return {
@@ -190,9 +169,6 @@ export function validateEnvironment(env: string, serverName?: string, choice: Se
   return { config, stackName, connection, env: resolvedEnv, serverName: targetServerName };
 }
 
-/**
- * Type guard for ValidationError
- */
 export function isValidationError(result: EnvironmentContext | ValidationError): result is ValidationError {
   return 'type' in result && 'message' in result;
 }
@@ -209,10 +185,7 @@ function toCliError(error: ValidationError): CLIError {
   return new CLIError(error.message, codeMap[error.type], error.suggestion);
 }
 
-/**
- * Validate environment and throw CLIError on failure
- * Preferred for use with withErrorHandler
- */
+/** validateEnvironment that throws the failed check as a CLIError, for commands under withErrorHandler. */
 export function validateEnv(env: string, serverName?: string, choice: ServerChoice = {}): EnvironmentContext {
   const result = validateEnvironment(env, serverName, choice);
 
@@ -248,18 +221,12 @@ export async function resolveEnv(env: string, serverName?: string, choice: Serve
   return connection ? { ...ctx, connection, serverName: active.manager.name } : ctx;
 }
 
-/**
- * Wrapper that resolves an environment prefix before calling the handler.
- * Composes with withErrorHandler:
- *   .action(withErrorHandler(withResolvedEnv(async (env, service, options) => { ... })))
- *
- * Assumes the first argument is always the env string (Commander positional arg).
- */
+/** Resolves the env prefix before the handler runs; the env must be the first argument (a Commander positional). */
 export function withResolvedEnv<A extends unknown[]>(
   fn: (env: string, ...args: A) => Promise<void>,
 ): (env: string, ...args: A) => Promise<void> {
   return (env: string, ...args: A) => fn(resolveEnvironmentPrefix(env), ...args);
 }
 
-// Re-export for CLI commands that need all node connections after resolveEnv()
+// for commands that need every node's connection after resolveEnv()
 export { getAllNodeConnections, getAllNodes };

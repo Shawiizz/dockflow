@@ -1,7 +1,4 @@
-/**
- * Tar archive utilities.
- * Uses tar-stream + zlib for pure-JS archive creation — no binary dependency.
- */
+/** Builds and extracts tar archives in JavaScript (tar-stream and zlib), without a tar binary. */
 
 import tar from 'tar-stream';
 import { createGzip } from 'zlib';
@@ -15,15 +12,11 @@ import { printWarning } from './output';
 export interface TarEntry {
   /** Relative path within the archive (forward slashes) */
   path: string;
-  /** File content */
   content: Buffer | string;
   /** File mode (default 0o644) */
   mode?: number;
 }
 
-/**
- * Create a tar archive buffer from a list of entries.
- */
 export function createTar(entries: TarEntry[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const pack = tar.pack();
@@ -62,8 +55,8 @@ export function buildExcludeFilter(patterns: string[]): (rel: string) => boolean
 export type PackProgressCallback = (bytesProcessed: number) => void;
 
 /**
- * Stream a tar archive of a directory into a Node.js Readable.
- * Exclude patterns can be globs (containing *, ?, [) or plain path prefixes.
+ * A stream of a directory as tar.gz (plain tar when `compress` is false). Files are read one at a
+ * time and all stored as 0o644; `excludePatterns` are the buildExcludeFilter patterns.
  */
 export function packDirToTarGz(
   srcDir: string,

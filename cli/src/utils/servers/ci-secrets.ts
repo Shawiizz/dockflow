@@ -1,10 +1,6 @@
 /**
- * CI Secrets resolution utilities
- * 
- * Handles resolving secrets from CI environment variables.
- * Supports both connection strings and individual secret overrides.
- * 
- * Pattern: ENV_SERVERNAME_VARNAME (e.g., PRODUCTION_MAIN_HOST)
+ * Reads server credentials and overrides from CI environment variables, named
+ * `<ENV>_<SERVER>_<VAR>` (such as PRODUCTION_MAIN_HOST) or `<ENV>_<VAR>` for every server.
  */
 
 import { parseConnectionString } from '../connection-parser';
@@ -12,25 +8,19 @@ import { isHostKeyFingerprint } from '../host-key';
 import { ConfigError } from '../errors';
 import type { ServersConfig, EnvVars } from '../../types';
 
-/**
- * Convert server name to CI secret format
- * e.g., "main_server" -> "MAIN_SERVER"
- */
+/** `main_server` -> `MAIN_SERVER`, as it appears in a CI variable name. */
 export function serverNameToEnvKey(name: string): string {
   return name.toUpperCase();
 }
 
 /**
- * Get CI secret value from environment
- * Checks for ENV_SERVERNAME_VARNAME pattern
- * 
- * Priority: ENV_SERVERNAME_VAR > ENV_VAR
+ * `<ENV>_<SERVER>_<VAR>` when it is set and not empty, else `<ENV>_<VAR>`. A null server name
+ * reads only the shared one.
  */
 export function getCISecret(env: string, serverName: string | null, varName: string): string | undefined {
   const envUpper = env.toUpperCase();
   const serverKey = serverName ? serverNameToEnvKey(serverName) : null;
-  
-  // Priority: ENV_SERVERNAME_VAR > ENV_VAR
+
   if (serverKey) {
     const keyName = `${envUpper}_${serverKey}_${varName}`;
     const serverSpecific = process.env[keyName];
@@ -42,15 +32,8 @@ export function getCISecret(env: string, serverName: string | null, varName: str
   return process.env[`${envUpper}_${varName}`];
 }
 
-/**
- * Get SSH private key for a server from CI secrets
- * 
- * Checks:
- * 1. CONNECTION string (contains privateKey)
- * 2. SSH_PRIVATE_KEY individual secret
- */
+/** The key of the CONNECTION string when it parses, else the SSH_PRIVATE_KEY secret. */
 export function getServerPrivateKey(env: string, serverName: string): string | undefined {
-  // Check for connection string first
   const connectionString = getCISecret(env, serverName, 'CONNECTION');
   if (connectionString) {
     const result = parseConnectionString(connectionString);
@@ -58,16 +41,12 @@ export function getServerPrivateKey(env: string, serverName: string): string | u
       return result.data.privateKey;
     }
   }
-  
-  // Fall back to individual SSH key secret
+
   return getCISecret(env, serverName, 'SSH_PRIVATE_KEY');
 }
 
-/**
- * Get password for a server from CI secrets (for sudo)
- */
+/** The sudo password of the CONNECTION string when it parses, else the PASSWORD secret. */
 export function getServerPassword(env: string, serverName: string): string | undefined {
-  // Check for connection string first
   const connectionString = getCISecret(env, serverName, 'CONNECTION');
   if (connectionString) {
     const result = parseConnectionString(connectionString);
@@ -75,18 +54,13 @@ export function getServerPassword(env: string, serverName: string): string | und
       return result.data.password;
     }
   }
-  
-  // Fall back to individual password secret
+
   return getCISecret(env, serverName, 'PASSWORD');
 }
 
 /**
- * Get the pinned SSH host key fingerprint for a server from CI secrets.
- * A server without one is not pinned.
- *
- * Checks:
- * 1. CONNECTION string (hostKey)
- * 2. HOST_KEY individual secret
+ * The pinned host key fingerprint: the CONNECTION string's hostKey, else the HOST_KEY secret.
+ * Undefined means the server is not pinned; a HOST_KEY that is no fingerprint throws.
  */
 export function getServerHostKey(env: string, serverName: string): string | undefined {
   const connectionString = getCISecret(env, serverName, 'CONNECTION');
@@ -109,13 +83,10 @@ export function getServerHostKey(env: string, serverName: string): string | unde
 }
 
 /**
- * Merge environment variables with proper priority
- * Priority: all -> tag -> server.env -> CI (ENV_VAR) -> CI (ENV_SERVER_VAR)
- * 
- * @param config - The servers configuration
- * @param tag - The environment tag (e.g., "production")
- * @param serverName - The server name
- * @param serverEnv - Server-specific env vars from servers.yml
+ * Layers a server's variables: `env.all`, `env.<tag>`, the server's own `env`, then the CI
+ * variables `<ENV>_<VAR>` and `<ENV>_<SERVER>_<VAR>`, each layer overriding the one before. Two
+ * CI variables naming the same variable are applied in the order process.env lists them.
+ * Connection settings (host, user, key, password...) are never taken as variables.
  */
 export function mergeEnvVars(
   config: ServersConfig,
@@ -124,44 +95,36 @@ export function mergeEnvVars(
   serverEnv: EnvVars | undefined
 ): EnvVars {
   const result: EnvVars = {};
-  
-  // 1. Start with env.all
+
   if (config.env?.all) {
     Object.assign(result, config.env.all);
   }
-  
-  // 2. Override with env.[tag]
+
   if (config.env?.[tag]) {
     Object.assign(result, config.env[tag]);
   }
-  
-  // 3. Override with server-specific env
+
   if (serverEnv) {
     Object.assign(result, serverEnv);
   }
-  
-  // 4. Override with CI secrets (ENV_VARNAME and ENV_SERVERNAME_VARNAME)
+
   const envUpper = tag.toUpperCase();
   const serverKey = serverNameToEnvKey(serverName);
-  
-  // Check all environment variables for CI overrides
+
   for (const [key, value] of Object.entries(process.env)) {
-    // Match ENV_VARNAME pattern (but not ENV_SERVERNAME_VARNAME or system vars)
     const globalMatch = key.match(new RegExp(`^${envUpper}_([A-Z][A-Z0-9_]*)$`));
     if (globalMatch) {
       const varName = globalMatch[1];
-      // Skip connection-related vars and server-specific vars
+      // skip this server's own `<ENV>_<SERVER>_*` variables and the connection settings
       if (!varName.startsWith(serverKey + '_') && 
           !['CONNECTION', 'HOST', 'USER', 'PORT', 'SSH_PRIVATE_KEY', 'PASSWORD', 'HOST_KEY'].includes(varName)) {
         result[varName] = value!;
       }
     }
-    
-    // Match ENV_SERVERNAME_VARNAME pattern
+
     const serverMatch = key.match(new RegExp(`^${envUpper}_${serverKey}_([A-Z][A-Z0-9_]*)$`));
     if (serverMatch) {
       const varName = serverMatch[1];
-      // Skip connection-related vars
       if (!['CONNECTION', 'HOST', 'USER', 'PORT', 'SSH_PRIVATE_KEY', 'PASSWORD', 'HOST_KEY'].includes(varName)) {
         result[varName] = value!;
       }

@@ -1,22 +1,13 @@
 /**
- * Output formatting utilities
- * Unified output module for CLI feedback and debug logging
- *
- * Convention (Unix standard, same as gh):
- *   stdout → data only (printJSON, printRaw)
- *   stderr → everything decorative (status, warnings, spinners, etc.)
- *
- * This separation alone keeps stdout clean for --json piping.
- * No need for jsonMode guards — tools only read stdout.
+ * Terminal output. stdout carries data only (printJSON, printRaw); everything decorative goes to
+ * stderr (status, warnings, spinners), which keeps stdout clean for piping --json without guards.
  */
 
 import chalk from 'chalk';
 import * as clack from '@clack/prompts';
 
-// Shared clack option to route decorative output to stderr
 const STDERR_OPTS = { output: process.stderr } as const;
 
-// === Verbose mode ===
 let verboseMode = false;
 
 export function setVerbose(enabled: boolean): void {
@@ -30,7 +21,6 @@ export function isVerbose(): boolean {
   return verboseMode || process.env.VERBOSE === 'true' || process.env.DEBUG === 'true';
 }
 
-// === Colors ===
 export const colors = {
   success: chalk.green,
   error: chalk.red,
@@ -41,12 +31,10 @@ export const colors = {
   primary: chalk.blue,
 };
 
-// Helper: write a line to stderr
 function stderrLine(text: string): void {
   process.stderr.write(text + '\n');
 }
 
-// === User feedback (stderr) ===
 export function printSuccess(message: string): void {
   clack.log.success(message, STDERR_OPTS);
 }
@@ -63,7 +51,7 @@ export function printInfo(message: string): void {
   clack.log.info(message, STDERR_OPTS);
 }
 
-// === Debug output (verbose mode only, stderr) ===
+/** Verbose mode only. */
 export function printDebug(message: string, context?: Record<string, unknown>): void {
   if (!isVerbose()) return;
 
@@ -77,12 +65,9 @@ export function printDebug(message: string, context?: Record<string, unknown>): 
   stderrLine(output);
 }
 
-// === Sections & headers (stderr) ===
 export function printSection(title: string): void {
   clack.log.step(title, STDERR_OPTS);
 }
-
-// === Formatters ===
 
 export function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -91,8 +76,6 @@ export function formatDuration(seconds: number): string {
   const mins = Math.floor((seconds % 3600) / 60);
   return `${hours}h ${mins}m`;
 }
-
-// === Table & formatting helpers (stderr) ===
 
 export function printSeparator(length: number = 50): void {
   stderrLine(colors.dim('─'.repeat(length)));
@@ -110,8 +93,6 @@ export function printBlank(): void {
   stderrLine('');
 }
 
-// === Data output (stdout — never suppressed) ===
-
 export function printJSON(data: unknown): void {
   console.log(JSON.stringify(data, null, 2));
 }
@@ -119,8 +100,6 @@ export function printJSON(data: unknown): void {
 export function printRaw(text: string): void {
   console.log(text);
 }
-
-// === Value formatters ===
 
 export function formatBytes(bytes: number): string {
   if (bytes <= 0) return '0 B';
@@ -141,8 +120,6 @@ export function formatRelativeTime(timestamp: string): string {
   if (days < 7) return `${days}d ago`;
   return new Date(timestamp).toLocaleDateString();
 }
-
-// === @clack visual helpers (stderr) ===
 
 export function printIntro(title: string): void {
   clack.intro(colors.bold(title), STDERR_OPTS);
@@ -174,10 +151,7 @@ export function createSpinner() {
   };
 }
 
-/**
- * Create a spinner with a built-in elapsed time indicator (e.g. "[5s]", "[1m 30s]").
- * Uses @clack/prompts native `indicator: 'timer'` mode.
- */
+/** A spinner that shows the elapsed time, such as `[5s]` or `[1m 30s]`. */
 export function createTimedSpinner() {
   const s = clack.spinner({ output: process.stderr, indicator: 'timer' });
   return {

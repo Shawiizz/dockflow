@@ -1,10 +1,3 @@
-/**
- * SSH connection type definitions
- */
-
-/**
- * Base SSH connection information
- */
 export interface SSHConnectionInfo {
   host: string;
   port: number;
@@ -13,34 +6,23 @@ export interface SSHConnectionInfo {
   hostKey?: string;
 }
 
-/**
- * SSH connection with key-based authentication
- */
 export interface SSHKeyConnection extends SSHConnectionInfo {
   privateKey: string;
-  password?: string; // Optional password for sudo
+  /** for sudo on the server */
+  password?: string;
 }
 
-/**
- * SSH connection with password authentication
- */
 export interface SSHPasswordConnection extends SSHConnectionInfo {
   password: string;
 }
 
-/**
- * Union type for all connection types
- */
 export type ConnectionInfo = SSHKeyConnection | SSHPasswordConnection;
 
-/**
- * Type guard for key-based connections
- */
 export function isKeyConnection(conn: ConnectionInfo): conn is SSHKeyConnection {
   return 'privateKey' in conn;
 }
 
-/** A named cluster node: SSH connection + display name. */
+/** A cluster node: its SSH connection and the name shown for it. */
 export interface ClusterNode {
   connection: SSHKeyConnection;
   name: string;
@@ -54,13 +36,10 @@ export interface ClusterConnection {
   otherManagers: ClusterNode[];
 }
 
-/**
- * SSH command execution result
- */
 export interface SSHExecResult {
   stdout: string;
   stderr: string;
   exitCode: number;
-  /** Raw binary stdout — only populated when collectBinary is true */
+  /** raw stdout, only when `collectBinary` was asked for */
   binaryOutput?: Buffer;
 }

@@ -1,16 +1,13 @@
-/**
- * .dockerignore parser.
- * Uses the `ignore` library (same syntax as .gitignore).
- */
+/** Builds the .dockerignore filter (gitignore syntax, through the `ignore` library). */
 
 import ignore from 'ignore';
 
-// Always excluded from build context regardless of .dockerignore content.
+// kept out of the build context whatever the .dockerignore says
 const ALWAYS_EXCLUDED = ['.env.dockflow', '**/.env.dockflow'];
 
 /**
- * Parse .dockerignore content and return a filter function.
- * @returns `shouldInclude(relativePath)` — true if the file should be in the context
+ * Returns `shouldInclude(relativePath)`, true when the file belongs in the build context.
+ * Backslashes in the path are read as separators.
  */
 export function parseDockerignore(content: string): (relativePath: string) => boolean {
   const ig = ignore().add(content).add(ALWAYS_EXCLUDED);

@@ -1,24 +1,12 @@
-/**
- * Server utilities - barrel export
- * 
- * This module provides all server-related functionality:
- * - CI secrets resolution
- * - Server resolution from servers.yml
- * - Multi-manager failover
- * - Template context building for Jinja2
- */
-
-// CI secrets resolution
-export { 
+export {
   serverNameToEnvKey,
   getCISecret,
-  getServerPrivateKey, 
+  getServerPrivateKey,
   getServerPassword,
   getServerHostKey,
   mergeEnvVars,
 } from './ci-secrets';
 
-// Server resolution
 export {
   resolveServersForEnvironment,
   resolveServerByName,
@@ -34,7 +22,6 @@ export {
   getEnvVarsForEnvironment,
 } from './resolver';
 
-// Manager failover
 export {
   checkManagerStatus,
   findActiveManager,
@@ -42,5 +29,4 @@ export {
   type FindActiveManagerOptions,
 } from './failover';
 
-// Template context
 export { buildTemplateContext } from './template-context';

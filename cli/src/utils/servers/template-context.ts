@@ -1,10 +1,6 @@
 ﻿/**
- * Template context builder for Jinja2 rendering
- * 
- * Builds the complete context object available to Nunjucks templates:
- * - {{ current }} - The current server being deployed to
- * - {{ servers }} - All servers in the environment
- * - {{ cluster }} - Cluster metadata (size, managers, workers)
+ * The context Nunjucks templates render with: `current` (the server being deployed to),
+ * `servers` (all of the environment, by name) and `cluster` (sizes and hosts of managers and workers).
  */
 
 import type { 
@@ -15,12 +11,8 @@ import type {
 } from '../../types';
 import { resolveServersForEnvironment } from './resolver';
 
-/**
- * Convert a ResolvedServer to a SafeServer for template access
- * Environment variable keys are lowercased for Jinja2 compatibility
- */
+/** The template view of a server: env keys lowercased, and no private host or host key. */
 function toSafeServer(server: ResolvedServer): SafeServer {
-  // Lowercase all env keys for Jinja2 templates
   const lowerEnv: Record<string, string> = {};
   for (const [key, value] of Object.entries(server.env)) {
     lowerEnv[key.toLowerCase()] = value;
@@ -37,50 +29,32 @@ function toSafeServer(server: ResolvedServer): SafeServer {
   };
 }
 
-/**
- * Build the complete template context for Jinja2 rendering
- * 
- * This provides:
- * - {{ current }} - The current server being deployed to
- * - {{ servers }} - All servers in the environment (hydrated with CI secrets)
- * - {{ cluster }} - Cluster metadata (size, managers, workers)
- * 
- * All environment variables from servers.yml and CI secrets are available.
- * 
- * @param environment - The environment/tag being deployed
- * @param currentServerName - The name of the current deployment target
- * @returns Complete template context, or null if server not found
- */
+/** Null when the environment has no server or none is named `currentServerName`. */
 export function buildTemplateContext(
   environment: string,
   currentServerName: string
 ): TemplateContext | null {
-  // Get all servers for this environment (already hydrated with CI secrets)
   const allServers = resolveServersForEnvironment(environment);
   
   if (allServers.length === 0) {
     return null;
   }
   
-  // Find the current server
   const currentResolved = allServers.find(s => s.name === currentServerName);
   if (!currentResolved) {
     return null;
   }
   
-  // Build the current server context
   const current: CurrentServer = {
     ...toSafeServer(currentResolved),
     is_current: true,
   };
   
-  // Build servers map (keyed by name)
   const servers: Record<string, SafeServer> = {};
   for (const server of allServers) {
     servers[server.name] = toSafeServer(server);
   }
   
-  // Build cluster metadata
   const managers = allServers.filter(s => s.role === 'manager');
   const workers = allServers.filter(s => s.role === 'worker');
   

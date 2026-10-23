@@ -10,17 +10,13 @@ import { channelResult } from './exit-status';
 import { getPooledClient } from './pool';
 
 export interface SSHChannelHandle {
-  /** The raw SSH channel — writable stdin, readable stdout */
+  /** writable stdin, readable stdout */
   stream: ClientChannel;
-  /** Resolves when the channel closes. stdout and stderr are collected. */
+  /** resolves when the channel closes, with the collected stdout and stderr */
   done: Promise<{ exitCode: number; stdout: string; stderr: string }>;
 }
 
-/**
- * Open an SSH exec channel and return the raw stream for direct piping.
- * Uses connection pooling. Caller owns the stream lifecycle.
- * This allows streaming large data (e.g. docker save) without buffering.
- */
+/** Opens an exec channel on the pooled connection for piping data into the command; the caller owns the stream. */
 export async function sshExecChannel(
   conn: ConnectionInfo,
   command: string,
@@ -51,9 +47,8 @@ export function openChannelOnClient(
 
       const done = new Promise<{ exitCode: number; stdout: string; stderr: string }>(
         (resolveDone) => {
-          // Bun's ssh2 streams may not emit 'close' after stream.end(),
-          // but 'exit' always fires. Use whichever comes first, once the output
-          // already received has been delivered.
+          // under Bun, ssh2 streams may not emit 'close' after stream.end() but always emit
+          // 'exit': take whichever comes first, once the output already received is delivered
           let resolved = false;
           const finish = (code?: number | null, signal?: string) => {
             if (resolved) return;

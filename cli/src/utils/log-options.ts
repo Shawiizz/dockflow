@@ -23,7 +23,7 @@ const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|[+-]\d{2}:\d{2})?$/;
 const UNIX_SECONDS = /^(\d{9,})(?:\.(\d+))?$/;
 
-/** Largest instant a JavaScript Date holds */
+/** Largest instant a JavaScript Date holds. */
 const MAX_MS = 8.64e15;
 
 function sinceError(): ValidationError {
@@ -69,10 +69,10 @@ function instant(ms: number, fraction: string | undefined, unixSeconds: string |
 }
 
 /**
- * The only `--since` validator: a Go duration (kept as
- * written), `<n>d` (as `<n*24>h`: Go durations have no day unit), a date (local midnight), an
- * RFC3339 timestamp (local time when it has no zone) or unix seconds (9 digits or more, so `10`
- * is not read as a 1970 timestamp).
+ * The only `--since` validator: a Go duration (kept as written), `<n>d` (as `<n*24>h`: Go
+ * durations have no day unit), a date (local midnight), an RFC3339 timestamp (local time when it
+ * has no zone) or unix seconds (9 digits or more, so `10` is not read as a 1970 timestamp).
+ * Throws a ValidationError for anything else.
  */
 export function parseSince(raw: string, localOffset: LocalOffset): SinceSpec {
   if (GO_DURATION.test(raw)) return { kind: 'duration', goDuration: raw };
@@ -119,10 +119,6 @@ export function dockerSinceValue(spec: SinceSpec): string {
 
 /** The CLI machine's zone, re-read at each instant. */
 export const LOCAL_OFFSET: LocalOffset = (at) => -at.getTimezoneOffset();
-
-// ---------------------------------------------------------------------------
-// --tail
-// ---------------------------------------------------------------------------
 
 /** `all` or a non-negative integer (`--tail all` used to reach the remote CLI as `--tail NaN`). */
 export function parseTailOption(raw: string | undefined, fallback: number): number | 'all' {

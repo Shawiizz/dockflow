@@ -1,7 +1,4 @@
-/**
- * Schema for dockflow.yml — merges config.yml and servers.yml into a single file
- * Used when a project opts for the simplified flat layout (dockflow.yml at project root)
- */
+/** Schema of the flat layout's dockflow.yml: config.yml and servers.yml in one file. */
 
 import { z } from 'zod';
 import { DockflowConfigSchema } from './config.schema';

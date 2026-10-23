@@ -1,22 +1,10 @@
-/**
- * SSH Fallback utility
- *
- * Tries to execute an SSH command on multiple nodes in order,
- * returning the result from the first node that succeeds.
- * Used for reading history/metrics that are replicated across all cluster nodes.
- */
-
 import { sshExec } from './ssh';
 import { printDebug } from './output';
 import type { SSHKeyConnection, SSHExecResult } from '../types';
 
 /**
- * Execute an SSH command with fallback across multiple nodes.
- * Tries each connection in order until one succeeds and returns non-empty stdout.
- *
- * @param connections - Ordered list of SSH connections to try (managers first, then workers)
- * @param command - The command to execute
- * @returns The first successful result, or the last failure
+ * Runs a read on each node in turn, for data replicated on all of them (history, metrics), and
+ * returns the first result with a non-empty stdout, else the last result or error as exit code 1.
  */
 export async function sshExecWithFallback(
   connections: SSHKeyConnection[],

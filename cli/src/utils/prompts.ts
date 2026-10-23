@@ -1,15 +1,10 @@
-/**
- * Centralized interactive prompts module
- * Wraps @clack/prompts for a modern, Claude Code-like CLI experience
- */
+/** Interactive prompts over @clack/prompts. Without a TTY a prompt does not ask: it answers with its default. */
 
 import * as clack from '@clack/prompts';
 import type { Option } from '@clack/prompts';
 import * as readline from 'readline';
 
-/**
- * Handle user cancellation (Ctrl+C) during a prompt
- */
+/** A cancelled prompt (Ctrl+C) ends the process with exit code 0. */
 function handleCancel(value: unknown): asserts value is Exclude<typeof value, symbol> {
   if (clack.isCancel(value)) {
     clack.cancel('Operation cancelled.');
@@ -17,9 +12,6 @@ function handleCancel(value: unknown): asserts value is Exclude<typeof value, sy
   }
 }
 
-/**
- * Text input prompt
- */
 export async function textPrompt(opts: {
   message: string;
   placeholder?: string;
@@ -41,9 +33,6 @@ export async function textPrompt(opts: {
   return value as string;
 }
 
-/**
- * Password input prompt (hidden)
- */
 export async function passwordPrompt(opts: {
   message: string;
   validate?: (value: string) => string | void;
@@ -61,9 +50,6 @@ export async function passwordPrompt(opts: {
   return value as string;
 }
 
-/**
- * Yes/no confirmation prompt
- */
 export async function confirmPrompt(opts: {
   message: string;
   initialValue?: boolean;
@@ -81,9 +67,6 @@ export async function confirmPrompt(opts: {
   return value as boolean;
 }
 
-/**
- * Select prompt with arrow key navigation
- */
 export async function selectPrompt<T>(opts: {
   message: string;
   options: { value: T; label: string; hint?: string }[];
@@ -103,9 +86,7 @@ export async function selectPrompt<T>(opts: {
   return value as T;
 }
 
-/**
- * Dangerous confirmation prompt — requires typing exact text to confirm
- */
+/** Confirms by typing `expectedText`; without a TTY the answer is no. */
 export async function dangerousConfirmPrompt(opts: {
   message: string;
   expectedText: string;
@@ -128,10 +109,7 @@ export async function dangerousConfirmPrompt(opts: {
   return value === opts.expectedText;
 }
 
-/**
- * Multi-line input prompt (for SSH key pasting etc.)
- * Uses custom readline since @clack/prompts doesn't support multi-line
- */
+/** Multi-line input (an SSH key, say) through readline, which clack cannot do; two empty lines end it. */
 export async function multilinePrompt(opts: {
   message: string;
 }): Promise<string> {
@@ -167,9 +145,6 @@ export async function multilinePrompt(opts: {
   });
 }
 
-/**
- * Multi-select prompt with checkbox navigation
- */
 export async function multiselectPrompt<T>(opts: {
   message: string;
   options: { value: T; label: string; hint?: string }[];
@@ -191,7 +166,6 @@ export async function multiselectPrompt<T>(opts: {
   return value as T[];
 }
 
-// Re-export @clack visual helpers
 export const intro = clack.intro;
 export const outro = clack.outro;
 export const note = clack.note;

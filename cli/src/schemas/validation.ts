@@ -1,7 +1,4 @@
-/**
- * Validation utilities for YAML configuration files
- * Provides user-friendly error messages and formatting
- */
+/** Validates the YAML config files and turns Zod's errors into readable issues. */
 
 import { z } from 'zod';
 import { colors } from '../utils/output';
@@ -12,18 +9,12 @@ import type { RootConfig } from './root-config.schema';
 import type { Result } from '../types';
 import { ok, err } from '../types';
 
-/**
- * Validation error with path and message
- */
 export interface ValidationIssue {
   path: string;
   message: string;
   code: string;
 }
 
-/**
- * Format Zod path to readable string
- */
 function formatPath(path: PropertyKey[]): string {
   if (path.length === 0) return 'root';
 
@@ -38,9 +29,6 @@ function formatPath(path: PropertyKey[]): string {
   }).join('');
 }
 
-/**
- * Transform Zod errors to ValidationIssues
- */
 function transformZodErrors(error: z.ZodError): ValidationIssue[] {
   return error.issues.map((issue) => ({
     path: formatPath(issue.path),
@@ -49,9 +37,6 @@ function transformZodErrors(error: z.ZodError): ValidationIssue[] {
   }));
 }
 
-/**
- * Format validation errors for console output
- */
 export function formatValidationErrors(errors: ValidationIssue[], fileName: string): string {
   const lines: string[] = [
     '',
@@ -70,9 +55,6 @@ export function formatValidationErrors(errors: ValidationIssue[], fileName: stri
   return lines.join('\n');
 }
 
-/**
- * Validate config.yml content
- */
 export function validateConfig(data: unknown): Result<z.output<typeof DockflowConfigSchema>, ValidationIssue[]> {
   const result = DockflowConfigSchema.safeParse(data);
 
@@ -83,9 +65,6 @@ export function validateConfig(data: unknown): Result<z.output<typeof DockflowCo
   return err(transformZodErrors(result.error));
 }
 
-/**
- * Validate servers.yml content
- */
 export function validateServersConfig(data: unknown): Result<z.output<typeof ServersConfigSchema>, ValidationIssue[]> {
   const result = ServersConfigSchema.safeParse(data);
 
@@ -96,9 +75,6 @@ export function validateServersConfig(data: unknown): Result<z.output<typeof Ser
   return err(transformZodErrors(result.error));
 }
 
-/**
- * Validate dockflow.yml content (merged config + servers)
- */
 export function validateRootConfig(data: unknown): Result<RootConfig, ValidationIssue[]> {
   const result = RootConfigSchema.safeParse(data);
 
@@ -109,15 +85,9 @@ export function validateRootConfig(data: unknown): Result<RootConfig, Validation
   return err(transformZodErrors(result.error));
 }
 
-// ---------------------------------------------------------------------------
-// Unknown key detection
-//
-// Zod strips unknown keys silently, so a typo like `retention:` instead of
-// `retention_count:` passes validation and the setting is ignored. These
-// helpers walk the schema alongside the raw YAML data and report keys the
-// schema does not declare, with a "did you mean" suggestion when a close
-// match exists.
-// ---------------------------------------------------------------------------
+// Zod strips unknown keys silently, so a typo like `retention:` for `retention_count:` passes
+// validation and the setting is ignored. The helpers below walk the schema alongside the raw
+// YAML and report the keys it does not declare, with a "did you mean" when one is close.
 
 export interface UnknownKey {
   path: string;
@@ -153,8 +123,8 @@ function editDistance(a: string, b: string): number {
 }
 
 function closestKey(key: string, candidates: string[]): string | undefined {
-  // Prefix relationship first: `retention` → `retention_count`,
-  // `destination` → `dest`. Require 3+ shared chars to avoid noise.
+  // a prefix relationship first (`retention` and `retention_count`, `destination` and `dest`),
+  // from 3 characters up to avoid noise
   let bestPrefix: string | undefined;
   let bestPrefixDistance = Number.POSITIVE_INFINITY;
   for (const candidate of candidates) {
@@ -177,7 +147,7 @@ function closestKey(key: string, candidates: string[]): string | undefined {
       best = candidate;
     }
   }
-  // Only suggest near-misses — a completely different word is not a typo
+  // only near-misses: a completely different word is not a typo
   return bestDistance <= Math.max(2, Math.floor(key.length / 3)) ? best : undefined;
 }
 
@@ -237,23 +207,17 @@ export function findUnknownRootKeys(data: unknown): UnknownKey[] {
   return findUnknownKeys(RootConfigSchema, data);
 }
 
-/**
- * Get human-readable suggestions for common errors
- */
+/** A hint for the Zod issue codes that have one, else null. */
 export function getSuggestion(issue: ValidationIssue): string | null {
   const suggestions: Record<string, string> = {
-    // Project name errors
     'invalid_string': issue.path === 'project_name'
       ? 'Use lowercase letters, numbers, and hyphens only (e.g., "my-app")'
       : null as unknown as string,
 
-    // Missing required fields
     'invalid_type': `Check that the field exists and has the correct type`,
 
-    // Array errors
     'too_small': 'This field requires at least one item',
 
-    // Regex failures
     'invalid_regex': 'Check the format requirements for this field',
   };
 

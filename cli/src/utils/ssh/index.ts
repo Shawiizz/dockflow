@@ -1,11 +1,6 @@
 /**
- * SSH utilities using the ssh2 library.
- * Supports key-based and password-based authentication.
- * No temporary key files needed — keys are passed directly in memory.
- *
- * Connection pooling: a module-level pool reuses SSH connections per host.
- * Multiple exec() calls multiplex over a single TCP connection via SSH channels.
- * Interactive sessions (sshShell, executeInteractiveSSH) bypass the pool.
+ * SSH over ssh2, with keys passed in memory (no key files). Commands share a pooled connection
+ * per host; interactive sessions (sshShell, executeInteractiveSSH, executePtySSH) bypass the pool.
  */
 
 export { presentedHostKey, connectionFailure } from './connect';

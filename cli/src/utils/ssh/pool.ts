@@ -14,13 +14,11 @@ type PoolEntryState = 'connecting' | 'connected' | 'closed';
 interface PoolEntry {
   client: SSHClient;
   state: PoolEntryState;
-  /** Shared promise — all concurrent callers await the same handshake */
+  /** all concurrent callers await the same handshake */
   readyPromise: Promise<SSHClient>;
   /** Abandons the handshake and its retries (closeAllConnections), which would otherwise keep the process alive */
   abort: AbortController;
 }
-
-// ─── Pool state (module-level singleton) ──────────────────────
 
 const pool = new Map<string, PoolEntry>();
 const presentedHostKeys = new Map<string, string>();
@@ -50,36 +48,28 @@ export function evictClient(conn: ConnectionInfo, client: SSHClient): void {
   }
 }
 
-/**
- * Get or create a pooled SSH client for the given connection.
- * Concurrent callers for the same host share a single handshake.
- * Transient connection errors are retried with exponential backoff.
- */
+/** The pooled client for this host and pin; concurrent callers share one handshake, with its retries. */
 export async function getPooledClient(conn: ConnectionInfo): Promise<SSHClient> {
   ensureExitHandler();
 
   const key = poolKey(conn);
   const existing = pool.get(key);
 
-  // Reuse connected client
   if (existing && existing.state === 'connected') {
     return existing.client;
   }
 
-  // Wait on in-progress connection
   if (existing && existing.state === 'connecting') {
     return existing.readyPromise;
   }
 
-  // Dead entry — clean up
   if (existing) {
     pool.delete(key);
   }
 
-  // Build the ready promise using retry-aware connect
   const abort = new AbortController();
   const readyPromise = connectWithRetry(conn, true, abort.signal).then((client) => {
-    // Register close handler so stale entries are evicted
+    // a closed connection leaves the pool
     client.on('close', () => {
       const entry = pool.get(key);
       if (entry && entry.client === client) {
@@ -97,9 +87,8 @@ export async function getPooledClient(conn: ConnectionInfo): Promise<SSHClient> 
     throw err;
   });
 
-  // Placeholder — we don't have the client yet, use a sentinel so concurrent
-  // callers await the same handshake. We'll update state to 'connected' once done.
-  // We use a temporary SSHClient as placeholder; the real one comes from the promise.
+  // the entry exists before the client does, so concurrent callers find it and wait on
+  // readyPromise; a placeholder client stands in until the real one replaces it
   const placeholderClient = new SSHClient();
   const entry: PoolEntry = {
     client: placeholderClient,
@@ -111,22 +100,18 @@ export async function getPooledClient(conn: ConnectionInfo): Promise<SSHClient> 
 
   printDebug(`SSH pool: connecting to ${key}`);
 
-  // Once connected, update the pool entry with the real client
   readyPromise.then((client) => {
     const current = pool.get(key);
     if (current && current.client === placeholderClient) {
       current.client = client;
       current.state = 'connected';
     }
-  }).catch(() => { /* already handled above */ });
+  }).catch(() => { /* the failure is thrown to the callers through readyPromise */ });
 
   return readyPromise;
 }
 
-/**
- * Close all pooled SSH connections. Idempotent.
- * Called automatically by withErrorHandler after every CLI command.
- */
+/** Closes every pooled connection and abandons pending handshakes; safe to call twice. withErrorHandler calls it after each command. */
 export function closeAllConnections(): void {
   for (const [, entry] of pool) {
     entry.abort.abort();
@@ -135,7 +120,7 @@ export function closeAllConnections(): void {
         entry.client.destroy();
       }
     } catch {
-      // Client may already be dead
+      // the client may already be dead
     }
     entry.state = 'closed';
   }

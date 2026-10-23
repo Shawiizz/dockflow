@@ -25,10 +25,7 @@ export function presentedHostKey(conn: ConnectionInfo): string | undefined {
   return presentedHostKeys.get(serverKey(conn));
 }
 
-/**
- * Returns true for errors that are worth retrying (transient network issues).
- * Auth failures (wrong key/password) are NOT retryable.
- */
+/** A wrong key, user or password, matched by ssh2's messages. */
 function isAuthenticationError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
@@ -40,6 +37,7 @@ function isAuthenticationError(err: unknown): boolean {
   );
 }
 
+/** Transient network failures are worth another try; authentication failures and host key refusals are not. */
 function isRetryableConnectionError(err: unknown): boolean {
   if (!(err instanceof Error) || err instanceof ConnectionError || isAuthenticationError(err)) return false;
   const msg = err.message.toLowerCase();
@@ -55,7 +53,7 @@ function isRetryableConnectionError(err: unknown): boolean {
   );
 }
 
-
+/** The pooled connection died under a command: the pool replaces it and the command runs again. */
 export function isTransportError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
@@ -97,9 +95,7 @@ function buildConnectConfig(conn: ConnectionInfo, keepalive: boolean, hostKey: H
   return config;
 }
 
-/**
- * Attempt a single SSH connection. Returns a connected client or throws.
- */
+/** One attempt: rejects with the host key failure when the pinned key was refused, else with ssh2's error. */
 function attemptConnect(conn: ConnectionInfo, keepalive: boolean, signal?: AbortSignal): Promise<SSHClient> {
   return new Promise<SSHClient>((resolve, reject) => {
     const client = new SSHClient();
@@ -121,7 +117,7 @@ function attemptConnect(conn: ConnectionInfo, keepalive: boolean, signal?: Abort
     });
     client.on('error', (err) => {
       signal?.removeEventListener('abort', abandon);
-      try { client.end(); } catch { /* ignore */ }
+      try { client.end(); } catch { /* never connected */ }
       reject(hostKey.failure() ?? err);
     });
     client.connect(buildConnectConfig(conn, keepalive, hostKey));
@@ -141,10 +137,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-/**
- * Connect to an SSH host with exponential backoff retry on transient errors.
- * Auth failures are NOT retried, and nothing is once `signal` aborts.
- */
+/** Retries transient errors with exponential backoff; authentication failures are not retried, and nothing is once `signal` aborts. */
 export async function connectWithRetry(
   conn: ConnectionInfo,
   keepalive: boolean,
@@ -182,10 +175,7 @@ export function connectionFailure(conn: ConnectionInfo, err: unknown): unknown {
   );
 }
 
-/**
- * Create a dedicated (non-pooled) SSH client for interactive sessions.
- * Uses retry with exponential backoff for transient errors.
- */
+/** A client of its own for an interactive session: not pooled, no keepalive; the caller closes it. */
 export function connectDedicatedClient(conn: ConnectionInfo): Promise<SSHClient> {
   return connectWithRetry(conn, false);
 }

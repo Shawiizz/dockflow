@@ -1,10 +1,4 @@
-/**
- * Secrets loading utilities
- * Supports loading secrets from:
- * - .env.dockflow file (for local development)
- * - JSON file (for CI environments)
- * - DOCKFLOW_SECRETS environment variable (JSON string)
- */
+/** Loads deploy secrets into process.env from a dotenv file, a JSON file or an environment variable. */
 
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -14,8 +8,6 @@ import { detectCIEnvironment } from './ci';
 import { printWarning, printSuccess, printError, printBlank } from './output';
 
 /**
- * Parse a dotenv file content into key-value pairs.
- *
  * A quoted value may span several lines, up to the line that ends with the
  * closing quote — the only way to write a multi-line secret such as a private
  * key. A value that opens and closes its quote on one line reads exactly as it
@@ -40,7 +32,7 @@ export function parseDotenv(content: string): Record<string, string> {
       value = value.slice(1, -1);
     } else if (quote === '"' || quote === "'") {
       const closing = lines.findIndex((line, j) => j > i && line.trimEnd().endsWith(quote));
-      // Without a closing line, the lone quote stays part of a single-line value.
+      // without a closing line, the lone quote stays part of a single-line value
       if (closing !== -1) {
         const body = [value.slice(1), ...lines.slice(i + 1, closing), lines[closing].trimEnd().slice(0, -1)];
         value = body.join('\n');
@@ -55,12 +47,11 @@ export function parseDotenv(content: string): Record<string, string> {
 }
 
 /**
- * Load secrets into process.env from various sources
- * Priority: .env.dockflow > JSON file > DOCKFLOW_SECRETS env var
+ * Loads secrets into process.env from the first source that works, in this order: .env.dockflow
+ * (project root first, then the working directory), the JSON file named by DOCKFLOW_SECRETS_FILE,
+ * then the DOCKFLOW_SECRETS JSON string. Empty values are skipped.
  */
 export function loadSecrets(): void {
-  // 1. Check for .env.dockflow (local development or E2E tests)
-  // Try project root first, then CWD as fallback
   let envFilePath = ENV_FILE_PATH;
   try {
     const projectRoot = getProjectRoot();
@@ -69,7 +60,7 @@ export function loadSecrets(): void {
       envFilePath = rootEnvFile;
     }
   } catch {
-    // No project root found, use CWD-relative path
+    // no project root: keep the path relative to the working directory
   }
 
   if (existsSync(envFilePath)) {
@@ -83,7 +74,6 @@ export function loadSecrets(): void {
         }
       }
       
-      // Warn in CI that this file should not be committed
       if (detectCIEnvironment()) {
         printBlank();
         printWarning('WARNING: .env.dockflow file detected in CI environment!');
@@ -99,7 +89,6 @@ export function loadSecrets(): void {
     }
   }
   
-  // 2. Check for JSON secrets file (explicit path only)
   const secretsPath = process.env.DOCKFLOW_SECRETS_FILE;
 
   if (secretsPath && existsSync(secretsPath)) {
@@ -120,7 +109,6 @@ export function loadSecrets(): void {
     }
   }
   
-  // 3. Check for DOCKFLOW_SECRETS env var (JSON string)
   const secretsEnv = process.env.DOCKFLOW_SECRETS;
   if (secretsEnv) {
     try {
@@ -141,11 +129,7 @@ export function loadSecrets(): void {
   
 }
 
-/**
- * Wrap a Commander action to load secrets before execution.
- * Composes with withErrorHandler:
- *   .action(withErrorHandler(withSecrets(async (...args) => { ... })))
- */
+/** Loads the secrets before a Commander action runs; goes inside withErrorHandler. */
 export function withSecrets<T extends unknown[]>(
   fn: (...args: T) => Promise<void>,
 ): (...args: T) => Promise<void> {

@@ -1,9 +1,4 @@
-/**
- * Connection String Parser
- * 
- * Handles parsing and validation of base64-encoded SSH connection strings
- * used for CI/CD deployment configurations.
- */
+/** Parses and validates the base64 SSH connection strings that CI/CD deployments carry. */
 
 import { DEFAULT_SSH_PORT } from '../constants';
 import type { SSHKeyConnection, Result } from '../types';
@@ -11,9 +6,6 @@ import { ok, err } from '../types';
 import { normalizePrivateKey, isValidPrivateKey } from './ssh-keys';
 import { isHostKeyFingerprint } from './host-key';
 
-/**
- * Error types for connection parsing
- */
 export class ConnectionParseError extends Error {
   constructor(message: string, public readonly code: ConnectionParseErrorCode) {
     super(message);
@@ -30,9 +22,6 @@ export enum ConnectionParseErrorCode {
   INVALID_HOST_KEY = 'INVALID_HOST_KEY',
 }
 
-/**
- * Raw connection data before validation
- */
 interface RawConnectionData {
   host?: unknown;
   port?: unknown;
@@ -43,11 +32,10 @@ interface RawConnectionData {
 }
 
 /**
- * Parse a base64-encoded connection string.
- * Returns a Result type for explicit error handling.
+ * Parses a base64 connection string into an SSH connection. A bad string comes back as an err
+ * carrying a ConnectionParseErrorCode, never as a throw.
  */
 export function parseConnectionString(connectionString: string): Result<SSHKeyConnection, ConnectionParseError> {
-  // Step 1: Decode base64
   let json: string;
   try {
     json = Buffer.from(connectionString, 'base64').toString('utf-8');
@@ -58,7 +46,6 @@ export function parseConnectionString(connectionString: string): Result<SSHKeyCo
     ));
   }
 
-  // Step 2: Parse JSON
   let data: RawConnectionData;
   try {
     data = JSON.parse(json);
@@ -69,7 +56,6 @@ export function parseConnectionString(connectionString: string): Result<SSHKeyCo
     ));
   }
 
-  // Step 3: Validate required fields
   if (typeof data.host !== 'string' || !data.host) {
     return err(new ConnectionParseError(
       'Connection string missing required field: host',
@@ -91,7 +77,6 @@ export function parseConnectionString(connectionString: string): Result<SSHKeyCo
     ));
   }
 
-  // Step 4: Validate port if provided
   let port = DEFAULT_SSH_PORT;
   if (data.port !== undefined) {
     const parsedPort = typeof data.port === 'string' ? parseInt(data.port, 10) : data.port;
@@ -111,7 +96,6 @@ export function parseConnectionString(connectionString: string): Result<SSHKeyCo
     ));
   }
 
-  // Step 5: Normalize and validate private key
   const normalizedKey = normalizePrivateKey(data.privateKey);
   if (!isValidPrivateKey(normalizedKey)) {
     return err(new ConnectionParseError(
@@ -120,7 +104,6 @@ export function parseConnectionString(connectionString: string): Result<SSHKeyCo
     ));
   }
 
-  // Step 6: Build connection object
   const connection: SSHKeyConnection = {
     host: data.host,
     port,
@@ -128,7 +111,6 @@ export function parseConnectionString(connectionString: string): Result<SSHKeyCo
     privateKey: normalizedKey,
   };
 
-  // Add optional password
   if (typeof data.password === 'string' && data.password) {
     connection.password = data.password;
   }
@@ -140,9 +122,7 @@ export function parseConnectionString(connectionString: string): Result<SSHKeyCo
   return ok(connection);
 }
 
-/**
- * Generate a base64-encoded connection string
- */
+/** The inverse of parseConnectionString; the password and hostKey are left out when unset. */
 export function generateConnectionString(conn: SSHKeyConnection): string {
   const data = {
     host: conn.host,

@@ -86,10 +86,6 @@ function execStreamOnClient(
   });
 }
 
-/**
- * Execute a command via SSH (returns collected output).
- * Uses connection pooling — one TCP connection per unique host.
- */
 /** Runs `command` and collects its output; `stdin`, when given, is written to its standard input. */
 export async function sshExec(
   conn: ConnectionInfo,
@@ -115,10 +111,7 @@ export async function sshExec(
   }
 }
 
-/**
- * Execute a command via SSH (streaming output to console).
- * Uses connection pooling.
- */
+/** Streams the output to `onStdout` and `onStderr`, or to this process's stdout and stderr when absent. */
 export async function sshExecStream(
   conn: ConnectionInfo,
   command: string,

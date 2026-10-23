@@ -1,7 +1,4 @@
-/**
- * Configuration utilities
- * Handles reading config.yml and servers.yml with schema validation
- */
+/** Loads, validates, caches and writes the project config, in the flat or the standard layout. */
 
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname, parse as parsePath } from 'path';
@@ -20,9 +17,6 @@ import {
 } from '../schemas';
 import type { RootConfig, ValidationIssue } from '../schemas';
 
-/**
- * Dockflow configuration schema
- */
 export interface RegistryConfig {
   type: 'local' | 'dockerhub' | 'ghcr' | 'gitlab' | 'custom';
   url?: string;
@@ -250,30 +244,24 @@ export function getProjectRoot(): string {
   return process.cwd();
 }
 
-/**
- * Fully resolved layout description — single source of truth for all file paths.
- * Computed once per process from the filesystem; never construct paths elsewhere.
- */
+/** Where the project's files are; computed once per process, so build paths from it. */
 export interface ProjectLayout {
   /** 'flat'  → dockflow.yml at root; 'standard' → .dockflow/ directory */
   type: 'flat' | 'standard';
   root: string;
-  /** Absolute path to the config source (dockflow.yml or .dockflow/config.yml) */
+  /** dockflow.yml or .dockflow/config.yml */
   configPath: string;
-  /** Absolute path to the servers source (dockflow.yml or .dockflow/servers.yml) */
+  /** dockflow.yml or .dockflow/servers.yml */
   serversPath: string;
-  /** Absolute path to docker-compose file, or null if absent */
+  /** null when the project has no compose file */
   composePath: string | null;
-  /** Absolute path to accessories.yml file, or null if absent */
+  /** null when the project has no accessories file */
   accessoriesPath: string | null;
 }
 
 let _layoutCache: ProjectLayout | undefined;
 
-/**
- * Resolve and cache the project layout.
- * All layout-aware code should call this instead of hasDockflowYml() + manual joins.
- */
+/** Resolves the project layout once and caches it. */
 export function getLayout(): ProjectLayout {
   if (_layoutCache) return _layoutCache;
 
@@ -323,10 +311,7 @@ let _rootConfigCache: RootConfig | null | undefined = undefined;
 /** why an existing dockflow.yml was rejected, thrown by strict loads */
 let _rootConfigRejection: ConfigError | null = null;
 
-/**
- * Load and cache dockflow.yml if present.
- * Returns null when dockflow.yml does not exist or fails validation.
- */
+/** Loads and caches dockflow.yml; null when it is absent or invalid (the reason lands in _rootConfigRejection). */
 function loadRootConfig(projectRoot: string): RootConfig | null {
   if (_rootConfigCache !== undefined) return _rootConfigCache;
 
@@ -357,14 +342,10 @@ export function hasDockflowYml(): boolean {
   return getLayout().type === 'flat';
 }
 
-/** Returns the absolute path to accessories.yml, or null if absent. */
 export function getAccessoriesPath(): string | null {
   return getLayout().accessoriesPath;
 }
 
-/**
- * Configuration loading options
- */
 export interface LoadConfigOptions {
   /** Enable schema validation (default: true) */
   validate?: boolean;
@@ -386,9 +367,8 @@ function unreadableFileError(fileName: string, error: unknown): ConfigError {
 }
 
 /**
- * Load the deployment config from dockflow.yml (flat layout) or .dockflow/config.yml
- * @param options - Loading options (validate, silent)
- * @returns Loaded config or null if not found/invalid
+ * Loads the deployment config from dockflow.yml (flat layout) or .dockflow/config.yml.
+ * Returns null when it is missing or invalid, unless `strict` makes an existing bad file throw.
  */
 export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | null {
   const { validate = true, silent = false, strict = false, content: rawContent } = options;
@@ -441,9 +421,8 @@ export function loadConfig(options: LoadConfigOptions = {}): DockflowConfig | nu
 }
 
 /**
- * Load the servers config from dockflow.yml (flat layout) or .dockflow/servers.yml
- * @param options - Loading options (validate, silent)
- * @returns Loaded config or null if not found/invalid
+ * Loads the servers config from dockflow.yml (flat layout) or .dockflow/servers.yml.
+ * Returns null when it is missing or invalid, unless `strict` makes an existing bad file throw.
  */
 export function loadServersConfig(options: LoadConfigOptions = {}): ServersConfig | null {
   const { validate = true, silent = false, strict = false } = options;
@@ -477,34 +456,23 @@ export function loadServersConfig(options: LoadConfigOptions = {}): ServersConfi
   return null;
 }
 
-/**
- * Check if servers config is available (either via dockflow.yml or servers.yml)
- */
 export function hasServersConfig(): boolean {
   const layout = getLayout();
   return layout.type === 'flat' || existsSync(layout.serversPath);
 }
 
-/**
- * Get project name from config
- */
 export function getProjectName(): string | null {
   const config = loadConfig();
   return config?.project_name ?? null;
 }
 
-/**
- * Get stack name for an environment
- */
 export function getStackName(env: string): string | null {
   const projectName = getProjectName();
   if (!projectName) return null;
   return `${projectName}-${env}`;
 }
 
-/**
- * Get accessories stack name (separate from main app stack)
- */
+/** The accessories live in their own stack, apart from the app's. */
 export function getAccessoriesStackName(env: string): string | null {
   const projectName = getProjectName();
   if (!projectName) return null;
@@ -512,20 +480,14 @@ export function getAccessoriesStackName(env: string): string | null {
 }
 
 /**
- * Get the path to the docker-compose file (.yml or .yaml).
- * In flat layout mode (dockflow.yml present), looks at the project root.
- * Otherwise looks in .dockflow/docker/.
- * Returns null if neither exists.
+ * Absolute path of docker-compose.yml or .yaml: the project root first in flat layout, then
+ * .dockflow/docker/. Null when there is none.
  */
-/** Returns the absolute path to docker-compose.yml, or null if absent. */
 export function getComposePath(): string | null {
   return getLayout().composePath;
 }
 
-/**
- * Get the performer string for audit/metrics entries.
- * Format: "user@hostname" — consistent across all call sites.
- */
+/** The `user@hostname` recorded as the performer in audit and metrics entries. */
 export function getPerformer(): string {
   const user = process.env.USER ?? process.env.USERNAME ?? 'ci';
   const hostname = os.hostname();

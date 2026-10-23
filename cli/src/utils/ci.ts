@@ -1,7 +1,4 @@
-/**
- * CI environment detection utilities
- * Auto-detects CI provider, tag/branch, and resolves deploy parameters.
- */
+/** Detects the CI provider and turns its tag or branch into deploy parameters. */
 
 import { getCommitSha } from './git';
 
@@ -85,8 +82,7 @@ export function detectCIEnvironment(): CIEnvironment | null {
     };
   }
 
-  // Generic CI detection (CI=true but no known provider)
-  // Fall back to git commands for commit SHA so version is unique
+  // CI=true without a known provider: ask git for the sha so the version stays unique
   if (process.env.CI) {
     const sha = getCommitSha();
     return {
@@ -112,14 +108,12 @@ export function detectCIEnvironment(): CIEnvironment | null {
  * - `1.0.0-rc1` → env=production (rc1 looks like a pre-release, not an env)
  * - `release/1.0.0` → env=production, version=1.0.0 (prefix stripped)
  *
- * The suffix is treated as an environment name only if it contains
- * at least one letter and is NOT a common pre-release pattern (rc, alpha, beta, dev + digits).
+ * The suffix is an environment name unless it is all digits or a pre-release word
+ * (rc, alpha, beta, nightly and the like, optionally followed by digits).
  */
 export function parseTagForDeployment(tag: string): { env: string; version: string } {
-  // Strip leading 'v'
   let version = tag.startsWith('v') ? tag.slice(1) : tag;
 
-  // Strip path prefix (e.g., release/1.0.0 → 1.0.0)
   const slashIdx = version.lastIndexOf('/');
   if (slashIdx !== -1) {
     version = version.slice(slashIdx + 1);
@@ -132,12 +126,10 @@ export function parseTagForDeployment(tag: string): { env: string; version: stri
 
   const suffix = version.slice(lastDash + 1);
 
-  // Pure numeric suffix (e.g., 1.0.0-1) → not an env
   if (/^\d+$/.test(suffix)) {
     return { env: 'production', version };
   }
 
-  // Common pre-release patterns → not an env
   if (/^(rc|alpha|beta|dev|pre|canary|hotfix|fix|patch|nightly|snapshot)\d*$/i.test(suffix)) {
     return { env: 'production', version };
   }
@@ -146,16 +138,14 @@ export function parseTagForDeployment(tag: string): { env: string; version: stri
 }
 
 /**
- * Resolve deploy parameters (env + version) from CI environment.
- * For tags: parses env from tag suffix.
- * For branches: defaults to production with branch-sha as version.
+ * Env and version for a CI run: a tag is parsed by parseTagForDeployment, a branch deploys to
+ * production as `<branch>-<short sha>`.
  */
 export function resolveDeployParams(ci: CIEnvironment): { env: string; version: string } {
   if (ci.isTag && ci.tag) {
     return parseTagForDeployment(ci.tag);
   }
 
-  // Branch deploy
   const branch = ci.branch ?? 'main';
   const version = ci.shortSha ? `${branch}-${ci.shortSha}` : `${branch}-${Date.now()}`;
   return { env: 'production', version };

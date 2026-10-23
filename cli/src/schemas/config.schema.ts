@@ -1,15 +1,8 @@
-/**
- * Schema validation for .dockflow/config.yml
- * Uses Zod for runtime type checking and validation
- */
+/** Zod schema of config.yml (and of the config part of the flat dockflow.yml). */
 
 import { z } from 'zod';
 import { parsePortSpec } from '../utils/port-spec';
 
-/**
- * Registry configuration schema
- * Supports: local, dockerhub, ghcr, gitlab, custom
- */
 export const RegistryConfigSchema = z.object({
   type: z.enum(['local', 'dockerhub', 'ghcr', 'gitlab', 'custom']).describe(
     'Registry type: local (no push), dockerhub, ghcr, gitlab, or custom'
@@ -25,7 +18,6 @@ export const RegistryConfigSchema = z.object({
   ),
 }).refine(
   (data) => {
-    // Custom registry requires URL
     if (data.type === 'custom' && !data.url) {
       return false;
     }
@@ -34,9 +26,6 @@ export const RegistryConfigSchema = z.object({
   { message: 'Custom registry type requires a URL' }
 );
 
-/**
- * Build options schema
- */
 export const BuildOptionsSchema = z.object({
   remote_build: z.boolean().optional().default(false).describe(
     'Build images on the remote server instead of locally'
@@ -49,9 +38,6 @@ export const BuildOptionsSchema = z.object({
   ),
 });
 
-/**
- * Health check endpoint schema
- */
 export const HealthCheckEndpointSchema = z.object({
   url: z.string().describe('URL to check (can include Jinja2 templates)'),
   name: z.string().optional().describe('Human-readable name for this endpoint'),
@@ -78,9 +64,6 @@ export const HealthCheckEndpointSchema = z.object({
   ),
 });
 
-/**
- * Health checks configuration schema
- */
 export const HealthCheckConfigSchema = z.object({
   enabled: z.boolean().optional().default(true).describe(
     'Enable/disable health checks'
@@ -105,10 +88,6 @@ export const HealthCheckConfigSchema = z.object({
   ),
 });
 
-/**
- * Template file configuration schema
- * Supports either a simple string (src = dest) or an object with src/dest
- */
 export const TemplateFileSchema = z.union([
   z.string().describe('File path to render in-place (src = dest)'),
   z.object({
@@ -117,9 +96,7 @@ export const TemplateFileSchema = z.union([
   }),
 ]);
 
-/**
- * Hooks configuration schema
- */
+/** A bare string is shorthand for `{ run }`. */
 export const HookEntrySchema = z.union([
   z.string(),
   z.object({
@@ -156,9 +133,6 @@ export const HooksConfigSchema = z.object({
   'on-failure': hookPhase('on the server after a failed deployment, once rollbacks are done'),
 });
 
-/**
- * Stack management schema
- */
 export const StackManagementSchema = z.object({
   keep_releases: z.number().int().min(1).max(50).optional().default(3).describe(
     'Number of previous releases to retain'
@@ -168,23 +142,14 @@ export const StackManagementSchema = z.object({
   ),
 });
 
-/**
- * Lock configuration schema
- */
 export const LockConfigSchema = z.object({
   stale_threshold_minutes: z.number().int().min(1).max(1440).optional().default(30).describe(
     'Minutes after which a deployment lock is considered stale (default: 30)'
   ),
 });
 
-/**
- * Supported database types for backup/restore
- */
 export const BackupDbType = z.enum(['postgres', 'mysql', 'mongodb', 'redis', 'raw', 'volume']);
 
-/**
- * Backup configuration for a single accessory service
- */
 export const BackupAccessorySchema = z.object({
   type: BackupDbType.describe(
     'Database type: postgres, mysql, mongodb, redis, raw (custom command), or volume (Docker volumes)'
@@ -216,9 +181,6 @@ export const BackupAccessorySchema = z.object({
   { message: 'Raw backup type requires both dump_command and restore_command' }
 );
 
-/**
- * Backup/restore configuration schema
- */
 export const BackupConfigSchema = z.object({
   retention_count: z.number().int().min(1).max(1000).optional().default(10).describe(
     'Number of backups to retain per service (used by prune command)'
@@ -234,9 +196,6 @@ export const BackupConfigSchema = z.object({
   ),
 });
 
-/**
- * Traefik dashboard configuration schema
- */
 export const ProxyDashboardSchema = z.object({
   enabled: z.boolean().optional().default(false).describe(
     'Enable the Traefik dashboard'
@@ -265,9 +224,7 @@ export function isIpOrCidr(value: string): boolean {
 /** A host name as Traefik's Host() matches it: dot-separated labels of letters, digits and hyphens */
 const HOST_NAME = /^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/;
 
-/**
- * A route Traefik serves for one service, beside the default route of proxy.domains
- */
+/** A route Traefik serves for one service, beside the default route of proxy.domains. */
 export const ProxyRouteSchema = z.object({
   service: z.string().min(1).describe(
     'Service of docker-compose.yml or accessories.yml the requests go to'
@@ -287,9 +244,6 @@ export const ProxyRouteSchema = z.object({
   ),
 });
 
-/**
- * Reverse proxy configuration schema (Traefik + Let's Encrypt)
- */
 export const ProxyConfigSchema = z.object({
   enabled: z.boolean().optional().default(false).describe(
     'Enable automatic HTTPS routing via Traefik'
@@ -335,9 +289,6 @@ export const PublicPortSchema = z.union([
   }).strict(),
 ]);
 
-/**
- * Filter of the internet traffic to published container ports (Swarm hosts set up by dockflow setup)
- */
 export const FirewallConfigSchema = z.object({
   public_ports: z.array(PublicPortSchema).optional().describe(
     'Published container ports the internet may reach; the others answer only locally and on private networks. ' +
@@ -345,9 +296,6 @@ export const FirewallConfigSchema = z.object({
   ),
 });
 
-/**
- * Webhook notification configuration schema
- */
 export const WebhookConfigSchema = z.object({
   url: z.string().url().describe(
     'Webhook URL to POST to after deployment'
@@ -366,25 +314,15 @@ export const WebhookConfigSchema = z.object({
   ),
 });
 
-/**
- * Notifications configuration schema
- */
 export const NotificationsConfigSchema = z.object({
   webhooks: z.array(WebhookConfigSchema).optional().default([]).describe(
     'List of webhook endpoints to notify after each deployment'
   ),
 });
 
-/**
- * Project name validation pattern
- * Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens
- */
+// lowercase letters, digits and hyphens, none at either end
 const PROJECT_NAME_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
 
-/**
- * Extras — files/directories to transfer to the remote server before deploying.
- * Useful for config files referenced as bind mounts in docker-compose volumes.
- */
 export const PluginUseSchema = z.object({
   use: z.string().min(1).describe(
     'Plugin to use: a name (looked up in .dockflow/plugins/, then among built-in plugins) or a path starting with ./ or ../'
@@ -397,6 +335,7 @@ export const PluginUseSchema = z.object({
   ),
 }).strict();
 
+/** A file or directory sent to the server before the deploy, such as a config file bind-mounted by compose. */
 export const UploadItemSchema = z.object({
   src: z.string().describe('Local path relative to project root (file or directory)'),
   dest: z.string()
@@ -414,9 +353,6 @@ export const UploadItemSchema = z.object({
     .describe('Compress the archive during transfer (default: true). Set to false for repos of already-compressed files (JARs, ZIPs) to reduce CPU overhead.'),
 });
 
-/**
- * Complete Dockflow configuration schema
- */
 export const DockflowConfigSchema = z.object({
   project_name: z.string()
     .min(1, 'Project name is required')

@@ -1,20 +1,12 @@
-/**
- * Command Error Handling
- * 
- * Provides centralized error handling for CLI commands.
- * This module ensures consistent error messages and exit behavior
- * across all commands.
- */
+/** The CLI's error types, how an error is shown, and the one place a failing command exits. */
 
 import { printBlank, colors } from './output';
 import { closeAllConnections } from './ssh';
 import { loadConfig } from './config';
 
-/**
- * CLI Error codes for different failure scenarios
- */
+/** Doubles as the process exit code, grouped by tens. */
 export enum ErrorCode {
-  // General errors (1-9)
+  // General errors (1-9), and 130 for an interrupt
   UNKNOWN = 1,
   INTERRUPTED = 130,
   COMMAND_FAILED = 3,
@@ -57,9 +49,6 @@ export enum ErrorCode {
   BACKUP_CONFIG_MISSING = 73,
 }
 
-/**
- * Base CLI error class with structured information
- */
 export class CLIError extends Error {
   constructor(
     message: string,
@@ -71,9 +60,7 @@ export class CLIError extends Error {
     this.name = 'CLIError';
   }
 
-  /**
-   * Create error from unknown thrown value
-   */
+  /** A CLIError passes through unchanged; anything else is wrapped with `code`. */
   static from(error: unknown, code: ErrorCode = ErrorCode.UNKNOWN): CLIError {
     if (error instanceof CLIError) {
       return error;
@@ -85,9 +72,6 @@ export class CLIError extends Error {
   }
 }
 
-/**
- * Specific error types for common scenarios
- */
 export class ConfigError extends CLIError {
   constructor(message: string, suggestion?: string) {
     super(message, ErrorCode.CONFIG_INVALID, suggestion);
@@ -130,13 +114,7 @@ export class BackupError extends CLIError {
   }
 }
 
-/**
- * Format error for display
- *
- * Stack trace visibility:
- * - Unexpected errors (non-CLIError): always shown
- * - Expected errors (CLIError): shown only when DEBUG or CI is set
- */
+/** The cause and its stack are shown for unexpected errors, and for expected ones only when DEBUG or CI is set. */
 export function formatError(error: CLIError, isUnexpected = false): string {
   const lines: string[] = [];
 
@@ -159,10 +137,6 @@ export function formatError(error: CLIError, isUnexpected = false): string {
 }
 
 /**
- * Handle error and exit process
- * This is the ONLY place that should call process.exit for errors
- */
-/**
  * A command run inside a container exited non-zero. Not a CLIError: error codes double as exit
  * codes, so a container's 62 would read as INVALID_ARGUMENT. Its code is passed on silently.
  */
@@ -173,6 +147,7 @@ export class ExecExitError extends Error {
   }
 }
 
+/** Prints the error and exits with its code; the one place a failing command exits. */
 export function handleError(error: unknown): never {
   if (error instanceof ExecExitError) process.exit(error.exitCode);
   const isUnexpected = !(error instanceof CLIError);
@@ -185,27 +160,11 @@ export function handleError(error: unknown): never {
   process.exit(cliError.code);
 }
 
-/**
- * Type for async command action handlers
- */
 export type CommandAction<T extends unknown[] = unknown[]> = (...args: T) => Promise<void>;
 
 /**
- * Wrap a command action with error handling
- * 
- * This wrapper:
- * 1. Catches all errors thrown by the action
- * 2. Converts them to CLIError if needed
- * 3. Formats and displays the error
- * 4. Exits with appropriate code
- * 
- * Usage:
- * ```typescript
- * .action(withErrorHandler(async (env, options) => {
- *   // Command logic - just throw errors, don't call process.exit
- *   if (!valid) throw new ValidationError('Invalid input');
- * }))
- * ```
+ * Wraps a command action: whatever it throws goes through handleError, and the SSH connections
+ * are closed afterwards either way. The action throws instead of calling process.exit.
  */
 export function withErrorHandler<T extends unknown[]>(
   action: CommandAction<T>

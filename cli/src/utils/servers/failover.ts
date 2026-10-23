@@ -46,9 +46,9 @@ export interface ActiveManagerResult {
 }
 
 export interface FindActiveManagerOptions {
-  /** Print each manager's status */
+  /** print each manager's status */
   verbose?: boolean;
-  /** Prefer leader node (default: true) */
+  /** pick the leader over earlier managers that also answer (default: true) */
   preferLeader?: boolean;
 }
 

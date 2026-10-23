@@ -1,15 +1,9 @@
-/**
- * Schema validation for .dockflow/servers.yml
- * Uses Zod for runtime type checking and validation
- */
+/** Zod schema of servers.yml (and of the servers part of the flat dockflow.yml). */
 
 import { z } from 'zod';
 import { isIpOrCidr } from './config.schema';
 
-/**
- * Environment variables dictionary schema
- * Keys must be valid environment variable names (case-insensitive, converted to lowercase internally)
- */
+// templates see these names lowercased
 const ENV_VAR_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 
 /** zod reports a record key that fails its schema as "Invalid key in record": say the key's own rule. */
@@ -27,21 +21,12 @@ export const EnvVarsSchema = z.record(
   .transform((val) => val ?? {})
   .describe('Environment variables key-value pairs');
 
-/**
- * Server role schema
- */
 export const ServerRoleSchema = z.enum(['manager', 'worker']).describe(
   'Role in Docker Swarm cluster: manager (orchestrates) or worker (runs containers)'
 );
 
-/**
- * Tag validation - lowercase alphanumeric with hyphens
- */
 const TAG_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
 
-/**
- * Single server configuration schema
- */
 export const ServerConfigSchema = z.object({
   role: ServerRoleSchema.optional().default('manager').describe(
     'Server role in Swarm cluster (default: manager)'
@@ -83,9 +68,6 @@ export const ServerConfigSchema = z.object({
   ),
 });
 
-/**
- * Default SSH configuration schema
- */
 export const ServerDefaultsSchema = z.object({
   user: z.string()
     .min(1, 'Default user is required')
@@ -101,17 +83,12 @@ export const ServerDefaultsSchema = z.object({
     .describe('Default SSH port for all servers'),
 });
 
-/**
- * Environment variables by tag schema
- */
 export const EnvByTagSchema = z.record(
-  z.string(), // tag name or 'all'
+  z.string(), // a tag name or 'all'
   EnvVarsSchema
 ).optional().describe('Environment variables grouped by tag');
 
-/**
- * Base servers schema (without manager refine) — used for merging into RootConfigSchema
- */
+/** Without the manager-per-tag check, so RootConfigSchema can merge it. */
 export const ServersBaseSchema = z.object({
   servers: z.record(
     z.string()
@@ -139,6 +116,7 @@ export const ServersBaseSchema = z.object({
   ),
 });
 
+/** True when every tag in use has at least one manager. */
 export function validateManagerPerTag(config: { servers: Record<string, { role?: string; tags: string[] }> }): boolean {
   const tagManagers: Record<string, boolean> = {};
   for (const server of Object.values(config.servers)) {
@@ -154,9 +132,6 @@ export function validateManagerPerTag(config: { servers: Record<string, { role?:
   return true;
 }
 
-/**
- * Complete servers.yml configuration schema
- */
 export const ServersConfigSchema = ServersBaseSchema.refine(
   validateManagerPerTag,
   { message: 'Each environment tag must have at least one manager server' }
