@@ -198,8 +198,8 @@ async function firstEntryType(archive: Readable): Promise<FirstEntry> {
 }
 
 /**
- * Destination probe that needs no shell in the image: archive the path with the backend's
- * `copyOut`, read the first header, destroy the stream. A missing path (or one below a file)
+ * Destination probe that needs no shell in the image: archive the path with
+ * `SwarmContainers.copyOut`, read the first header, destroy the stream. A missing path (or one below a file)
  * probes its parent, a symbolic link is followed through `<path>/.`.
  */
 export async function probeContainerPath(

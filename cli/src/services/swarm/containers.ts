@@ -1,9 +1,6 @@
 /**
- * Swarm container backend.
- *
- * Implements SwarmContainers for Docker Swarm: locates the container for a
- * given service across all Swarm nodes, then runs `docker exec`/`docker cp`
- * on the right node.
+ * The containers of a stack's services: located across all nodes, then reached with
+ * `docker exec`, `docker cp` and `docker logs` on the node that runs them.
  */
 
 import { PassThrough, type Readable } from 'stream';

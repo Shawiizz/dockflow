@@ -1,7 +1,5 @@
 /**
- * Swarm proxy backend.
- *
- * Deploys Traefik as a Swarm stack when `config.proxy.enabled` is true.
+ * The Traefik proxy, deployed as a Swarm stack when `config.proxy.enabled` is true.
  * Later deploys leave it alone unless its configuration changed: the hash of the
  * generated stack is kept as a label on the service and compared on each deploy.
  */
