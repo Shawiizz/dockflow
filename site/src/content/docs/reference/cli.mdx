@@ -1,0 +1,498 @@
+---
+title: CLI
+description: Every dockflow command, its arguments and its options, as the binary defines them.
+sidebar:
+  order: 3
+---
+
+import { Aside, Badge } from '@astrojs/starlight/components';
+
+This page lists every command of `dockflow` v4.0.0-alpha.2, with the options its `--help` prints. Every command also accepts `-h, --help`. Exit codes are listed on the [exit codes](/reference/exit-codes/) page.
+
+## Conventions
+
+- **`<env>`** names an environment of [`dockflow.yml`](/reference/dockflow-yml/). It can be left out when the file has a single environment, and shortened to a unique prefix (`prod` for `production`); an ambiguous prefix lists the candidates. In CI, `deploy` without `<env>` takes the environment from the tag: `1.2.0` selects the environment whose `ci.tag_suffix` is empty (`production` by default), `1.2.0-staging` the one whose suffix is `staging`.
+- **The project directory** is the current directory, or `-C <path>`.
+- **The server** of an environment comes from `--connection`, then the `<ENV>_CONNECTION` secret, then the environment's [`server`](/reference/dockflow-yml/#server) block.
+- **Prompts.** `deploy` shows its plan and asks for confirmation, and `destroy` asks before removing anything, when they run on a terminal. With `--yes`, `--json` or without a terminal, they never prompt. Declining exits with code 130 and changes nothing.
+- **Output.** Commands that change a server print [events](/reference/events/); with `--json`, as JSON Lines. Read commands print a table, or one JSON document with `--json`. Secret values are masked in every output, except the output of `exec`, `run` and `ssh`, which is the command's own.
+- **Ctrl+C** cancels a command, except while the agent runs on the server: the first one asks the agent to stop and roll back, a second one detaches and leaves the run going. [`dockflow attach`](#attach) follows it again.
+
+## Global options
+
+| Option | Default | Description |
+|---|---|---|
+| `--connection string` | none | Use this connection string instead of the environment's secret. |
+| `-C, --dir string` | `"."` | The project directory. |
+| `--json` | `false` | Machine-readable output. |
+| `--no-color` | `false` | No colours. The `NO_COLOR` environment variable has the same effect. |
+| `-v, --verbose` | `false` | Show debug events. |
+| `-y, --yes` | `false` | Never prompt. |
+| `-h, --help` | | Help for any command. |
+
+## validate
+
+```sh
+dockflow validate [<env>] [flags]
+```
+
+Check everything that can be checked without a server: `dockflow.yml`, the Compose files, the `x-dockflow` settings and every variable they use, for one environment. Warnings, such as ignored Compose keys, are printed first. It exits with code 0 when the environment is valid and 3 when it is not. It does not contact the server and does not render templates or build images.
+
+No options besides the global ones.
+
+## config
+
+### config show
+
+```sh
+dockflow config show [<env>] [flags]
+```
+
+Print the resolved configuration of an environment as JSON, with secrets masked: the app, the environment, the version label, `releases.keep`, `on_failure`, where each secret comes from, and the services, networks and volumes as Dockflow will deploy them. The output is JSON with or without `--json`. It does not contact the server.
+
+No options besides the global ones.
+
+## list
+
+### list envs
+
+```sh
+dockflow list envs [flags]
+```
+
+The environments of `dockflow.yml`, with the CI tags that select each one (`x.y.z` or `x.y.z-<suffix>`).
+
+No options besides the global ones.
+
+### list services
+
+```sh
+dockflow list services [<env>] [flags]
+```
+
+The services of an environment, as Dockflow will deploy them: image, replicas, rollout strategy and routes. It does not contact the server.
+
+No options besides the global ones.
+
+### list images
+
+```sh
+dockflow list images [<env>] [flags]
+```
+
+The app's images on the server; with `-a`, every image of the server.
+
+| Option | Default | Description |
+|---|---|---|
+| `-a, --all` | `false` | Every image of the server. |
+
+## build
+
+```sh
+dockflow build [<env>] [flags]
+```
+
+Build the images of the services that have `build`, without deploying. Without `--push`, images are built on this machine for `--platform` and the result is discarded: it checks that they build, and runs no hook. With `--push`, they are built for the server's architecture and pushed where a deploy would push them, with the `before_build` and `after_build` hooks around the build. With `build.builder: remote`, the build runs on the server, and `--push` is implied. A failed build exits with code 7.
+
+| Option | Default | Description |
+|---|---|---|
+| `--only strings` | all | Build these services only. |
+| `--platform string` | `linux/<this machine's architecture>` | The platform to build for, without `--push`. |
+| `--push` | `false` | Also push the images to the registry the environment deploys from. |
+| `--skip-hooks` | `false` | Do not run the `before_build` and `after_build` hooks. |
+
+## plan
+
+```sh
+dockflow plan [<env>] [flags]
+```
+
+Print what a deploy would change, without changing any container. The plan is computed on the server, from what really runs there. To compare images by content, `plan` builds and pushes the images first, as a deploy would; with `--no-build`, built services show as changed. A plan with nothing to do exits with code 0.
+
+| Option | Default | Description |
+|---|---|---|
+| `--no-build` | `false` | Plan without building: built services show as changed. |
+| `--render` | `false` | Also print the service specs that would be sent. |
+
+## deploy
+
+```sh
+dockflow deploy [<env>] [flags]
+```
+
+Plan, confirm and apply. In order: the `before_build` hooks, the build and push of images, the `after_build` hooks, the `before_deploy` hooks, then the plan. On a terminal, the plan is shown for confirmation, and the agent applies exactly that plan. On the server, the agent applies the uploads, the jobs, the rollouts, the switch of traffic and the checks. The `after_deploy` hooks run once the release is live. If the run fails, the previous release is restored (unless [`on_failure`](/reference/dockflow-yml/#on_failure) or `--no-rollback` say otherwise) and the `after_failure` hooks run. See [how it works](/concepts/how-it-works/) and [releases and rollbacks](/concepts/releases-and-rollbacks/).
+
+Exit codes: 5 when another run holds the lock, 7 when the build fails, 8 when the run failed and was rolled back, 9 when it failed and was left in place, 11 when a fatal `before_*` hook failed. See [exit codes](/reference/exit-codes/).
+
+| Option | Default | Description |
+|---|---|---|
+| `--force` | `false` | Deploy despite a manual lock. |
+| `--no-rollback` | `false` | Leave a failed deploy in place instead of rolling back. It applies to failed HTTP checks; a failed rollout always rolls back. |
+| `--version string` | the git commit | The version label of the release. In CI, a tag's version is used. |
+| `--wait-lock duration` | `0` | Wait up to this long for another run's lock instead of failing, like `--wait-lock 10m`. For CI runs that may overlap. |
+
+## rollback
+
+```sh
+dockflow rollback [<env>] [flags]
+```
+
+Re-apply a recorded release, by default the previous one. The rollback is a new release in the history, applied with the same rollouts and checks as a deploy. Jobs and hooks do not run. It takes the environment's lock.
+
+| Option | Default | Description |
+|---|---|---|
+| `--to string` | the previous release | The release to restore, by its number (see `dockflow releases`). |
+
+## attach
+
+```sh
+dockflow attach [<env>] [<run-id>] [flags]
+```
+
+Follow a run in progress, or replay a finished one. Without `<run-id>`, the environment's last run. It exits with the run's exit code.
+
+No options besides the global ones.
+
+## cancel
+
+```sh
+dockflow cancel [<env>] [flags]
+```
+
+Ask the running agent to stop and roll back, and follow it until it finishes. It fails with code 2 when no run of the environment is in progress.
+
+No options besides the global ones.
+
+## status
+
+```sh
+dockflow status [<env>] [flags]
+```
+
+The current release (number, version, date, author), the services with their running and desired containers, the release each one serves from, its strategy and routes, a degraded flag and the manual lock. Without `<env>`, every environment of `dockflow.yml`.
+
+No options besides the global ones.
+
+## releases
+
+```sh
+dockflow releases [<env>] [flags]
+```
+
+The release history of an environment: number, version, status, date and author, with the current release marked. Rollbacks, restarts, stops and scales appear as releases too.
+
+| Option | Default | Description |
+|---|---|---|
+| `-n, --count int` | `0`, all kept releases | Show the n most recent releases. |
+| `--stats` | `false` | Add durations and the success rate. |
+
+## version
+
+```sh
+dockflow version [<env>] [flags]
+```
+
+The deployed version of an environment; without `<env>`, the CLI's own version. An environment that was never deployed exits with code 6.
+
+No options besides the global ones.
+
+## ps
+
+```sh
+dockflow ps [<env>] [flags]
+```
+
+The app's containers: name, service, release, state and health.
+
+| Option | Default | Description |
+|---|---|---|
+| `-a, --all` | `false` | Include stopped containers and one-off ones. |
+
+## details
+
+```sh
+dockflow details [<env>] [flags]
+```
+
+Every service of the current release: strategy, replicas, image, routes, ports, networks, mounts, resources and restart policy, and the names of its environment variables (never their values).
+
+No options besides the global ones.
+
+## diagnose
+
+```sh
+dockflow diagnose [<env>] [flags]
+```
+
+Why containers don't run: containers that exited, crash loops, failed health checks with their last output, OOM kills, ports in use, services missing containers, and low disk space. It exits with code 9 when it finds a problem, 0 otherwise.
+
+No options besides the global ones.
+
+## logs
+
+```sh
+dockflow logs [<env>] [<service>] [flags]
+```
+
+The logs of the app's serving containers, or of one service, with secrets masked. Each line is prefixed with its container when several are shown.
+
+| Option | Default | Description |
+|---|---|---|
+| `--all` | `false` | Include the previous release's and stopped containers. |
+| `-f, --follow` | `false` | Keep following the logs. |
+| `-n, --lines string` | `100`, `20` with `-f` | Lines per container from the end, or `all`. |
+| `--no-prefix` | `false` | No container prefix on each line. |
+| `--pick` | `false` | Choose one container. |
+| `--since string` | none | Only logs since a timestamp (`2026-10-26T14:00:00Z`) or a duration (`10m`). |
+| `--timestamps` | `false` | Show timestamps. |
+
+## exec
+
+```sh
+dockflow exec [<env>] <service> [-- <command>…] [flags]
+```
+
+Run a command in a running container of a service; without a command, a shell (`bash` when the image has it, `sh` otherwise). It uses the first running container unless `--pick` is given. It exits with the command's own exit code.
+
+| Option | Default | Description |
+|---|---|---|
+| `-e, --env stringArray` | none | Set an environment variable, `K=V`. Repeatable. |
+| `-T, --no-tty` | `false` | No terminal, for scripts. |
+| `--pick` | `false` | Choose the container, when the service has several. |
+| `--sh` | `false` | Open `sh`, not `bash`. |
+| `-u, --user string` | the container's user | Run as this user. |
+| `-w, --workdir string` | the container's directory | Run in this directory. |
+
+## run
+
+```sh
+dockflow run [<env>] <service> [-e K=V]… -- <command>… [flags]
+```
+
+Start a one-off container with the service's spec and the image it currently runs, for a console or a script, and remove it when the command ends. It publishes no ports, has no network aliases, and is never restarted. It exits with the command's own exit code.
+
+| Option | Default | Description |
+|---|---|---|
+| `-e, --env stringArray` | none | Set an environment variable, `K=V`. Repeatable. |
+
+## cp
+
+```sh
+dockflow cp [<env>] <src> <dest> [flags]
+```
+
+Copy files or directories between this machine and a container, either way. The container side is written `service:/path`; the other side is a local path.
+
+```sh
+dockflow cp production web:/app/storage/logs ./logs
+dockflow cp production ./seed.sql postgres:/tmp/
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--pick` | `false` | Choose the container, when the service has several. |
+
+## ssh
+
+```sh
+dockflow ssh [<env>] [-- <command>…] [flags]
+```
+
+Open a shell on the server, or run a command there, with the environment's connection. It exits with the command's own exit code.
+
+No options besides the global ones.
+
+## restart
+
+```sh
+dockflow restart [<env>] [<service>…] [flags]
+```
+
+Restart services with their rollout strategy, so routed services restart without downtime. Without a service, every service except jobs. It restarts the current release as recorded; it does not read your Compose files. It takes the environment's lock. The first argument is taken as the environment only when it is an environment's exact name.
+
+No options besides the global ones.
+
+## stop
+
+```sh
+dockflow stop [<env>] [<service>…] [flags]
+```
+
+Stop services until the next `deploy` or `restart`. Without a service, every service except jobs. It takes the environment's lock. The first argument is taken as the environment only when it is an environment's exact name.
+
+No options besides the global ones.
+
+## scale
+
+```sh
+dockflow scale [<env>] <service> <replicas> [flags]
+```
+
+Change a service's number of containers until the next deploy, which restores the count of the Compose file. `<replicas>` is at least 1; `dockflow stop` stops a service. A stateful service, or one with `container_name`, cannot run more than once. It takes the environment's lock.
+
+No options besides the global ones.
+
+## destroy
+
+```sh
+dockflow destroy [<env>] [flags]
+```
+
+Remove an environment from the server: its containers, routes, networks and state. With `--only`, remove these services only; a remaining service that depends on one of them is an error. It asks for confirmation on a terminal. Volumes are kept unless `--volumes` is given.
+
+| Option | Default | Description |
+|---|---|---|
+| `--only strings` | none | Destroy these services only. |
+| `--volumes` | `false` | Also delete the environment's volumes and their data. Only with the whole environment. On a terminal, you type the environment's name to confirm; without a terminal, it needs `--yes`. |
+
+<Aside type="danger">
+`dockflow destroy --volumes` deletes the data of every volume of the environment. There is no undo.
+</Aside>
+
+## prune
+
+```sh
+dockflow prune [<env>] [flags]
+```
+
+Without a kind, removes stopped containers, untagged images and networks that Dockflow does not manage, and runs the registry's garbage collection. Images of the releases in retention and app volumes are always kept; `--volumes` removes unused anonymous volumes only. See the [cleanup guide](/guides/cleanup/).
+
+| Option | Default | Description |
+|---|---|---|
+| `-a, --all` | `false` | Every unused image, not only untagged ones. |
+| `--containers` | `false` | Stopped containers. |
+| `--images` | `false` | Untagged images. |
+| `--networks` | `false` | Unused networks. |
+| `--registry` | `false` | The layers of the server's registry that no kept release uses; run it outside deploys. |
+| `--volumes` | `false` | Unused anonymous volumes. |
+
+## lock
+
+```sh
+dockflow lock status|acquire|release [<env>] [flags]
+```
+
+Hold an environment's lock by hand, for a maintenance window. `acquire` sets a manual lock, which never expires: until `release`, every command that takes the lock (`deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`) is refused with exit code 5, except `deploy --force`. `acquire` fails with code 5 when a manual lock is already set, unless `--force` is given. `status` shows the manual lock, who set it, when and why.
+
+| Option | Default | Description |
+|---|---|---|
+| `--force` | `false` | Take over someone else's manual lock. |
+| `-m, --message string` | none | Why the environment is locked. |
+
+## server
+
+### server init
+
+```sh
+dockflow server init [<env>] [flags]
+```
+
+Installs or updates the switch and the server-local registry on the server of an environment, reached as for a deploy. Provisioning a bare server comes in a later version. The server must already run Docker Engine 27 or later and accept SSH from a user that can use Docker. Running it again applies the new options, and the switch keeps every app's routes. See [the switch and edges](/concepts/switch-and-edges/).
+
+| Edge | Effect |
+|---|---|
+| `builtin` | The switch listens on ports 80 and 443 and obtains certificates. |
+| `external` | The switch listens on `--switch-listen` (`127.0.0.1:8080`) in plain HTTP, behind your own proxy, which terminates TLS. See [behind nginx](/guides/behind-nginx/). |
+| `none` | No switch. Apps publish their own ports; routes are refused. |
+
+| Option | Default | Description |
+|---|---|---|
+| `--edge string` | `"builtin"` | How traffic reaches the switch: `builtin`, `external` or `none`. |
+| `--no-registry` | `false` | No server-local registry: every built image goes to `registry.url`. |
+| `--registry-image string` | `registry:3`, pinned by digest | The image of the server-local registry. |
+| `--switch-image string` | `caddy:2`, pinned by digest | The Caddy image of the switch. |
+| `--switch-listen string` | `127.0.0.1:8080` | With `--edge external`: the address the switch listens on. |
+| `--trusted-proxy strings` | private ranges | With `--edge external`: CIDRs whose `X-Forwarded-For` is trusted. |
+
+Full provisioning (installing Docker, hardening, the deploy user), `server cloud-init`, `server check`, `server status`, `server edge`, `server upgrade`, `server network` and `server plugin` are <Badge text="Coming in M3" variant="caution" />, as is the `cloudflare` edge.
+
+### server connection
+
+```sh
+dockflow server connection [<user@host[:port]>] [flags]
+```
+
+Connects to the server, verifying its host key against `--host-key` or `known_hosts`, checks that the user can use Docker, and prints the connection string: the server, its host key and the private key. Without a target, uses the server of `--env`, as a deploy would. Store the result in the `<ENV>_CONNECTION` secret of your CI. The target's user defaults to `dockflow` and its port to 22.
+
+```sh
+dockflow server connection deploy@203.0.113.10 -k ~/.ssh/dockflow_ed25519
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--env string` | none | Without a target: the environment whose server to use. |
+| `--host-key string` | none | The server's host key fingerprint (`SHA256:…`), when `known_hosts` does not have it. |
+| `-k, --key string` | `DOCKFLOW_SSH_KEY` | The private key file the connection string holds. |
+| `--name string` | `main` | The server's name. |
+
+<Aside type="caution">
+The connection string holds the private key. Store it as a CI secret, never in the repository.
+</Aside>
+
+## completion
+
+```sh
+dockflow completion [command]
+```
+
+Generate the autocompletion script for dockflow for the specified shell: `bash`, `fish`, `powershell` or `zsh`. Each subcommand prints how to load the script in its `--help`.
+
+### completion bash
+
+```sh
+dockflow completion bash
+```
+
+Requires the `bash-completion` package. Load it in the current shell with `source <(dockflow completion bash)`.
+
+| Option | Default | Description |
+|---|---|---|
+| `--no-descriptions` | `false` | Disable completion descriptions. |
+
+### completion fish
+
+```sh
+dockflow completion fish [flags]
+```
+
+Load it in the current shell with `dockflow completion fish | source`.
+
+| Option | Default | Description |
+|---|---|---|
+| `--no-descriptions` | `false` | Disable completion descriptions. |
+
+### completion powershell
+
+```sh
+dockflow completion powershell [flags]
+```
+
+Load it in the current shell with `dockflow completion powershell | Out-String | Invoke-Expression`.
+
+| Option | Default | Description |
+|---|---|---|
+| `--no-descriptions` | `false` | Disable completion descriptions. |
+
+### completion zsh
+
+```sh
+dockflow completion zsh [flags]
+```
+
+Load it in the current shell with `source <(dockflow completion zsh)`. Completion must be enabled in zsh (`autoload -U compinit; compinit`).
+
+| Option | Default | Description |
+|---|---|---|
+| `--no-descriptions` | `false` | Disable completion descriptions. |
+
+## help
+
+```sh
+dockflow help [command] [flags]
+```
+
+Help about any command, the same as `dockflow <command> --help`.
+
+## Not available yet
+
+These commands are part of the design but not of this version: `init`, `secrets` and `plugins list` <Badge text="Coming in M3" variant="caution" />, `backup` <Badge text="Coming in M4" variant="caution" />, `ui` and `mcp` <Badge text="Coming in M5" variant="caution" />. See the [roadmap](/project/roadmap/).

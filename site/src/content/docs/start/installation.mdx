@@ -1,0 +1,183 @@
+---
+title: Installation
+description: Install the dockflow CLI on Linux, macOS or Windows, check it, enable shell completion, and prepare a server that meets the requirements.
+sidebar:
+  order: 2
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Dockflow is one binary, `dockflow`, that you install on the machine you deploy from: your laptop or a CI runner. Nothing is installed on the server's host: the CLI brings what it needs there as containers.
+
+## Install the CLI
+
+<Tabs>
+<TabItem label="Linux and macOS">
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh
+```
+
+This installs the newest release. To install a given version, pass `--version`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.2
+```
+
+</TabItem>
+<TabItem label="Windows">
+
+Download `dockflow-windows-amd64.exe` from the [releases page](https://github.com/Shawiizz/dockflow/releases), rename it `dockflow.exe`, and put it in a folder on your `PATH`. Check it against the release's `SHA256SUMS` file:
+
+```powershell
+Get-FileHash dockflow.exe -Algorithm SHA256
+```
+
+The hash must match the line of `dockflow-windows-amd64.exe` in `SHA256SUMS`.
+
+</TabItem>
+<TabItem label="From source">
+
+Building needs Go 1.27 and `make`:
+
+```sh
+git clone https://github.com/Shawiizz/dockflow.git
+cd dockflow
+make build
+```
+
+The binary is `./dockflow`. It is a development build: `dockflow version` prints `dockflow dev`. See [the agent binary](#the-agent-binary) if you deploy from a machine that is not Linux.
+
+</TabItem>
+</Tabs>
+
+### What the installer does
+
+`install.sh` detects your system (Linux or macOS, `amd64` or `arm64`), then:
+
+1. downloads `SHA256SUMS` and the binary `dockflow-<os>-<arch>` from the GitHub release;
+2. when [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) is installed, verifies the Sigstore signature of `SHA256SUMS`: it must have been signed by the repository's release workflow. Without cosign, it says so and checks the checksum only;
+3. checks the binary against `SHA256SUMS`, and stops if it does not match;
+4. installs it as `dockflow` in `/usr/local/bin` when that directory is writable, and in `~/.local/bin` otherwise. If the directory is not on your `PATH`, it tells you. In GitHub Actions, it adds the directory to `GITHUB_PATH`.
+
+It needs `curl` or `wget`, and `sha256sum` or `shasum`.
+
+| Option | Environment variable | Default | Effect |
+|---|---|---|---|
+| `--version <tag>` | `DOCKFLOW_VERSION` | The newest release | The release to install, such as `v4.0.0-alpha.2` |
+| `--dir <path>` | `DOCKFLOW_INSTALL_DIR` | `/usr/local/bin`, or `~/.local/bin` | Where to install `dockflow` |
+| – | `DOCKFLOW_RELEASES_URL` | `https://github.com/Shawiizz/dockflow/releases/download` | Where releases are downloaded from: a mirror holding `<version>/<file>` |
+
+For example, to install into `~/bin` without root:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --dir ~/bin
+```
+
+<Aside type="tip">
+In CI, pin the version with `--version` so that a new release does not change your deploys unannounced. The [CI guide](/guides/ci/) has complete workflows.
+</Aside>
+
+## Check the installation
+
+```sh
+dockflow version
+```
+
+```text
+dockflow v4.0.0-alpha.2
+```
+
+With an environment, `dockflow version production` prints the version deployed there instead. `dockflow --help` lists the commands, and `dockflow <command> --help` shows the options of one.
+
+## Shell completion
+
+`dockflow completion <shell>` prints a completion script for `bash`, `zsh`, `fish` or `powershell`.
+
+<Tabs>
+<TabItem label="bash">
+
+Needs the `bash-completion` package.
+
+```sh
+# current shell
+source <(dockflow completion bash)
+# every new shell, on Linux
+dockflow completion bash > /etc/bash_completion.d/dockflow
+# every new shell, on macOS with Homebrew
+dockflow completion bash > $(brew --prefix)/etc/bash_completion.d/dockflow
+```
+
+</TabItem>
+<TabItem label="zsh">
+
+```sh
+# once, if completion is not enabled yet
+echo "autoload -U compinit; compinit" >> ~/.zshrc
+# every new shell, on Linux
+dockflow completion zsh > "${fpath[1]}/_dockflow"
+# every new shell, on macOS with Homebrew
+dockflow completion zsh > $(brew --prefix)/share/zsh/site-functions/_dockflow
+```
+
+</TabItem>
+<TabItem label="fish">
+
+```sh
+dockflow completion fish > ~/.config/fish/completions/dockflow.fish
+```
+
+</TabItem>
+<TabItem label="PowerShell">
+
+```powershell
+dockflow completion powershell | Out-String | Invoke-Expression
+```
+
+Add that line to your PowerShell profile to load it in every session.
+
+</TabItem>
+</Tabs>
+
+Start a new shell for the change to take effect.
+
+## The agent binary
+
+Each deploy runs the `dockflow` binary itself on the server, as a short-lived agent container (see [How it works](/concepts/how-it-works/)). The server needs the Linux binary of exactly your CLI's version, for its architecture. The CLI finds it this way:
+
+1. if `DOCKFLOW_AGENT_BINARY` is set, it uses the file at that path;
+2. if the CLI is itself the Linux binary for the server's architecture, it sends itself;
+3. otherwise (macOS, Windows, or a Linux machine of another architecture), it downloads `dockflow-linux-<arch>` from the release of its own version, checks it against the release's `SHA256SUMS`, and caches it in your user cache directory, under `dockflow/<version>/` (`~/.cache/dockflow/` on Linux). `DOCKFLOW_RELEASES_URL` replaces the download URL here too.
+
+The binary is sent to the server only when the server does not already have the agent image of that version, so this happens once per version and per server.
+
+<Aside type="caution">
+A development build (`make build`) has no release to download from. To deploy from macOS or Windows with one, build the Linux binary too and point `DOCKFLOW_AGENT_BINARY` at it:
+
+```sh
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dockflow-linux-amd64 ./cmd/dockflow
+export DOCKFLOW_AGENT_BINARY=$PWD/dockflow-linux-amd64
+```
+</Aside>
+
+## Server requirements
+
+Dockflow does not provision servers yet: `dockflow server init` installs its own containers on a server that already has Docker and an SSH user. The server needs:
+
+| Requirement | Why |
+|---|---|
+| Linux on `amd64` or `arm64` | The agent is a Linux binary for one of these architectures |
+| Docker Engine 27 or later | The CLI checks the version when it connects, and refuses older engines (exit code 4) |
+| An SSH user that can use Docker | Usually a user in the `docker` group. Dockflow reaches the Docker socket through SSH stream-local forwarding, which OpenSSH allows by default (`AllowStreamLocalForwarding`); when the server refuses it, it falls back to `docker system dial-stdio`, which needs the `docker` CLI on the server |
+| A known SSH host key | Every connection verifies it: pinned in the configuration or the connection string, or present in your `~/.ssh/known_hosts`. Nothing is trusted on first use |
+| Ports 80 and 443 free, for the `builtin` edge | The switch publishes them and obtains TLS certificates. With the `external` edge, behind your own proxy, the switch listens on `127.0.0.1:8080` instead. See [The switch and edges](/concepts/switch-and-edges/) |
+| Port 5959 free on loopback | The server-local registry listens on `127.0.0.1:5959`, unless you use `--no-registry` |
+| Access to Docker Hub | To pull the switch (`caddy:2`) and registry (`registry:3`) images, and the public images of your apps |
+
+<Aside type="caution">
+A user that can use Docker is root on the server: anyone holding its SSH key can start a privileged container. Use a dedicated user and key per environment. See [Security](/project/security/).
+</Aside>
+
+On the machine you deploy from, building images needs Docker with buildx, or Podman. Apps that only use public images need neither. See [Building images](/guides/building-images/).
+
+Next: the [Quickstart](/start/quickstart/) takes you from a server with Docker to a first deploy.

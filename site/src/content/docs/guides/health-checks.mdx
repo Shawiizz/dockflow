@@ -1,0 +1,196 @@
+---
+title: Health checks
+description: 'What decides that a new release is healthy: Docker healthchecks, the grace period, internal HTTP checks before the switch, public checks after it, and on_failure.'
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A deploy moves traffic to new containers only once they are healthy, and keeps the old ones until the new release has passed every check. Three kinds of checks gate a rollout: the container's own healthcheck, an optional HTTP check that the agent runs from inside the app's network before the switch, and optional checks of your public URLs after it.
+
+```yaml
+# compose.yml
+services:
+  web:
+    build: .
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    x-dockflow:
+      routes:
+        - domains: [shop.example.com]
+          port: 3000
+      health:
+        http:
+          path: /healthz
+          status: 200-299
+          retries: 5
+          interval: 2s
+```
+
+```yaml
+# dockflow.yml
+version: 1
+app: shop
+health:
+  endpoints:
+    - name: home
+      url: https://shop.example.com/
+environments:
+  production: {}
+```
+
+## The order of a rollout
+
+For each service the deploy changes:
+
+1. The new containers start, next to the old ones for the `switch` and `start-first` [strategies](/concepts/rollouts/).
+2. Dockflow waits until each new container is **healthy**: its healthcheck passes, or, without one, it has been running for the grace period.
+3. The **internal HTTP check**, if the service declares one, runs against each new container.
+4. Traffic moves to the new containers (`switch`), or the old ones are stopped (`start-first`).
+
+Once every service is through, and after the `after` [jobs](/guides/jobs/):
+
+5. After `health.startup_delay`, the **public checks** of `health.endpoints` run against your URLs.
+6. The old containers are drained and stopped, and the release is committed.
+
+A failure at any step before the commit puts the previous release back: for a routed service, the switch points at the old containers again, which takes about a second. What a failed HTTP check does can be changed with [`on_failure`](#on_failure).
+
+## The container healthcheck
+
+The Docker healthcheck is the primary signal: a `healthcheck:` in the Compose file, or a `HEALTHCHECK` in the image. Dockflow waits until Docker reports the container `healthy`, and fails the rollout as soon as it reports `unhealthy`.
+
+The rollout of a service also fails when a new container:
+
+- exits;
+- restarts three times while Dockflow waits (a crash loop);
+- is not healthy within the timeout.
+
+The timeout is computed from the Compose healthcheck: `start_period + (interval + timeout) × (retries + 1) + 30s`, at least 60 seconds, with Docker's defaults (30 s, 30 s, 3 retries) for what you leave out. Set `deploy.timeout` on the environment to replace it for every service:
+
+```yaml
+# dockflow.yml
+version: 1
+app: shop
+environments:
+  production:
+    deploy:
+      timeout: 10m
+```
+
+<Aside type="caution">
+The computed timeout only reads the Compose `healthcheck:`. A service that relies on a `HEALTHCHECK` from its Dockerfile gets the timeout of a service without a healthcheck, the grace period plus 60 seconds. If it starts slowly, copy its healthcheck into the Compose file or set `deploy.timeout`.
+</Aside>
+
+## Services without a healthcheck: `grace`
+
+A container without a healthcheck counts as healthy once it has been running for `x-dockflow.health.grace` (default `10s`). If it restarts meanwhile, the count starts again.
+
+```yaml
+# compose.yml
+services:
+  worker:
+    build: .
+    command: ["node", "worker.js"]
+    x-dockflow:
+      health:
+        grace: 20s
+```
+
+For a routed service, running is a weak signal: the process may not answer yet. The plan warns about a routed service with neither a healthcheck nor an internal HTTP check.
+
+## Internal HTTP check: `x-dockflow.health.http`
+
+An internal check sends `GET` requests to each new container, by its name, from the agent, which joins the app's network for the run. It runs once the containers are healthy and before traffic moves to them, so it can test what a container healthcheck cannot: an image without `curl` or `wget`, or a readiness endpoint you don't want Docker to call every few seconds.
+
+```yaml
+# compose.yml
+services:
+  api:
+    image: ghcr.io/acme/api:1.4.2
+    x-dockflow:
+      health:
+        http:
+          path: /ready
+          port: 8080
+          status: "204"
+          timeout: 2s
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `path` | string | `/` | The path requested. Must start with `/` |
+| `port` | integer | the first route's `port` | The container port. Required for a service without routes |
+| `status` | number or string | `200-399` | The accepted status: one status such as `204`, or a range such as `"200-299"` |
+| `timeout` | duration | `5s` | The timeout of one request |
+| `retries` | integer | `10` | How many requests before the check fails |
+| `interval` | duration | `3s` | The time between two requests |
+
+Redirects are not followed: a `301` is a status like any other, accepted by the default range. A service must be on one of the app's networks for the check to reach it; a service with `network_mode: host` skips the check, with a warning.
+
+## Public checks: `health.endpoints`
+
+Public checks request full URLs after the switch, through DNS, your edge and TLS, the way your users reach the app. They run from the agent, on the server.
+
+```yaml
+# dockflow.yml
+version: 1
+app: shop
+health:
+  startup_delay: 10s
+  endpoints:
+    - name: home
+      url: https://shop.example.com/
+    - name: api
+      url: https://shop.example.com/api/status
+      method: HEAD
+      expected_status: 204
+      timeout: 10s
+      retries: 5
+      retry_delay: 3s
+environments:
+  production: {}
+  staging:
+    health:
+      endpoints:
+        - url: https://staging.shop.example.com/
+          validate_certs: false
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `startup_delay` | duration | `0` | Time to wait after the switch, before the first public check |
+| `endpoints[].name` | string | the URL's host and path | The name shown in events and errors |
+| `endpoints[].url` | string | required | An `http` or `https` URL. Interpolated, so `https://${DOMAIN}/` works |
+| `endpoints[].method` | string | `GET` | The HTTP method |
+| `endpoints[].expected_status` | integer | `200` | The one status that passes |
+| `endpoints[].timeout` | duration | `30s` | The timeout of one request |
+| `endpoints[].retries` | integer | `3` | How many requests before the check fails |
+| `endpoints[].retry_delay` | duration | `5s` | The time between two requests |
+| `endpoints[].validate_certs` | boolean | `true` | `false` accepts any certificate, for a staging server without a valid one |
+
+The checks run in order, and the first that fails stops the run. Redirects are not followed: an `http://` URL on a domain that redirects to HTTPS answers `301` or `308`, not `200`. The old containers are still running during these checks, so a failure switches back to them at once.
+
+`health` can be set per environment; there, it replaces the top-level block as a whole, as `staging` does above.
+
+## `on_failure`
+
+`on_failure` in `dockflow.yml`, top-level or per environment, decides what a failed **HTTP check**, internal or public, does:
+
+| Value | Effect | Exit code |
+|---|---|---|
+| `rollback` (default) | The previous release is put back | 8 |
+| `fail` | The new release stays in place, marked failed, and the environment is marked degraded until a deploy succeeds | 9 |
+| `ignore` | The failure becomes a warning, and the release goes live | 0 |
+
+`dockflow deploy --no-rollback` does what `fail` does, for one run, to look at a failing release before it goes away.
+
+A failure of the rollout itself, such as a container that exits, crash-loops, turns `unhealthy` or times out, always rolls back, whatever `on_failure` says: a half-switched service is never a useful state.
+
+## Seeing the checks
+
+Each passing check emits a `health.check` event with the URL and the status. Failed attempts are `debug` events: run with `--verbose` to see every attempt as it happens. When a run fails, the error names the check, the URL, the last answer and the number of attempts. `dockflow diagnose` explains why containers don't stay up: exit codes, crash loops, failed healthchecks with their last output, out-of-memory kills. See [Events](/reference/events/) and [Exit codes](/reference/exit-codes/).

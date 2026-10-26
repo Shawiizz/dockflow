@@ -1,0 +1,110 @@
+---
+// How a deploy travels: from the machine running the CLI, over SSH, to the server.
+const steps = [
+	{
+		n: '1',
+		title: 'Build & ship',
+		where: 'your laptop or CI',
+		text: 'Images are built with buildx bake (or Podman, or on the server) and pushed through an SSH tunnel. Only the layers the server lacks travel.',
+	},
+	{
+		n: '2',
+		title: 'Plan',
+		where: 'agent on the server',
+		text: 'A short-lived agent compares your Compose file with what runs, and lists every change before making one.',
+	},
+	{
+		n: '3',
+		title: 'Roll out',
+		where: 'Docker Engine API',
+		text: 'New containers start next to the old ones and must pass their health checks. Nothing else is touched.',
+	},
+	{
+		n: '4',
+		title: 'Switch',
+		where: 'Caddy, managed by Dockflow',
+		text: 'Traffic moves to the new containers in one step, the old ones drain, and the release is recorded for a rollback.',
+	},
+];
+---
+
+<div class="not-content flow">
+	{
+		steps.map((s, i) => (
+			<div class="step" style={`--i: ${i}`}>
+				<div class="head">
+					<span class="n">{s.n}</span>
+					<span class="where">{s.where}</span>
+				</div>
+				<h3>{s.title}</h3>
+				<p>{s.text}</p>
+			</div>
+		))
+	}
+</div>
+
+<style>
+	.flow {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+		gap: 1rem;
+		counter-reset: step;
+	}
+
+	.step {
+		position: relative;
+		padding: 1.2rem 1.2rem 1.3rem;
+		border: 1px solid var(--df-border);
+		border-radius: 0.9rem;
+		background: var(--df-surface);
+		overflow: hidden;
+	}
+
+	.step::after {
+		content: '';
+		position: absolute;
+		inset: 0 0 auto 0;
+		height: 2px;
+		background: var(--df-grad);
+		opacity: calc(0.4 + var(--i) * 0.2);
+	}
+
+	.head {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		margin-bottom: 0.6rem;
+	}
+
+	.n {
+		display: grid;
+		place-items: center;
+		width: 1.7rem;
+		height: 1.7rem;
+		border-radius: 50%;
+		font-family: var(--df-font-display);
+		font-weight: 700;
+		font-size: 0.85rem;
+		color: #fff;
+		background: var(--df-grad);
+	}
+
+	.where {
+		font-family: var(--sl-font-mono);
+		font-size: 0.72rem;
+		color: var(--sl-color-gray-3);
+	}
+
+	h3 {
+		margin: 0 0 0.4rem;
+		font-size: 1.1rem;
+		color: var(--sl-color-white);
+	}
+
+	p {
+		margin: 0;
+		font-size: 0.92rem;
+		line-height: 1.55;
+		color: var(--sl-color-gray-2);
+	}
+</style>

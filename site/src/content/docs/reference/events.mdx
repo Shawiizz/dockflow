@@ -1,0 +1,213 @@
+---
+title: JSON events
+description: The event stream dockflow prints with --json - the envelope, every event type and its data, run outcomes, guarantees and an example.
+sidebar:
+  order: 5
+---
+
+import { Aside, Badge } from '@astrojs/starlight/components';
+
+Every operation reports its progress as a stream of events. The agent on the server writes them, the CLI relays them, and with `--json` it prints them as they are: one JSON object per line ([JSON Lines](https://jsonlines.org/)). Use this stream to drive a CI job, a dashboard or a bot without parsing human output.
+
+```sh
+dockflow deploy production --json > deploy.jsonl
+```
+
+These commands print events: `plan`, `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `cancel`, `attach`, `build` and `server init`. The others (`validate`, `config show`, `status`, `releases`, `version`, `ps`, `details`, `diagnose`, `list`, `lock`, `prune`, `server connection`) print a single JSON document instead, with no events around it.
+
+## Envelope
+
+Every line has the same fields:
+
+```json
+{"v":1,"ts":"2026-10-26T14:03:11.123456789Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":17,"type":"service.healthy","level":"info","msg":"web: 2/2 healthy","data":{"desired":2,"healthy":2,"service":"web"}}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `v` | integer | The schema version, `1` |
+| `ts` | string | When the event was emitted, in UTC, RFC 3339 with fractional seconds, by the clock of the machine that emitted it (the server for the agent's events, your machine for the CLI's) |
+| `run` | string | The id of the run that emitted the event. Events from the agent carry the agent's run id, the one `dockflow attach` takes. Events the CLI emits itself (builds, pushes, local hooks) carry the id of the CLI invocation. |
+| `seq` | integer | 1, 2, 3, … within the stream you read. A gap means lost events |
+| `type` | string | One of the [types below](#event-types) |
+| `level` | string | `debug`, `info`, `warn` or `error` |
+| `msg` | string | A human-readable sentence. You may show it as is |
+| `data` | object | The fields of the type. Absent when the type has none |
+
+With `--json`, every event is printed, `debug` ones included. Without it, `debug` events are shown only with `-v`.
+
+## Event types
+
+Fields marked `?` are present only when they apply.
+
+### Run
+
+| Type | Level | `data` |
+|---|---|---|
+| `run.started` | info | `app`, `env`, `op`, `dockflow_version`, `server` |
+| `run.finished` | info or error | `outcome`, `exit_code`, `release_seq?`, `duration_ms`, `error?`; see [below](#runfinished) |
+| `result` | info | The document of a read operation, as the agent returns it. The CLI prints it alone, so you rarely see this type in a stream |
+| `cancel.requested` | warn | `by`: `signal` |
+| `log` | info or debug | `line`: anything else worth showing (an image pull, the agent being installed, files received) |
+
+`op` is the operation the agent runs: `plan`, `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `prune`, `status`, `releases`, `details`, `lock.acquire`, `lock.release`, `lock.status`, `server.init` or `upload.have`.
+
+### Warning
+
+`warning` (level `warn`) reports something that does not stop the run. Its `data` has a stable `code`, and usually a `detail`:
+
+```json
+{"v":1,"ts":"2026-10-26T14:03:12.5Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":9,"type":"warning","level":"warn","msg":"webhook https://hooks.example.com/dockflow: status 500","data":{"code":"notify.failed"}}
+```
+
+The codes are listed under [warning codes](/reference/exit-codes/#warning-codes).
+
+### Lock
+
+| Type | Level | `data` |
+|---|---|---|
+| `lock.waiting` | info | `holder` (its run id), `op`, `by`, `since`: emitted once, when `--wait-lock` starts waiting for another run |
+| `lock.acquired` | info | `scope`: the stack (`<app>-<env>`) |
+| `lock.released` | info | `scope` |
+
+### Build and push
+
+These events come from the CLI, before the agent starts.
+
+| Type | Level | `data` |
+|---|---|---|
+| `build.started` | info | `services`, `platforms` |
+| `build.log` | debug | `service`, `line`: one line of build output. When a build fails, its last lines are emitted again at level `error`, with `line` only |
+| `build.finished` | info | `service`, `digest` |
+| `push.finished` | info | `image` (pinned by digest), `digest`, `blobs_sent`, `blobs_skipped`. An image built on the server has `image` and `digest` only |
+
+### Plan and release
+
+| Type | Level | `data` |
+|---|---|---|
+| `plan.computed` | info | The plan: `app`, `env`, `fingerprint`, `summary` (`create`, `update`, `remove`), `actions` (each with `id`, `kind`, `target`, `reason`, `strategy?`), `unchanged?` (services left as they are), `warnings?` |
+| `plan.empty` | info | None: there is nothing to change |
+| `release.created` | info | `seq`, `version` |
+
+An action's `kind` is one of `network.create`, `volume.create`, `service.create`, `service.update`, `service.remove`, `routes.apply`, `job.run` and `upload.apply`. Its `id` is stable within a plan, for example `01-service.update-web`, and `strategy` is `switch`, `start-first` or `stop-first`.
+
+### Actions and containers
+
+| Type | Level | `data` |
+|---|---|---|
+| `action.started` | info | `action`: the action's `id` |
+| `action.finished` | info | `action`, `duration_ms` |
+| `action.failed` | error | `action`, `error` (`code`, `message`, `hint?`) |
+| `container.state` | debug | `service`, `container`, `release`, `state`: `created`, `running`, `healthy` or `exited` |
+| `service.healthy` | info | `service`, `healthy`, `desired` |
+| `service.failed` | error | `service`, `reason`: `crash_loop`, `exited`, `unhealthy`, `timeout` or `port_in_use` |
+| `health.check` | info or debug | `service`, `url`, `attempt`, `ok`, `status?`: a passing HTTP check at `info`, each failed attempt at `debug` |
+
+### Switch and routes
+
+| Type | Level | `data` |
+|---|---|---|
+| `switch.changed` | info | `service`, `from_release`, `to_release`, `routes` (each domain followed by its path) |
+| `drain.started` | info | `service`, `release` (the old one), `timeout_ms` |
+| `routes.applied` | debug | `domains` |
+
+### Jobs, hooks and uploads
+
+| Type | Level | `data` |
+|---|---|---|
+| `job.log` | info | `service`, `line` |
+| `job.finished` | info | `service`, `exit_code` |
+| `hook.started` | info | `phase`, `name`, `kind` (`local`, `host` or `exec`), `target` |
+| `hook.log` | info | `name`, `target`, `line` |
+| `hook.finished` | info | `name`, `target`, `exit_code`, `fatal` |
+| `upload.finished` | info | `dest` |
+
+A hook's `target` is `local` for a local hook, `server` for a `host` hook, and the container's name for an `exec` hook, which emits one `hook.started` and `hook.finished` per container.
+
+### Rollback
+
+| Type | Level | `data` |
+|---|---|---|
+| `rollback.started` | warn | `reason`, `target_seq`: the release being restored. When a fatal `after_deploy` hook triggers the rollback, `reason` only |
+| `rollback.finished` | info | `ok`: whether the previous containers and routes are back |
+
+### Planned types
+
+The event schema reserves these types for features that are not available yet. This version never emits them.
+
+| Type | `data` | |
+|---|---|---|
+| `config.loaded` | `files`, `services` | Not emitted yet |
+| `lock.taken_over`, `lock.lost` | `scope`, `previous_holder` / `new_holder` | Not emitted: the lock cannot be taken over |
+| `push.progress` | `image`, `bytes_sent`, `bytes_total` | Not emitted yet |
+| `upload.progress` | `dest`, `files_sent`, `files_total`, `bytes_sent`, `bytes_total` | Not emitted yet |
+| `filter.applied` | `ports` | <Badge text="Coming in M3" variant="caution" /> |
+| `backup.finished` | `service`, `snapshot`, `bytes_added`, `duration_ms` | <Badge text="Coming in M4" variant="caution" /> |
+
+## run.finished
+
+The agent's last event says how its run ended:
+
+| Field | Type | Description |
+|---|---|---|
+| `outcome` | string | See the table below |
+| `exit_code` | integer | The [CLI's exit code](/reference/exit-codes/) for this outcome |
+| `release_seq` | integer | The release the run created or restored. Absent when there is none |
+| `duration_ms` | integer | How long the run took |
+| `error` | object | `code`, `message` and `hint` (when there is one). Absent on success |
+
+| Outcome | Exit code | Meaning |
+|---|---|---|
+| `success` | 0 | The run did what it was asked |
+| `noop` | 0 | There was nothing to change |
+| `rolled_back` | 8 | The run failed, and the previous release is running |
+| `failed` | 9, or the error's own code | The run failed. After a release was created, the environment is left degraded (exit code 9); before, nothing changed, and `exit_code` is the error's (5 for a held lock, 6 for a refused plan, …) |
+| `cancelled` | 130 | Ctrl+C or `dockflow cancel` stopped the run, and it was rolled back |
+| `hook_failed` | 11 | A fatal hook failed, and the run was rolled back |
+| `lock_lost` | 10 | Reserved: this version never reports it |
+
+```json
+{"v":1,"ts":"2026-10-26T14:04:02.311Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":31,"type":"run.finished","level":"error","msg":"service web did not become healthy: restarted 3 times (last exit code 1)","data":{"outcome":"rolled_back","exit_code":8,"release_seq":43,"duration_ms":41870,"error":{"code":"health.failed","message":"service web did not become healthy: restarted 3 times (last exit code 1)","hint":"look at its logs with `dockflow logs web`"}}}
+```
+
+## Guarantees
+
+- **Order.** Events are printed in the order they happen, and `seq` grows by one per line. The CLI renumbers the agent's events into its own sequence, so the stream you read has no gap unless lines were lost.
+- **One agent run, one `run.finished`.** Each agent run starts with `run.started` and ends with `run.finished`. A stream with `run.started` and no `run.finished` was cut off; the run may still be going on, and `dockflow attach` follows it.
+- **Events around the agent's run.** In a `deploy`, the CLI's own events come before the agent's run (builds, pushes, `before_*` hooks, files sent) and after it (`after_deploy` and `after_failure` hooks, webhook warnings). Read the outcome from `run.finished`, and the final result from the process's exit code.
+- **Errors before the agent.** When a command fails before the agent starts (an invalid configuration, a failed build, a refused connection), there is no `run.finished`: the last line is the error document `{"error":{…},"exit_code":N}` described in [error format](/reference/exit-codes/#error-format).
+- **Masking.** No event carries a secret value. The emitter replaces every occurrence of a secret's value with `***` in `msg` and in `data`, before the line is written. Values shorter than 4 characters are not masked, because they would hide ordinary words.
+- **Compatibility.** Within `v: 1`, fields and types are only added, never renamed or removed, and their meaning does not change. Ignore types and fields you do not know.
+
+<Aside type="caution">
+`dockflow exec`, `dockflow run` and `dockflow ssh` connect your terminal to the command they run. Their output is the command's own: it is neither an event stream nor masked.
+</Aside>
+
+## Example
+
+A deploy of a routed service `web`, updated with the `switch` strategy, with `--json`:
+
+```json
+{"v":1,"ts":"2026-10-26T14:03:10.402Z","run":"01jbx6k1z3p4q5r6s7t8v9w0x1","seq":1,"type":"log","level":"info","msg":"uploading 2 of 14 files","data":{"line":"upload"}}
+{"v":1,"ts":"2026-10-26T14:03:11.123Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":2,"type":"run.started","level":"info","msg":"deploy shop-production","data":{"app":"shop","dockflow_version":"4.0.0-alpha.2","env":"production","op":"deploy","server":"main"}}
+{"v":1,"ts":"2026-10-26T14:03:11.130Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":3,"type":"lock.acquired","level":"info","msg":"lock acquired","data":{"scope":"shop-production"}}
+{"v":1,"ts":"2026-10-26T14:03:11.402Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":4,"type":"plan.computed","level":"info","msg":"0 to create, 1 to update, 0 to remove","data":{"app":"shop","env":"production","fingerprint":"sha256:a3b22ab3…","actions":[{"id":"01-service.update-web","kind":"service.update","target":"web","reason":"image web@sha256:bbbb → web@sha256:cccc","strategy":"switch"}],"unchanged":["db"],"summary":{"create":0,"update":1,"remove":0}}}
+{"v":1,"ts":"2026-10-26T14:03:11.410Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":5,"type":"release.created","level":"info","msg":"release 43 (a1b2c3d)","data":{"seq":43,"version":"a1b2c3d"}}
+{"v":1,"ts":"2026-10-26T14:03:11.412Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":6,"type":"action.started","level":"info","msg":"updating web (switch)","data":{"action":"01-service.update-web"}}
+{"v":1,"ts":"2026-10-26T14:03:11.650Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":7,"type":"container.state","level":"debug","msg":"shop-production-web-43-1 created","data":{"container":"shop-production-web-43-1","release":43,"service":"web","state":"created"}}
+{"v":1,"ts":"2026-10-26T14:03:11.981Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":8,"type":"container.state","level":"debug","msg":"shop-production-web-43-1 running","data":{"container":"shop-production-web-43-1","release":43,"service":"web","state":"running"}}
+{"v":1,"ts":"2026-10-26T14:03:16.204Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":9,"type":"container.state","level":"debug","msg":"shop-production-web-43-1 healthy","data":{"container":"shop-production-web-43-1","release":43,"service":"web","state":"healthy"}}
+{"v":1,"ts":"2026-10-26T14:03:16.205Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":10,"type":"service.healthy","level":"info","msg":"web: 1/1 healthy","data":{"desired":1,"healthy":1,"service":"web"}}
+{"v":1,"ts":"2026-10-26T14:03:16.231Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":11,"type":"routes.applied","level":"debug","msg":"routes applied","data":{"domains":["shop.example.com"]}}
+{"v":1,"ts":"2026-10-26T14:03:16.232Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":12,"type":"switch.changed","level":"info","msg":"web: traffic now goes to release 43","data":{"from_release":42,"routes":["shop.example.com/"],"service":"web","to_release":43}}
+{"v":1,"ts":"2026-10-26T14:03:16.233Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":13,"type":"action.finished","level":"info","msg":"service.update web done","data":{"action":"01-service.update-web","duration_ms":4821}}
+{"v":1,"ts":"2026-10-26T14:03:16.234Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":14,"type":"drain.started","level":"info","msg":"web: draining release 42 for 30s","data":{"release":42,"service":"web","timeout_ms":30000}}
+{"v":1,"ts":"2026-10-26T14:03:47.011Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":15,"type":"lock.released","level":"info","msg":"lock released","data":{"scope":"shop-production"}}
+{"v":1,"ts":"2026-10-26T14:03:47.012Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":16,"type":"run.finished","level":"info","msg":"release 43 is live","data":{"duration_ms":35889,"exit_code":0,"outcome":"success","release_seq":43}}
+```
+
+To follow a deploy in a script, read the lines as they arrive and stop at `run.finished`:
+
+```sh
+dockflow deploy production --json | jq -r 'select(.type == "run.finished") | "\(.data.outcome) \(.data.exit_code)"'
+```

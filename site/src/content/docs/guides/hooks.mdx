@@ -1,0 +1,155 @@
+---
+title: Hooks
+description: Run commands around builds and deploys, on your machine, on the server, or inside a running container.
+sidebar:
+  order: 6
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Hooks run your own commands at fixed points of a deploy: generate a key before the build, reload a systemd unit on the server, tell a game server to save its world before its container is replaced. You declare them in `dockflow.yml` under `hooks:`, one list per phase.
+
+## A first example
+
+```yaml
+# dockflow.yml
+version: 1
+app: shop
+hooks:
+  before_build:
+    - name: generate keys
+      script: scripts/generate-keys.sh
+      secrets: [JWT_PRIVATE_KEY]
+  before_deploy:
+    - name: back up the world
+      service: minecraft
+      exec: ["rcon-cli", "save-all"]
+      timeout: 10m
+      fatal: false
+    - host: sudo systemctl daemon-reload
+  after_deploy:
+    - name: tell the chat
+      run: 'curl -fsS -X POST -d "deployed $DOCKFLOW_VERSION" "$CHAT_WEBHOOK"'
+      secrets: [CHAT_WEBHOOK]
+  after_failure:
+    - run: echo "deploy of $DOCKFLOW_VERSION failed" >&2
+environments:
+  production: {}
+```
+
+Each entry has exactly one kind (`run`, `script`, `host` or `exec`) and runs in order within its phase. A phase stops at the first fatal hook that fails.
+
+## Phases
+
+| Phase | When |
+|---|---|
+| `before_build` | Before images are built |
+| `after_build` | After images are built and pushed |
+| `before_deploy` | Before any service changes |
+| `after_deploy` | After every service is healthy and routes are switched |
+| `after_failure` | After a failed run, once the rollback is done |
+
+`hooks:` can also be set inside an environment, where it replaces the top-level `hooks:` for that environment.
+
+## Kinds
+
+| Kind | Where it runs | Typical use |
+|---|---|---|
+| `run: <command>` | On the machine running the CLI, with `sh -c`, in the project directory | Generating files, calling an API |
+| `script: <file>` | On the machine running the CLI, in the project directory. The path is relative to the project; an executable file is run directly, any other file with `sh` | A longer local script |
+| `host: <command>` | On the server, over SSH, as the environment's SSH user | `sudo systemctl …`, host maintenance |
+| `exec: [<argv>]` with `service: <name>` | Inside every running container of that service, through the Docker Engine API, as `docker exec` would | Flushing a cache, warning players, an application-level backup |
+
+- `exec` takes an argument list, not a shell string. Write `exec: ["sh", "-c", "…"]` when you need a shell inside the container.
+- `exec` hooks can only be used from `before_deploy` on: before that, nothing of the new release runs.
+- A `host` hook's command is sent to `sh -s` on the server's standard input, with its environment exported at the top of that script, so no value appears in a command line on the server. It runs without a terminal: a `sudo` call needs a rule that allows it without a password.
+
+## Options
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | the command, cut to 40 characters | Shown in the output and in `hook.*` events |
+| `run` | string | | A shell command, run locally |
+| `script` | string | | A script file of the project, run locally |
+| `host` | string | | A shell command, run on the server |
+| `exec` | list of strings | | A command run in the containers of `service` |
+| `service` | string | | The service an `exec` hook runs in; only with `exec` |
+| `secrets` | list of keys | `[]` | Secrets passed to the hook as environment variables |
+| `timeout` | duration | `5m` | A hook still running after this is stopped and counts as failed |
+| `fatal` | boolean | `true` for `before_build` and `before_deploy`, `false` for the others | Whether a failure stops the run |
+
+`dockflow validate` checks the shape of each entry. It does not check that a `script` file exists, that an `exec` hook's `service` is in the Compose file, or that listed secrets have values: those errors appear when the hook is about to run (a missing secret stops the run with exit code 3 before anything happens).
+
+## When each kind runs
+
+The agent on the server must be able to finish a deploy even if the CLI's connection drops, so it never waits on the CLI in the middle of a run. `exec` hooks run inside the agent; local and `host` hooks run in the CLI, around the agent's run.
+
+<Steps>
+
+1. `before_build` hooks run (local and `host`).
+2. Images are built and pushed.
+3. `after_build` hooks run.
+4. `before_deploy` local and `host` hooks run, before the agent starts, so before the `before` jobs.
+5. The agent starts. After the `before` jobs and right before the first service changes, it runs the `before_deploy` `exec` hooks.
+6. Services roll out. After the public health checks pass and before the previous containers are drained, the agent runs the `after_deploy` `exec` hooks.
+7. The release is committed. The CLI then runs the `after_deploy` local and `host` hooks.
+
+</Steps>
+
+If the agent's run fails, it rolls back, runs the `after_failure` `exec` hooks, and reports the failure. The CLI then runs the `after_failure` local and `host` hooks. `after_failure` does not run when the run stops on the CLI's side before the agent starts (a failed build, a fatal `before_*` local or `host` hook, a missing secret) or when another run holds the lock.
+
+Hooks run on `dockflow deploy`. `dockflow build --push`, and `dockflow build` with `build.builder: remote`, run the `before_build` and `after_build` hooks; `--skip-hooks` turns them off. A local `dockflow build` without `--push` runs no hooks. `dockflow plan`, `dockflow rollback` and the day-2 commands run none either.
+
+<Aside type="caution" title="Hooks inside containers">
+- On the first deploy of a service, a `before_deploy` `exec` hook has nothing to run in: it is skipped, with a notice. In any other phase, an `exec` hook whose service has no running container fails.
+- During `after_deploy`, the hook runs in the containers of the new release only, not in the previous ones waiting to drain.
+- `exec` hooks run in each container in turn. The first container where the command exits with a non-zero code stops the hook.
+</Aside>
+
+<Aside type="caution" title="Lost connection">
+Local and `host` hooks of `after_deploy` and `after_failure` run in the CLI once the agent has finished. If the CLI is stopped or loses its connection during the run, the deploy still completes on the server, but those hooks do not run.
+</Aside>
+
+## Environment variables
+
+Every hook gets these environment variables:
+
+- the built-in variables: `DOCKFLOW_APP`, `DOCKFLOW_ENV`, `DOCKFLOW_STACK`, `DOCKFLOW_VERSION`, `DOCKFLOW_GIT_SHA`, `DOCKFLOW_GIT_BRANCH`, `DOCKFLOW_SERVER` (see [environment variables](/reference/environment-variables/));
+- the environment's `vars`;
+- the secrets listed in the hook's `secrets:`, by their unprefixed name (`JWT_PRIVATE_KEY`, read from `PRODUCTION_JWT_PRIVATE_KEY` for `production`). Other secrets are not passed.
+
+Local hooks also inherit the environment of the CLI process itself. `host` hooks get the variables above on top of the SSH session's own environment, and `exec` hooks on top of the container's.
+
+### `$` in hook commands
+
+Hook commands (`run`, `host`, `exec`) are neither interpolated nor rendered as templates: `$NAME` reaches the shell as you wrote it, and the shell expands it from the environment the hook gets.
+
+```yaml
+# dockflow.yml (fragment)
+hooks:
+  after_deploy:
+    - run: echo "$DOCKFLOW_ENV is now on $DOCKFLOW_VERSION"   # the shell expands these
+```
+
+
+## Output and masking
+
+Each line a hook prints becomes a `hook.log` event, between `hook.started` and `hook.finished` (with the exit code). The terminal shows these lines prefixed with the hook's name; `--json` prints them as [events](/reference/events/).
+
+Before any line is shown or stored, every value of the environment's secrets is replaced with `***`, whether the hook lists that secret or not. The masking works on exact values: a secret that a hook transforms (base64-encodes, splits) is not recognised.
+
+## Failures and exit codes
+
+A failed hook is one that exits with a non-zero code, cannot start, or runs past its `timeout`. A non-fatal failure is shown as a warning and the run goes on. A fatal one does this:
+
+| Phase | Kind | What happens | Exit code |
+|---|---|---|---|
+| `before_build` | local, `host` | The run stops; nothing is built or changed | 11 |
+| `after_build` | local, `host` | The run stops before the agent starts; nothing changes on the server | 11 |
+| `before_deploy` | local, `host` | The run stops before the agent starts; nothing changes on the server | 11 |
+| `before_deploy` | `exec` | The agent stops before any service changes and restores the uploads the run applied; what the `before` jobs did stays done | 11 |
+| `after_deploy` | `exec` | The agent rolls back, as for a failed health check | 8 |
+| `after_deploy` | local, `host` | The release was committed: the CLI starts a rollback run to the previous release | 8 |
+| `after_failure` | any | A warning only: the run has already failed | the run's own |
+
+`after_build` hooks are not fatal unless you set `fatal: true`. See [exit codes](/reference/exit-codes/) for the full list.

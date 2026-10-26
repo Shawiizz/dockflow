@@ -1,0 +1,241 @@
+---
+title: Quickstart
+description: From a Linux server with Docker to a first zero-downtime deploy, a second deploy and a rollback.
+sidebar:
+  order: 3
+---
+
+import { Aside, Steps, Tabs, TabItem, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+This guide deploys a small web app, an nginx container behind a route with HTTPS, to one server. You install the CLI, tell Dockflow how to reach the server, prepare the server, deploy, deploy a change, and roll it back. It takes about ten minutes.
+
+<Steps>
+
+1. **Check the prerequisites.**
+
+   You need:
+
+   - a Linux server (`amd64` or `arm64`) with Docker Engine 27 or later;
+   - an SSH user on it that can use Docker (in the `docker` group), and its private key on your machine;
+   - ports 80 and 443 of the server free and reachable from the internet;
+   - a domain name whose DNS record points to the server, here `hello.example.com`.
+
+   The full list is in [Server requirements](/start/installation/#server-requirements). If ports 80 and 443 already belong to an nginx on the server, follow [Behind nginx](/guides/behind-nginx/) for the server part.
+
+2. **Install the CLI** on your machine.
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh
+   dockflow version
+   ```
+
+   Other systems and options are in [Installation](/start/installation/).
+
+3. **Describe the server.**
+
+   Create a directory for the project. Dockflow reaches the server over SSH and verifies its host key on every connection, so it needs the host, the user, the host key and a private key. Choose one of two ways to give them.
+
+   <Tabs>
+   <TabItem label="In dockflow.yml">
+
+   Get the server's host key fingerprint, on the server itself:
+
+   ```sh
+   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+   ```
+
+   Then write `dockflow.yml` at the root of the project:
+
+   ```yaml
+   # dockflow.yml
+   version: 1
+   app: hello
+
+   environments:
+     production:
+       server:
+         host: 203.0.113.10
+         user: deploy
+         host_key: "SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s"
+       vars:
+         DOMAIN: hello.example.com
+   ```
+
+   `port` defaults to 22 and `user` to `dockflow`. Without `host_key`, the host must be in your `~/.ssh/known_hosts`.
+
+   The private key comes from the first of: the `DOCKFLOW_SSH_KEY_PRODUCTION` or `DOCKFLOW_SSH_KEY` environment variable (the key itself, or the path of its file), then the keys loaded in `ssh-agent` and `~/.ssh/id_ed25519`, `id_ecdsa` or `id_rsa`.
+
+   </TabItem>
+   <TabItem label="Connection string">
+
+   A connection string holds the server, its host key and the private key in one value, so nothing about the server appears in the repository. Print it:
+
+   ```sh
+   dockflow server connection deploy@203.0.113.10 -k ~/.ssh/id_ed25519
+   ```
+
+   The command connects, verifies the host key against your `~/.ssh/known_hosts` (or `--host-key SHA256:…`), checks that the user can use Docker, and prints the string. Store it as the `PRODUCTION_CONNECTION` secret: in a local, gitignored `.env.dockflow` file for now, and as a CI secret later.
+
+   ```sh
+   # .env.dockflow
+   PRODUCTION_CONNECTION=eyJ2IjoyLCJzZXJ2ZXJzIjpb…
+   ```
+
+   ```sh
+   echo .env.dockflow >> .gitignore
+   ```
+
+   `dockflow.yml` then needs no `server`:
+
+   ```yaml
+   # dockflow.yml
+   version: 1
+   app: hello
+
+   environments:
+     production:
+       vars:
+         DOMAIN: hello.example.com
+   ```
+
+   </TabItem>
+   </Tabs>
+
+   <Aside type="caution">
+   The connection string contains the private key. Anyone holding it is root on the server. Never commit `.env.dockflow`.
+   </Aside>
+
+4. **Prepare the server.**
+
+   ```sh
+   dockflow server init production
+   ```
+
+   This connects to the server of `production`, and installs two containers there: the switch (`dockflow-switch`, Caddy), which publishes ports 80 and 443 and obtains certificates, and the server-local registry (`dockflow-registry`), on `127.0.0.1:5959`. It also creates `/var/lib/dockflow`, where Dockflow keeps its state. Running it again is safe: it only replaces what changed.
+
+   The first command that reaches a server also installs the agent image there, about 20 MB, once per Dockflow version.
+
+5. **Describe the app.**
+
+   Write `compose.yml` next to `dockflow.yml`. It is a standard Compose file; the `x-dockflow` key adds a route, which Compose ignores.
+
+   ```yaml
+   # compose.yml
+   services:
+     web:
+       image: nginx:1.27-alpine
+       healthcheck:
+         test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+         interval: 5s
+         timeout: 3s
+         retries: 3
+       x-dockflow:
+         routes:
+           - domains: ["${DOMAIN}"]
+             port: 80
+   ```
+
+   `${DOMAIN}` takes its value from the environment's `vars`. The route sends `https://hello.example.com` to port 80 of the container, and the healthcheck tells Dockflow when a new container is ready for traffic.
+
+   Check the project without touching the server:
+
+   ```sh
+   dockflow validate production
+   ```
+
+   ```text
+   production: valid, 1 services
+   ```
+
+6. **Look at the plan.**
+
+   ```sh
+   dockflow plan production
+   ```
+
+   ```text
+   Plan: 1 to create, 0 to update, 0 to remove
+     · network.create hello-production_default: does not exist
+     + service.create web [switch]: new service
+     · routes.apply hello-production: routes changed
+   ```
+
+   The plan is computed from what the server actually runs. Nothing is changed yet.
+
+7. **Deploy.**
+
+   ```sh
+   dockflow deploy production
+   ```
+
+   On a terminal, `deploy` shows the same plan and asks for confirmation (`-y` skips the question; in CI there is no question). Then the agent starts `web`, waits for its healthcheck, points the route at it, and records release 1. The switch obtains a certificate for `hello.example.com` from Let's Encrypt on its own.
+
+   ```sh
+   curl https://hello.example.com/
+   ```
+
+   Since `dockflow.yml` has a single environment, you can leave out `production` in every command.
+
+8. **Check the status.**
+
+   ```sh
+   dockflow status production
+   ```
+
+   It shows the current release, its version label (the short git commit, or the time of the deploy outside git), and the containers of each service. `dockflow ps` lists the containers and `dockflow logs web` shows their logs.
+
+9. **Change something and deploy again.**
+
+   Change the image tag in `compose.yml`:
+
+   ```yaml
+   # compose.yml
+   services:
+     web:
+       image: nginx:1.28-alpine
+   ```
+
+   ```sh
+   dockflow deploy production
+   ```
+
+   ```text
+   Plan: 0 to create, 1 to update, 0 to remove
+     ~ service.update web [switch]: image nginx@sha256:… → nginx@sha256:…
+   ```
+
+   The new container starts next to the old one. Once it is healthy, traffic moves to it, the old container gets 30 seconds to finish the requests in flight, and then it stops. No request fails during the switch. Deploying again without a change prints `Nothing to change.` and creates no release.
+
+10. **Roll back.**
+
+    ```sh
+    dockflow rollback production
+    ```
+
+    This restores the previous release, with the same zero-downtime switch, from the image that is still on the server: nothing is rebuilt or downloaded. The rollback is itself a new release:
+
+    ```sh
+    dockflow releases production
+    ```
+
+    ```text
+    SEQ  VERSION  STATUS                     CREATED               BY
+    3    a1b2c3d  active (rollback to 1)     2026-10-26T14:12:40Z  alice  ← current
+    2    e4f5a6b  superseded                 2026-10-26T14:08:02Z  alice
+    1    a1b2c3d  superseded                 2026-10-26T14:03:11Z  alice
+    ```
+
+    `dockflow rollback --to 2` would restore release 2.
+
+</Steps>
+
+If a deploy fails, for example because the new container never becomes healthy, Dockflow switches back to the previous containers on its own and exits with code 8. See [Releases and rollbacks](/concepts/releases-and-rollbacks/).
+
+## Next steps
+
+<CardGrid>
+	<LinkCard title="Deploy from CI" description="One secret per environment, deploys on tags." href="/guides/ci/" />
+	<LinkCard title="Building images" description="Services with build:, pushed to the server's registry." href="/guides/building-images/" />
+	<LinkCard title="Behind nginx" description="Keep the host's nginx on ports 80 and 443." href="/guides/behind-nginx/" />
+	<LinkCard title="dockflow.yml reference" description="Every key, with its default." href="/reference/dockflow-yml/" />
+</CardGrid>

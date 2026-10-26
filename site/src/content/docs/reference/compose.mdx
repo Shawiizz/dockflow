@@ -1,0 +1,314 @@
+---
+title: Compose
+description: How Dockflow reads your Compose files, key by key, and every option of the x-dockflow extension.
+sidebar:
+  order: 2
+---
+
+import { Aside, Badge } from '@astrojs/starlight/components';
+
+Your services are described in standard Compose files, loaded with compose-go, the loader Docker Compose itself uses. Dockflow's own per-service settings go under the `x-dockflow` extension. Nothing is dropped silently: a key this version cannot apply is refused with exit code 3 (see [exit codes](/reference/exit-codes/)), and a key that has no meaning on one server is ignored with a warning.
+
+## Example
+
+```yaml
+# compose.yml
+services:
+  web:
+    build: .
+    environment:
+      DATABASE_URL: postgres://shop:${DB_PASSWORD}@postgres:5432/shop
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+    deploy:
+      replicas: 2
+    x-dockflow:
+      routes:
+        - domains: ["${DOMAIN}", "www.${DOMAIN}"]
+          port: 3000
+        - domains: ["${DOMAIN}"]
+          path: /api
+          port: 3000
+          strip_prefix: true
+      rollout:
+        strategy: switch
+        drain: 30s
+      health:
+        http:
+          path: /healthz
+          status: 200-399
+
+  worker:
+    build: .
+    command: ["node", "worker.js"]
+    x-dockflow:
+      health:
+        grace: 15s
+
+  migrate:
+    build: .
+    command: ["node", "migrate.js"]
+    environment:
+      DATABASE_URL: postgres://shop:${DB_PASSWORD}@postgres:5432/shop
+    depends_on:
+      postgres: { condition: service_healthy }
+    x-dockflow:
+      run: before
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shop"]
+      interval: 5s
+    x-dockflow:
+      stateful: true
+
+volumes:
+  pgdata: {}
+```
+
+With `DOMAIN` in the environment's `vars` and `DB_PASSWORD` as a secret, `dockflow list services` shows what this file becomes:
+
+```text
+SERVICE   IMAGE               REPLICAS  STRATEGY     ROUTES
+migrate   shop/migrate        1
+postgres  postgres:16-alpine  1         stop-first
+web       shop/web            2         switch       shop.example.com/ www.shop.example.com/ shop.example.com/api
+worker    shop/worker         1         start-first
+```
+
+## Files, profiles and variables
+
+- **Which files.** The `compose` list of [`dockflow.yml`](/reference/dockflow-yml/), or of the environment, which replaces it. Without one, the first that exists of `compose.yaml`, `compose.yml`, `docker-compose.yaml` and `docker-compose.yml`. An app with no Compose file is valid.
+- **Several files** are merged in order, as `docker compose -f a.yml -f b.yml` does. `include` and `extends` work as in Compose.
+- **Profiles.** A service with `profiles` is deployed only when the environment lists one of its profiles under `profiles`. Services without `profiles` are always deployed.
+- **Project name.** Always `<app>-<env>`. A top-level `name` in the Compose file has no effect.
+- **Interpolation.** `${VAR}`, `${VAR:-default}`, `${VAR:?message}` and `$$`, with Dockflow's [variables](/reference/dockflow-yml/#variables): built-ins, secrets, then `vars`. A variable with no value and no default is an error. The Compose `.env` file is not read.
+- **`environment: [KEY]`**, a key without a value, takes the value of that variable.
+- **`env_file`** paths are read on your machine, relative to the Compose file.
+- **Names on the server.** Containers, networks and volumes are prefixed with the stack: the volume `pgdata` of `shop` in `production` is `shop-production_pgdata`. Networks and volumes with `external: true` keep their own name and must already exist on the server.
+- **`x-*` keys** other than `x-dockflow`, at the top level or on a service, are ignored, so YAML anchors under `x-common` work.
+
+## Service keys
+
+| Key | Handling |
+|---|---|
+| `image` | Required unless `build` is set. Pulled according to `pull_policy`, and pinned to its digest in the release. |
+| `build` | Built by Dockflow. See [Build](#build). When `build` is set, `image` is not used: the image is named by Dockflow. See [Image names](#image-names). |
+| `pull_policy` | `missing` (default), `if_not_present` and `build` pull an image that is not on the server; `always` pulls on every deploy; `never` requires the image on the server. Other values are refused. |
+| `deploy.replicas`, `scale` | The number of containers of the service. |
+| `deploy.resources` | `limits.memory`, `limits.cpus`, `limits.pids` and `reservations.memory`, applied to each container. They take precedence over `mem_limit`, `cpus`, `pids_limit` and `mem_reservation`. |
+| `deploy.restart_policy` | Used when `restart` is not set: `condition: none` becomes `no`, `on-failure` becomes `on-failure` (with `max_attempts`), `any` becomes `always`. |
+| `deploy.update_config.order` | `start-first` or `stop-first`: the [rollout strategy](#rollout). |
+| `deploy.mode` | Only `replicated`. `global` is refused: use replicas. |
+| `deploy.placement`, `deploy.endpoint_mode`, `deploy.rollback_config` | Ignored with a warning: there is one server, and Dockflow rolls back the whole app. |
+| `restart` | Honoured. A service without `restart` or `deploy.restart_policy` gets `unless-stopped`. A job always gets `no`. |
+| `depends_on` | Honoured with its conditions (`service_started`, `service_healthy`, `service_completed_successfully`): it orders the services, and a service that another one waits for with `service_completed_successfully` becomes a [job](#run). A cycle is an error. |
+| `healthcheck` | Every key (`test`, `interval`, `timeout`, `retries`, `start_period`, `start_interval`, `disable`). It gates every rollout strategy. |
+| `container_name` | Honoured. Forces `stop-first` and a single container. |
+| `ports` | Honoured, host IP included (`127.0.0.1:5432:5432`). A service that publishes a fixed host port uses `stop-first`, since two containers cannot hold the same port. |
+| `expose` | Honoured. |
+| `networks` | Bridge networks, with `aliases`, `ipv4_address` and `ipv6_address`. The service name is always an alias, as in Compose. Top-level networks keep their `driver`, `internal` and `labels`; `external: true` uses an existing network of the server. |
+| `network_mode` | `host`, `none` and `bridge`. `service:…` and `container:…` are refused. A service on the host network uses `stop-first` and cannot be routed. |
+| `volumes` | Named volumes (with `nocopy`), anonymous volumes, bind mounts (with `create_host_path`) and `tmpfs` mounts (with `size`). Top-level volumes keep their `driver`, `driver_opts` and `labels`. Volume `subpath`, bind `propagation` and `selinux` are refused. |
+| `environment`, `env_file` | Honoured. `env_file` is read on your machine. |
+| `profiles` | See [Files, profiles and variables](#files-profiles-and-variables). |
+| `command`, `entrypoint`, `user`, `working_dir`, `hostname`, `domainname`, `labels`, `label_file`, `stop_signal`, `stop_grace_period`, `privileged`, `read_only`, `init`, `tty`, `stdin_open`, `cap_add`, `cap_drop`, `security_opt`, `extra_hosts`, `dns`, `dns_search`, `dns_opt`, `tmpfs`, `sysctls`, `ulimits`, `devices`, `group_add`, `pid`, `ipc`, `shm_size`, `mem_limit`, `mem_reservation`, `cpus`, `pids_limit`, `logging`, `platform` | Passed to the container, as Compose does. |
+| `secrets` | <Badge text="Coming in M3" variant="caution" /> Refused for now. |
+| `configs` | <Badge text="Coming in M3" variant="caution" /> Refused for now. |
+| Any other key | Refused with "not supported yet", for example `links`, `volumes_from`, `gpus`, `develop`, `cpu_shares`, `cpuset`, `runtime`, `userns_mode`, `annotations`. |
+
+<Aside type="caution">
+Bind mount sources are paths on the server, so write them absolute. A relative source such as `./data` names a directory of the machine running `dockflow` and is refused: use a named volume, or send the files with [uploads](/guides/uploads/).
+</Aside>
+
+## Build
+
+Services with `build` are built with `docker buildx bake` (or Podman, with `build.engine: podman`) on your machine, or on the server with `build.builder: remote`. See [`build`](/reference/dockflow-yml/#build) and the [building images guide](/guides/building-images/).
+
+| Build key | Handling |
+|---|---|
+| `context`, `dockerfile`, `dockerfile_inline`, `args`, `labels`, `additional_contexts`, `target`, `cache_from`, `cache_to`, `no_cache`, `no_cache_filter`, `pull`, `network`, `extra_hosts`, `ssh`, `shm_size`, `entitlements` | Passed to bake. `dockerfile` is relative to `context`, as in Compose. |
+| `privileged` | Adds the `security.insecure` entitlement. |
+| `platforms`, `tags` | Ignored with a warning: images are built for the server's platform and tagged by Dockflow. |
+| `secrets` | <Badge text="Coming in M3" variant="caution" /> Refused for now. |
+| `isolation`, `ulimits`, `provenance`, `sbom` | Refused. |
+
+Podman builds use `context`, `dockerfile`, `dockerfile_inline`, `args`, `labels`, `additional_contexts`, `target`, `cache_from`, `cache_to`, `no_cache`, `pull`, `network`, `extra_hosts`, `ssh` and `shm_size`.
+
+Files listed under [`templates`](/reference/dockflow-yml/#templates) are rendered into a temporary copy of the build contexts before the build.
+
+## Image names
+
+| Service | Image the containers run |
+|---|---|
+| With `image` only | That image, pulled on the server according to `pull_policy`, pinned to its digest in the release. |
+| With `build`, no `registry` block | Pushed through the SSH connection to the server's own registry as `127.0.0.1:5959/<app>/<service>:<version>`, and run by digest. |
+| With `build` and `registry.url` | Pushed as `<registry.url>/<app>/<service>:<version>`, plus every `registry.additional_tags`, and run by digest. |
+| With `build` and `build.builder: remote`, no `registry` block | Built into the server's Docker as `localhost/<app>/<service>`, and run by image ID. |
+
+`<version>` is the release's version label (`DOCKFLOW_VERSION`), with characters other than letters, digits, `_`, `.` and `-` replaced by `-`. In the plan and in `dockflow list services`, a built service shows as `<app>/<service>` until it is built.
+
+## `x-dockflow`
+
+Dockflow's settings for one service. Values are interpolated like the rest of the file. An unknown key is an error.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `routes` | list | none | Domains and paths the switch sends to this service. See [routes](#routes). |
+| `rollout` | map | see [rollout](#rollout) | How the service is replaced. |
+| `health` | map | see [health](#health) | When a new container counts as healthy. |
+| `stateful` | boolean | `false` | A service that holds data, like a database: one container, replaced with `stop-first`. |
+| `run` | string | none | `before` or `after`: the service is a [job](#run), run to completion on each deploy. |
+
+### `routes`
+
+Each route sends HTTP traffic from the server's switch to the service's containers, over the app's network. See [the switch and edges](/concepts/switch-and-edges/).
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `domains` | list of strings | required | The host names. |
+| `port` | integer | required | The container port. |
+| `path` | string | `/` | A path prefix, starting with `/`. The route matches the path and everything under it; the longest path wins. |
+| `strip_prefix` | boolean | `false` | Remove `path` from the request before it reaches the service. |
+| `tls` | boolean | `true` | With the `builtin` edge, serve the route over HTTPS with a certificate the switch obtains automatically, and redirect HTTP to it. `false` serves it over plain HTTP only. With the `external` edge, every route is served over HTTP to your own proxy. |
+
+A domain and path pair can be routed only once per server: a second app or service claiming it makes the plan fail (exit code 6). Routes need a switch on the server, installed by [`dockflow server init`](/reference/cli/#server-init).
+
+Other route options of the format, raw Caddy directives, and routes that point elsewhere than a service (redirects, files) are <Badge text="Coming in M3" variant="caution" /> and refused for now.
+
+### `rollout`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `strategy` | string | see below | `switch`, `start-first` or `stop-first`. Takes precedence over `deploy.update_config.order`. |
+| `drain` | duration | `30s` | With `switch`: how long the old containers keep serving the requests in flight after the traffic has moved. |
+
+The default strategy, when neither `strategy` nor `deploy.update_config.order` is set:
+
+| Service | Strategy |
+|---|---|
+| `stateful`, with `container_name`, publishing a fixed host port, or on `network_mode: host` | `stop-first` |
+| Otherwise, with `routes` | `switch` |
+| Otherwise | `start-first` |
+
+A service that must use `stop-first` (the first row) refuses any other strategy. `switch` needs `routes`. See [rollouts](/concepts/rollouts/).
+
+<Aside type="caution">
+A routed service that also publishes a fixed host port (`ports: ["8080:3000"]`) uses `stop-first`, with a short downtime on each deploy. Remove the published port to keep the switch.
+</Aside>
+
+### `health`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `grace` | duration | `10s` | For a container without a `healthcheck` and without `http`: how long it must keep running to count as healthy. |
+| `http` | map | none | An HTTP check of each new container, made from the server before the switch. |
+
+`http`:
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `path` | string | `/` | The path requested, starting with `/`. |
+| `port` | integer | the first route's port | The container port. Required on a service without routes. |
+| `status` | number or string | `200-399` | The accepted status: one status (`204`) or a range (`"200-399"`). |
+| `timeout` | duration | `5s` | Time allowed for one request. |
+| `retries` | integer | `10` | Attempts before the check fails. At least `1`. |
+| `interval` | duration | `3s` | Time between two attempts. |
+
+A failed `http` check follows [`on_failure`](/reference/dockflow-yml/#on_failure). A routed service with neither a `healthcheck` nor `http` gets a warning: it counts as healthy after `grace`. See the [health checks guide](/guides/health-checks/).
+
+`health.restart_after`, the watchdog, is <Badge text="Coming in M3" variant="caution" /> and refused for now.
+
+### `stateful`
+
+`stateful: true` marks a service that holds data: it runs as a single container and is replaced with `stop-first`, so two containers never write the same volume.
+
+### `run`
+
+A job is a service run to completion on each deploy, in one container, never restarted. It fails the deploy unless it exits with code 0.
+
+| Value | When it runs |
+|---|---|
+| `before` | After networks and volumes are created, before any service is updated, like a database migration. |
+| `after` | After every service is updated. |
+
+A service that another one waits for with `depends_on: { condition: service_completed_successfully }` is a `before` job without `run`. Jobs run on a `deploy` that changes something, in `depends_on` order; not on `rollback`, `restart` or `scale`. See the [jobs guide](/guides/jobs/).
+
+### Not available yet
+
+| Key | Arrives with |
+|---|---|
+| `backup` | <Badge text="Coming in M4" variant="caution" /> |
+| `health.restart_after` | <Badge text="Coming in M3" variant="caution" /> |
+| Route options other than those listed under [routes](#routes) | <Badge text="Coming in M3" variant="caution" /> |
+
+## Refused combinations
+
+| Combination | Why |
+|---|---|
+| `routes` or `health.http` with `run` | A job serves no traffic. |
+| `stateful` with `run` | A job is not a long-running service. |
+| `run` with `deploy.replicas` above 1 | A job runs once. |
+| `stateful` or `container_name` with `deploy.replicas` above 1 | The service runs once. |
+| `rollout.strategy: switch` without `routes` | Nothing to switch. |
+| `start-first` or `switch` on a service that must use `stop-first` | See [rollout](#rollout). |
+| `routes` with `network_mode` | A routed service must be on bridge networks. |
+| `run: after` on a service another one waits for with `service_completed_successfully` | It would run after the service that waits for it. |
+
+## More examples
+
+A job after the deploy, an unrouted service with an HTTP check, and a service that publishes a fixed port:
+
+```yaml
+# compose.yml
+services:
+  api:
+    image: busybox
+    command: ["httpd", "-f", "-p", "8080"]
+    pull_policy: always
+    stop_grace_period: 20s
+    x-dockflow:
+      rollout: { strategy: start-first }
+      health:
+        http: { port: 8080, path: /, status: "200", timeout: 2s, retries: 5, interval: 2s }
+
+  notify:
+    image: curlimages/curl:8.10.1
+    command: ["curl", "-fsS", "https://hooks.example.com/deployed"]
+    x-dockflow:
+      run: after
+
+  minecraft:
+    image: itzg/minecraft-server
+    ports: ["25565:25565"]
+    x-dockflow:
+      rollout: { strategy: stop-first }
+```
+
+Several files, with a profile enabled in one environment only:
+
+```yaml
+# dockflow.yml
+version: 1
+app: shop
+environments:
+  production: {}
+  staging:
+    compose: [compose.yml, compose.staging.yml]
+    profiles: [debug]
+```
+
+```yaml
+# compose.staging.yml
+services:
+  debug:
+    image: busybox
+    command: ["sleep", "infinity"]
+    profiles: [debug]
+```

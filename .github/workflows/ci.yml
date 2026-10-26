@@ -56,6 +56,21 @@ jobs:
           DOCKFLOW_E2E_DIND_IMAGE: mirror.gcr.io/library/docker:${{ matrix.docker }}
         run: go test -tags e2e -count=1 -v -timeout 20m ./test/e2e/
 
+  site:
+    name: docs site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build the image
+        run: docker build -t dockflow-site site
+      - name: serve it
+        run: |
+          docker run -d --name site -p 127.0.0.1:8080:80 dockflow-site
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8080/ >/dev/null && break; sleep 0.5; done
+          curl -fsS http://127.0.0.1:8080/ | grep -q '<title>'
+          curl -fsS http://127.0.0.1:8080/start/quickstart/ | grep -q 'Quickstart'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/no-such-page/)" = 404
+
   snapshot:
     name: snapshot builds
     needs: [lint, test, e2e]

@@ -1,0 +1,187 @@
+---
+title: Templates
+description: Render configuration files and scripts with Jinja before they are built into images or uploaded to the server.
+sidebar:
+  order: 7
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components';
+
+Some files need values that depend on the environment: an nginx vhost with the environment's domain, an entrypoint script with a worker count. List them under `templates:` and Dockflow renders them with Jinja before it builds images and uploads files. The rendering happens in a temporary copy: your project is never modified.
+
+## Example
+
+<FileTree>
+- dockflow.yml
+- compose.yml
+- nginx/
+  - Dockerfile
+  - site.conf.j2
+- app/
+  - Dockerfile
+  - entrypoint.sh
+</FileTree>
+
+```yaml
+# dockflow.yml
+version: 1
+app: shop
+templates:
+  - src: nginx/site.conf.j2
+    dest: nginx/site.conf
+  - app/entrypoint.sh
+environments:
+  production:
+    vars:
+      DOMAIN: shop.example.com
+      WORKERS: "4"
+  staging:
+    vars:
+      DOMAIN: staging.shop.example.com
+      WORKERS: "2"
+```
+
+```yaml
+# compose.yml
+services:
+  proxy:
+    build: ./nginx
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/healthz"]
+    x-dockflow:
+      routes:
+        - domains: ["${DOMAIN}"]
+          port: 80
+  app:
+    build: ./app
+```
+
+The template uses Jinja's `{{ }}` and `{% %}`, so nginx's own `$host` stays as it is:
+
+```nginx
+# nginx/site.conf.j2
+server {
+    listen 80;
+    server_name {{ DOMAIN }};
+
+    location /healthz {
+        return 200;
+    }
+
+    location / {
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_pass http://app:8080;
+{%- if DOCKFLOW_ENV != "production" %}
+        add_header X-Robots-Tag "noindex";
+{%- endif %}
+    }
+}
+```
+
+```dockerfile
+# nginx/Dockerfile
+FROM nginx:1.27-alpine
+COPY site.conf /etc/nginx/conf.d/default.conf
+```
+
+`nginx/site.conf` does not exist in the project. It exists only in the copy the build reads, with the values of the environment being deployed.
+
+## Entries
+
+Each entry of `templates:` is one of:
+
+| Form | Meaning |
+|---|---|
+| `src: <path>` and `dest: <path>` | Renders `src` and writes the result at `dest` in the temporary copy |
+| `<path>` | Renders the file in place: the copy holds the rendered file at the same path |
+
+Both paths are relative to the project directory and must stay inside it. Only the files listed are rendered: nothing else is ever treated as a template.
+
+`templates:` can also be set inside an environment, where it replaces the top-level list for that environment.
+
+## When templates are rendered
+
+Templates are rendered once per command, by the commands that read build contexts or upload sources:
+
+- `dockflow deploy` and `dockflow plan`, after the `before_build` hooks and before the images are built and the [uploads](/guides/uploads/) are described;
+- `dockflow build`.
+
+`dockflow validate` does not render templates. To catch a template error before a deploy, run `dockflow build` (when the app builds images) or `dockflow plan`.
+
+A rendered file is read by builds and uploads only. [Hooks](/guides/hooks/) run from the project directory and see the source file, not the rendered one.
+
+## Variables
+
+A template sees the same values as the rest of the configuration, as top-level variables:
+
+| Variables | Examples |
+|---|---|
+| Built-in variables | `{{ DOCKFLOW_APP }}`, `{{ DOCKFLOW_ENV }}`, `{{ DOCKFLOW_STACK }}`, `{{ DOCKFLOW_VERSION }}`, `{{ DOCKFLOW_GIT_SHA }}`, `{{ DOCKFLOW_GIT_BRANCH }}`, `{{ DOCKFLOW_SERVER }}` |
+| The environment's secrets, by their unprefixed name | `{{ API_KEY }}` for `PRODUCTION_API_KEY` |
+| The environment's `vars` | `{{ DOMAIN }}` |
+
+When a name exists in several places, a built-in variable comes first, then a secret, then `vars`. See [environment variables](/reference/environment-variables/) for where secrets come from.
+
+Every value is a string. Compare with strings (`WORKERS == "4"`), or convert first (`WORKERS | int`).
+
+<Aside type="danger" title="Secrets in rendered files">
+A secret rendered into a file ends up in that file: inside the image when the file is part of a build context, or on the server when it is uploaded. Render secrets only into files that are meant to hold them.
+</Aside>
+
+### Undefined variables are errors
+
+A variable with no value stops the command with exit code 3, naming the template:
+
+```text
+error: templates: nginx/site.conf.j2 cannot be rendered: …
+hint: every variable must be defined: built-in, secret or vars of the environment
+```
+
+An empty value is never substituted silently. For an optional value, give a default:
+
+```jinja
+worker_processes {{ WORKERS | default("2") }};
+```
+
+A template file listed under `templates:` that does not exist is an error too.
+
+## Jinja basics
+
+The engine is [gonja](https://github.com/nikolalohinski/gonja), a Go implementation of Jinja.
+
+| Syntax | Use |
+|---|---|
+| `{{ NAME }}` | Insert a value |
+| `{{ NAME \| default("x") }}`, `\| upper`, `\| lower`, `\| int`, `\| replace("a", "b")` | Filters |
+| `{% if DOCKFLOW_ENV == "production" %}…{% endif %}` | Conditions |
+| `{% for host in ["a", "b"] %}…{% endfor %}` | Loops |
+| `{%- … %}`, `{{- … }}` | Remove the whitespace before the tag (or after it, with `-%}`) |
+| `{% raw %}…{% endraw %}` | Leave the content as written |
+
+`{% raw %}` protects text that uses `{{ }}` for another tool, such as a Go template in an alerting rule:
+
+```yaml
+# prometheus/rules.yml (listed under templates:)
+groups:
+  - name: {{ DOCKFLOW_STACK }}
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        annotations:
+{% raw %}          summary: "{{ $labels.instance }} is down"{% endraw %}
+```
+
+## How the copy is made
+
+Dockflow renders every template first, then builds a temporary directory:
+
+- Each build context and each upload source that holds a rendered file is copied into it, with hard links where the filesystem allows. The copy leaves out `.git` and what the context's `.dockerignore` excludes, since the build would not read them.
+- The rendered files are written into the copy, replacing the hard link, so the source file is never written to.
+- Build contexts and upload sources without a rendered file are read in place, without a copy.
+
+The build and the uploads then read from the copy, which is deleted when the command ends.
+
+<Aside type="caution" title="File modes">
+A file rendered in place keeps its mode, so an executable `entrypoint.sh` stays executable. A file rendered to a new `dest` takes the mode of the file at `dest` if the project has one, and `644` otherwise. For a script rendered to a new path, render it in place instead, or set the mode in the Dockerfile (`COPY --chmod=755`).
+</Aside>

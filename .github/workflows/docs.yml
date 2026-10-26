@@ -1,0 +1,30 @@
+name: Docs
+
+# The documentation site (site/) deploys with Dockflow itself, from main, once the repository
+# variable DOCS_DEPLOY is "true" (Settings → Secrets and variables → Actions → Variables): it
+# needs the server prepared and the PRODUCTION_CONNECTION secret first.
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/docs.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.DOCS_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Dockflow
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh
+      - name: Deploy
+        env:
+          PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
+        run: dockflow -C site deploy production --wait-lock 10m

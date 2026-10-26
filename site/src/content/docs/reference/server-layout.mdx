@@ -1,0 +1,222 @@
+---
+title: Server layout
+description: What Dockflow puts on a server - the /var/lib/dockflow state directory, its containers, images, labels, networks, volumes and ports - and how to remove all of it by hand.
+sidebar:
+  order: 7
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Dockflow keeps no database and no service of its own besides the switch and the registry: all of its state for a server lives on that server, in `/var/lib/dockflow`, and in labels on the Docker objects it creates. This page lists everything it creates, so you can inspect it, back it up or remove it.
+
+## The state directory
+
+```text
+/var/lib/dockflow/
+├── server.json                       the server's settings
+├── server.lock                       held while the switch's configuration changes
+├── switch/routes/<stack>.json        the routes the switch serves for each app environment
+└── apps/<stack>/
+    ├── lock                          held by the running agent
+    ├── lock.json                     who holds the lock
+    ├── manual-lock.json              present while a manual lock is held
+    ├── env.json                      current and previous release
+    ├── releases/<seq>.json.gz        one record per release
+    └── uploads/
+        ├── blobs/<sha256>            uploaded files, and the files uploads replaced
+        └── manifests/<digest>.json   what each upload and its replaced files contain
+```
+
+`<stack>` is `<app>-<env>`, for example `shop-production`. `<seq>` is the release number, written with 6 digits in file names (`000042.json.gz`).
+
+- **Owner.** Only agent containers write here, as root. The directory is `0700` and its files `0600`: only root on the server can read them.
+- **Atomic writes.** Every file is written to `<name>.tmp-<run-id>`, synced, then renamed, so a crash never leaves a half-written file.
+- **Format.** Every JSON document carries `"schema": 1`. The format changes only in a major release of Dockflow.
+- **Clocks.** Timestamps are informational, in UTC, from the server's clock. No decision depends on them.
+
+### server.json
+
+Written by `dockflow server init`:
+
+```json
+{
+  "schema": 1,
+  "name": "main",
+  "edge": "external",
+  "switch_image": "caddy:2@sha256:…",
+  "switch_listen": "127.0.0.1:8080",
+  "trusted_proxies": ["10.0.0.0/8"],
+  "registry_image": "registry:3@sha256:…",
+  "dockflow_version": "4.0.0-alpha.2"
+}
+```
+
+`switch_listen` and `trusted_proxies` are present with the `external` edge only, and `switch_image` or `registry_image` are absent when the server runs no switch (`--edge none`) or no registry (`--no-registry`).
+
+### Locks
+
+- `apps/<stack>/lock` is an empty file. A run takes it with `flock` and holds it until the agent exits; if the agent dies, the kernel releases it. A second run fails with `lock.held` (exit code 5), or waits with `--wait-lock`.
+- `apps/<stack>/lock.json` names the holder, for the error message:
+
+  ```json
+  { "schema": 1, "run": "01jbx6k3m8w0v7c9q2r5t4y6z8", "op": "deploy", "by": "alice@laptop", "since": "2026-10-26T14:03:11Z" }
+  ```
+
+- `apps/<stack>/manual-lock.json` exists while `dockflow lock acquire` holds the environment. Every run refuses to start while it exists, unless given `--force`. It never expires: `dockflow lock release` removes it.
+
+### env.json and releases
+
+```json
+{ "schema": 1, "last_seq": 42, "current": 42, "previous": 41, "degraded": false }
+```
+
+Each `releases/<seq>.json.gz` is a gzipped JSON record of one release: who made it and from which commit, its status, and the complete desired state of the app, every container's specification with images pinned by digest. A rollback recreates containers from it. Values interpolated into a container's environment are part of that specification, as they are in `docker inspect`.
+
+A release's status is `applying` while a run works on it, then `active`, then `superseded` when a newer one goes live. A failed run leaves `rolled-back` or `failed`, and a run whose agent died is marked `abandoned` by the next run.
+
+After a successful run, the agent keeps the newest `releases.keep` releases that went live, and every release newer than the oldest of those. It deletes the other records, then the images, registry manifests and upload contents that no kept release uses.
+
+## Containers
+
+| Name | What it is | Lifetime |
+|---|---|---|
+| `dockflow-switch` | The switch: Caddy, which routes traffic to your services ([Switch and edges](/concepts/switch-and-edges/)) | Permanent, `restart: unless-stopped`. Absent with `--edge none` |
+| `dockflow-registry` | The server-local registry that receives the images you build | Permanent, `restart: unless-stopped`. Absent with `--no-registry` |
+| `dockflow-run-<run-id>` | The agent of one run ([How it works](/concepts/how-it-works/)) | Exits when the run ends. The 10 most recent finished ones are kept for `dockflow attach`, older ones are removed by the next run |
+| `dockflow-upload-<run-id>-<n>` | A helper that writes an upload to its destination | Removed as soon as it finishes |
+| `<stack>-<service>-<seq>-<n>` | The `n`-th container of a service, created by release `<seq>`: `shop-production-web-42-1` | Until a later release replaces it. A service left unchanged by a deploy keeps the containers of an older release |
+| `container_name` | A service with a `container_name` keeps that name, and always uses the `stop-first` strategy | As above |
+| `<stack>-<service>-<seq>-job` | A job of release `<seq>` | Removed when the job finishes |
+| `<stack>-<service>-run-<id>` | A one-off container of `dockflow run` | Removed when the command exits |
+
+The release number in a container's name is not padded: `shop-production-web-42-1`.
+
+## Images
+
+| Image | Use |
+|---|---|
+| `dockflow/agent:<version>` | The agent, built on the server from the dockflow Linux binary of the CLI's version. Development builds use `dockflow/agent:dev-<hash>` |
+| `caddy:2` | The switch, pinned by digest when `server init` installs it (`--switch-image` changes it) |
+| `registry:3` | The registry, pinned by digest (`--registry-image` changes it) |
+| `127.0.0.1:5959/<app>/<service>:<version>` | Images built by Dockflow and pushed to the server's registry. Services run them pinned by digest |
+| `localhost/<app>/<service>:<tag>` | Images built on the server (`build.builder: remote`) when no external registry is configured |
+| Your public or external-registry images | Pulled by the agent and pinned by digest |
+
+## Labels
+
+Every container, network and volume of an app carries Compose's own labels, so Docker tools see the environment as a Compose project:
+
+| Label | Value |
+|---|---|
+| `com.docker.compose.project` | `<stack>` |
+| `com.docker.compose.service` | The service name (containers) |
+| `com.docker.compose.container-number` | `1`…`n` (containers) |
+| `com.docker.compose.oneoff` | `True` for jobs, one-off containers, agents and helpers, `False` for service containers |
+| `com.docker.compose.network` | The network's key in Compose (networks) |
+| `com.docker.compose.volume` | The volume's key in Compose (volumes) |
+
+Dockflow's own labels:
+
+| Label | Value |
+|---|---|
+| `dockflow.managed` | `true` on the containers Dockflow creates, and on the app networks and volumes it creates |
+| `dockflow.schema` | `1` (containers) |
+| `dockflow.kind` | `service`, `job`, `oneoff` (`dockflow run`), `run` (an agent), `helper`, `switch` or `registry` |
+| `dockflow.release` | The release that created the container |
+| `dockflow.hash` | A hash of the container's specification: an unchanged hash means an unchanged container |
+| `dockflow.op` | On agent containers: the operation they run (`deploy`, `rollback`, …) |
+
+You can list an environment's containers with Docker itself:
+
+```sh
+docker ps -a --filter label=com.docker.compose.project=shop-production
+docker compose -p shop-production ps
+```
+
+<Aside type="caution">
+Use `docker compose -p` to look, not to change. A container started or recreated outside Dockflow is not in any release: the next deploy plans from what is actually running and may replace it.
+</Aside>
+
+## Networks and volumes
+
+**App networks and volumes** keep Compose's names: `<stack>_default`, `<stack>_<network>`, `<stack>_<volume>` (for example `shop-production_pgdata`). Networks and volumes marked `external: true` are used as they are, never created or removed.
+
+- The switch joins the networks of the services it routes to, so it reaches them by name.
+- An agent joins the app's networks during its run, to run internal health checks, and leaves them at the end.
+
+**Dockflow's own volumes:**
+
+| Volume | Content |
+|---|---|
+| `dockflow-switch-data` | Caddy's data: TLS certificates and their keys |
+| `dockflow-switch-config` | Caddy's saved configuration |
+| `dockflow-switch-admin` | The switch's admin socket, mounted only by the switch and the agents, at `/run/dockflow-switch` |
+| `dockflow-registry-data` | The registry's storage |
+
+## Ports
+
+| Port | Who | When |
+|---|---|---|
+| `80/tcp`, `443/tcp`, `443/udp` on every address | The switch | The `builtin` edge (default): HTTP, HTTPS and HTTP/3 |
+| `127.0.0.1:8080/tcp`, or the address given to `--switch-listen` | The switch | The `external` edge, behind your own proxy |
+| `127.0.0.1:5959/tcp` | The registry | Unless `--no-registry`. Loopback only: the CLI reaches it through the SSH connection |
+| SSH (`22` by default) | `sshd` | Always: every command connects over SSH |
+| The ports your services publish | Your containers | As declared in Compose `ports:` |
+
+The switch's admin API listens on no port at all, only on a unix socket.
+
+## Removing everything by hand
+
+`dockflow destroy` removes one environment: its containers, routes, networks and state, and with `--volumes` its data. To remove Dockflow from a server entirely:
+
+<Steps>
+
+1. Remove every environment, from your project directory, for each environment:
+
+   ```sh
+   dockflow destroy production
+   ```
+
+   Add `--volumes` to delete the environment's volumes and their data too.
+
+2. On the server, remove the containers Dockflow manages that are left (the switch, the registry, the finished agents, and anything of an environment you can no longer destroy from its project):
+
+   ```sh
+   docker ps -aq --filter label=dockflow.managed=true | xargs -r docker rm -f
+   ```
+
+3. Remove the networks it created:
+
+   ```sh
+   docker network ls -q --filter label=dockflow.managed=true | xargs -r docker network rm
+   ```
+
+4. Remove the switch's and the registry's volumes:
+
+   ```sh
+   docker volume rm dockflow-switch-data dockflow-switch-config dockflow-switch-admin dockflow-registry-data
+   ```
+
+5. Remove the images:
+
+   ```sh
+   docker images -q dockflow/agent | xargs -r docker rmi
+   docker images -q --filter reference='127.0.0.1:5959/*/*' | xargs -r docker rmi
+   docker image prune -a
+   ```
+
+   The last command removes every image no container uses, `caddy` and `registry` included; skip it if the server runs other things.
+
+6. Remove the state:
+
+   ```sh
+   sudo rm -rf /var/lib/dockflow
+   ```
+
+</Steps>
+
+<Aside type="danger">
+App volumes hold your data and are not removed by the steps above unless you used `destroy --volumes`. To remove the ones left, `docker volume ls --filter label=dockflow.managed=true` lists them; `docker volume rm` deletes them for good. Back them up first.
+</Aside>
+
+Deleting `/var/lib/dockflow` while the containers still run does not stop your services, but Dockflow loses their release history: there is nothing left to roll back to.

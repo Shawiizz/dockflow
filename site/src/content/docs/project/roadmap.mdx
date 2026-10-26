@@ -1,0 +1,106 @@
+---
+title: Roadmap
+description: What the current alpha of Dockflow does, what each coming milestone adds up to 4.0.0, and how releases are numbered.
+sidebar:
+  order: 2
+---
+
+import { Aside, Badge } from '@astrojs/starlight/components';
+
+Dockflow is built in milestones. Each one ends with a tool you can use, and is done only when real projects run on it in production and its exit criteria pass as automated tests. Milestones have no dates.
+
+The current release is **v4.0.0-alpha.2**, which delivers milestones M1 and M2.
+
+<Aside type="caution">
+Until 4.0.0, releases are alphas. The configuration (`version: 1`), the server state (`schema: 1`) and the event stream (`v: 1`) are designed to stay, but they are frozen only at 4.0.0.
+</Aside>
+
+## Available now
+
+### M1: Walking skeleton
+
+Deploy a Compose app that uses public images to one server, with zero downtime.
+
+- `dockflow.yml`, standard Compose files with `x-dockflow`, secrets from CI variables, `DOCKFLOW_SECRETS` and `.env.dockflow`, and Compose interpolation everywhere.
+- Connection strings, SSH with mandatory host key verification, and the Docker Engine API through the SSH connection.
+- The agent: a short-lived container per run on the server, with its event stream and `dockflow attach`.
+- Server state in `/var/lib/dockflow`: locks, manual locks and release records.
+- The rollout: the `switch`, `start-first` and `stop-first` strategies, health gating, and automatic rollback.
+- The switch, with the `builtin` edge, installed by `dockflow server init`.
+- `plan`, `deploy`, `rollback`, `status`, `releases`, `version`, `lock`, `validate`, `config show`, `completion` and `--json`.
+
+Its exit criteria, run as end-to-end tests on Docker 27 and on the latest Docker: a client sending requests in a loop during a deploy and a rollback sees no failed request; two concurrent deploys get exit code 5 for one of them; killing the agent mid-run leaves the previous release serving.
+
+### M2: Shipping real apps
+
+Everything a web app needs to go to production from CI.
+
+- **The `external` edge**, to keep your own nginx (or any proxy) on ports 80 and 443 in front of the switch.
+- **Images:** `dockflow build`, builds with buildx bake or Podman, the server-local registry with pushes through SSH, external registries with additional tags, and remote builds on the server.
+- **Jobs and checks:** `depends_on` conditions, jobs that run before or after the services, internal and public HTTP health checks, and `on_failure`.
+- **Hooks and files:** local, `host` and `exec` hooks; templates; incremental uploads, with `mirror`.
+- **Day-2 commands:** `logs`, `exec`, `run`, `cp`, `ssh`, `ps`, `details`, `diagnose`, `restart`, `stop`, `scale`, `prune`, `list`, `destroy`, `releases --stats` and `cancel`.
+- **CI:** the environment and version derived from tags, on GitHub Actions, GitLab CI, Jenkins, Buildkite and Bitbucket Pipelines; signed webhooks.
+- **Cleanup:** release retention, and pruning of images and the registry.
+- `dockflow server connection`, the release workflow, the installer, and the download of the agent binary checked against the release's checksums.
+
+## Coming next
+
+### M3: Production-ready
+
+<Badge text="Coming in M3" variant="caution" />
+
+Take a blank server to a hardened production host, and cover the needs of larger apps.
+
+- **Provisioning:** the full `server init`, interactive, run locally or over SSH: Docker installation, a deploy user with a restricted key, SSH hardening, fail2ban, security updates, time synchronisation, and `--nginx`. Plus `server cloud-init`, `server check`, `server status`, `server edge` and `server upgrade`.
+- **Edges and routes:** the `cloudflare` edge; route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks.
+- **Plugins:** project plugins and the built-in `nginx` and `systemd` plugins, with `plugins list`.
+- **Firewall:** the published-port filter, with `firewall.public_ports` and per-port source ranges, and Cloudflare's ranges refreshed automatically.
+- **Secrets:** Compose `secrets:` and `configs:` delivered as files on a tmpfs, encrypted secrets files with SOPS, and the `secrets` commands.
+- **Self-healing:** the watchdog, which restarts a container that stays unhealthy for too long (`x-dockflow.health.restart_after`).
+- **Shared servers:** networks shared between apps, and Docker volume plugins.
+- **`dockflow init`**, which writes a starting configuration and CI workflows.
+
+Exit criteria include a fresh cloud server going from blank to serving an app over HTTPS with `server init` and `deploy` only, tested on real servers.
+
+### M4: Data
+
+<Badge text="Coming in M4" variant="caution" />
+
+- **Stateful services:** the full rules for services that hold data.
+- **Backups with restic:** Postgres, MySQL, MongoDB and Redis dumps, volumes and bind mounts, and custom dump commands; a local repository by default and off-site repositories (S3-compatible and others), application-aware quiesce (a database dump, a game server's save), retention and `check`, and the backup of `/var/lib/dockflow` itself.
+- **Commands:** `backup run`, `backup list`, `backup restore` (including from another environment, to restore production data into staging) and `backup prune`, plus scheduled backups in the generated CI workflows.
+
+### M5: Interfaces
+
+<Badge text="Coming in M5" variant="caution" />
+
+- **`dockflow ui`**, a local web UI on the same core as the CLI.
+- **`dockflow mcp`**, an MCP server for AI assistants, with write operations gated.
+- **A GitHub Action** that comments the plan on pull requests and applies the reviewed plan.
+- **Preview environments:** one environment and one subdomain per pull request, removed when it closes.
+
+### v1.0, released as 4.0.0
+
+- Every capability planned for 4.0.0 is provided, or explicitly deferred.
+- The configuration, state and event formats are frozen.
+- Signed releases checked by the CLI itself, a PowerShell installer, Homebrew, and an npm package.
+- Complete user documentation: every command, every key, recipes and the security model.
+
+### After 4.0.0
+
+Considered, not committed: several servers per environment, Podman as the server's engine (rootless), DNS-01 certificates through Cloudflare with wildcard domains, Postgres point-in-time recovery, and a native nftables backend for the port filter.
+
+## Versioning
+
+- Releases follow [semantic versioning](https://semver.org/), with tags `v<semver>`.
+- Until the v1.0 milestone, every release is a pre-release, `v4.0.0-alpha.N`: one or more per milestone. The v1.0 milestone ships as `v4.0.0`.
+- Pre-releases are marked as such on GitHub. The installer takes the newest release, pre-releases included, unless you pass `--version`.
+- The CLI and the agent it runs on your server are always the same version: after you upgrade the CLI, its next run installs the matching agent on the server by itself.
+- The formats carry their own version numbers (`version: 1` in `dockflow.yml`, `schema: 1` in the server state, `v: 1` in events), which change only in a major release.
+
+To pin the version your CI installs:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.2
+```

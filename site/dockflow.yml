@@ -1,0 +1,13 @@
+# The documentation site, deployed with Dockflow.
+version: 1
+app: dockflow-site
+
+health:
+  endpoints:
+    - name: docs
+      url: https://${DOCS_DOMAIN}/
+
+environments:
+  production:
+    vars:
+      DOCS_DOMAIN: dockflow.shawiizz.dev
