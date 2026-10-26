@@ -11,6 +11,10 @@ import (
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/events"
+
+	// the agent's image holds the binary only, without a CA bundle: public checks over HTTPS
+	// verify against these roots when the system has none
+	_ "golang.org/x/crypto/x509roots/fallback"
 )
 
 // RunContainerPrefix names agent containers: dockflow-run-<run>.

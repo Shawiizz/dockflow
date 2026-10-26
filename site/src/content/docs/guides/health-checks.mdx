@@ -173,6 +173,8 @@ environments:
 | `endpoints[].retry_delay` | duration | `5s` | The time between two requests |
 | `endpoints[].validate_certs` | boolean | `true` | `false` accepts any certificate, for a staging server without a valid one |
 
+The checks run on the server, from Dockflow's agent, through public DNS: a domain behind a CDN such as Cloudflare is checked through it. Certificates are verified against the Mozilla root certificates built into Dockflow.
+
 The checks run in order, and the first that fails stops the run. Redirects are not followed: an `http://` URL on a domain that redirects to HTTPS answers `301` or `308`, not `200`. The old containers are still running during these checks, so a failure switches back to them at once.
 
 `health` can be set per environment; there, it replaces the top-level block as a whole, as `staging` does above.
