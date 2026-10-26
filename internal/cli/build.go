@@ -348,7 +348,15 @@ func (a *app) buildCmd() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			l, err := a.load(ctx, envArg(args), "")
+			env := envArg(args)
+			if env == "" {
+				// in CI, the tag names the environment, as for deploy
+				var err error
+				if env, err = a.envFromTag(); err != nil {
+					return err
+				}
+			}
+			l, err := a.load(ctx, env, "")
 			if err != nil {
 				return err
 			}
@@ -357,7 +365,7 @@ func (a *app) buildCmd() *cobra.Command {
 			}
 			// a remote build lands on the server: it is pushed by nature
 			if push || l.Config.Build.Builder == "remote" {
-				s, err := a.connect(ctx, envArg(args), "")
+				s, err := a.connect(ctx, env, "")
 				if err != nil {
 					return err
 				}

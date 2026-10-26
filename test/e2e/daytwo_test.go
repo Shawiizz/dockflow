@@ -184,3 +184,20 @@ func running(t *testing.T, dir, service string) int {
 	}
 	return 0
 }
+
+// A manual lock is its holder's: someone else releases it only with --force.
+func TestManualLockBelongsToItsHolder(t *testing.T) {
+	app := "journey25"
+	dir := filepath.Join(workDir, app)
+	writeProject(t, dir, app, webApp(app, "whoami-e2e:v1", ""))
+	alice := []string{"GITHUB_ACTIONS=true", "GITHUB_ACTOR=alice"}
+	mustSucceed(t, dockflowEnv(t, dir, alice, "lock", "acquire", "production", "-m", "maintenance"), "lock acquire")
+	if r := dockflow(t, dir, "deploy"); r.code != 5 {
+		t.Fatalf("a manual lock must refuse a deploy with exit code 5, got %d:\n%s", r.code, r.out)
+	}
+	if r := dockflow(t, dir, "lock", "release", "production"); r.code != 5 || !strings.Contains(r.out, "alice") {
+		t.Fatalf("releasing alice's lock without --force must be refused, got %d:\n%s\n%+v", r.code, r.out, r.events)
+	}
+	mustSucceed(t, dockflow(t, dir, "lock", "release", "production", "--force"), "lock release --force")
+	mustSucceed(t, dockflow(t, dir, "deploy"), "deploy after the release")
+}

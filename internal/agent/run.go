@@ -223,6 +223,14 @@ func (r *runner) manualLock() events.RunFinishedData {
 		}
 		r.result(info)
 	case OpLockRelease:
+		m, err := r.app.ManualLock()
+		if err != nil {
+			return failed(err)
+		}
+		if m != nil && m.By != by(r.req.Author) && !r.req.Force {
+			return failed(errs.Newf("lock.manual", errs.ExitLocked, "%s holds this lock: %s", m.By, m.Message).
+				WithHint("release it anyway with `dockflow lock release --force`"))
+		}
 		if err := r.app.ClearManualLock(); err != nil {
 			return failed(err)
 		}

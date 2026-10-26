@@ -731,7 +731,7 @@ func toDocker(s domain.ContainerSpec, labels map[string]string) (*container.Conf
 		DNSSearch: s.DNSSearch, DNSOptions: s.DNSOptions, Tmpfs: s.Tmpfs, Sysctls: s.Sysctls, GroupAdd: s.GroupAdd,
 		PidMode: container.PidMode(s.Pid), IpcMode: container.IpcMode(s.Ipc), ShmSize: s.ShmSize,
 		RestartPolicy: restartPolicy(s.Restart),
-		Runtime: s.Runtime, UsernsMode: container.UsernsMode(s.UsernsMode), Cgroup: container.CgroupSpec(s.Cgroup),
+		Runtime:       s.Runtime, UsernsMode: container.UsernsMode(s.UsernsMode), Cgroup: container.CgroupSpec(s.Cgroup),
 		UTSMode: container.UTSMode(s.Uts), OomScoreAdj: s.OomScoreAdj, Annotations: s.Annotations, StorageOpt: s.StorageOpt,
 	}
 	for _, d := range s.DNS {

@@ -114,7 +114,7 @@ The run waits up to that long for the other one to finish, and emits a `lock.wai
 dockflow build production
 ```
 
-`dockflow build` does not read the environment from the tag, so name it when `dockflow.yml` has several. `--only web,worker` builds some services only. With `--push`, it connects to the server and sends the images where a deploy would, for the server's platform. See [Building images](/guides/building-images/).
+In CI, `dockflow build` takes the environment from the tag, as `deploy` does; on a branch, name it when `dockflow.yml` has several. `--only web,worker` builds some services only. With `--push`, it connects to the server and sends the images where a deploy would, for the server's platform. See [Building images](/guides/building-images/).
 
 A runner that builds needs Docker with buildx (or Podman, with `build.engine: podman`). A runner that only deploys services with public images needs no Docker at all: Dockflow reaches the server's Docker over SSH.
 

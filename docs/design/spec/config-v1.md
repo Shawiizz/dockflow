@@ -13,7 +13,7 @@ A project is configured by three things, all in its repository ([ADR-0006](../ad
 | app | `^[a-z][a-z0-9-]{0,22}[a-z0-9]$` (at most 24) | Part of every container, network and volume name |
 | environment | `^[a-z][a-z0-9]{0,11}$` (at most 12, no hyphen or underscore) | Part of object names and of variable names (`PRODUCTION_…`) |
 | stack | `<app>-<env>` (at most 37) | The Compose project name of an environment |
-| service | `^[a-z][a-z0-9-]*$`, at most 63 | Service names are DNS names inside the app's networks |
+| service | `^[a-z0-9][a-z0-9_.-]{0,62}$`, Compose's own rule | Compose files are used as written; a service is reached by its name inside the app's networks |
 | secret and variable keys | `^[A-Z][A-Z0-9_]*$` | Valid in every CI provider |
 
 ## Variables and templating
@@ -22,7 +22,7 @@ Two syntaxes, each where it is native ([ADR-0006](../adr/0006-compose-as-written
 
 | Where | Syntax |
 |---|---|
-| Compose files, and the string values of `dockflow.yml` except names | Compose interpolation: `${VAR}`, `${VAR:-default}`, `${VAR:?message}`, `$$` for a literal `$` |
+| Compose files, and the string values of `dockflow.yml` except names and `vars` | Compose interpolation: `${VAR}`, `${VAR:-default}`, `${VAR:?message}`, `$$` for a literal `$`. The values of `vars` are literal: a variable is never defined from another |
 | Files listed under `templates:`, upload sources rendered as templates, plugin templates | Jinja (gonja), with undefined variables as errors: `{{ VAR }}`, `{{ VAR \| default('x') }}`, `{% if %}`, `{% for %}`, `{% raw %}` |
 | Hook commands | Not interpolated: values arrive as environment variables |
 

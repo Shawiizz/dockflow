@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/Shawiizz/dockflow/internal/agent"
 	"github.com/Shawiizz/dockflow/internal/domain"
@@ -48,6 +50,10 @@ func (a *app) read(cmd *cobra.Command, env, op string, v any, tweak func(*agent.
 	res, err := s.runAgent(cmd.Context(), req)
 	if err != nil {
 		s.Close()
+		// quiet: the event that reported it was not shown
+		if e, ok := errs.As(err); ok {
+			e.Reported = false
+		}
 		return nil, err
 	}
 	if len(res.Results) == 0 {
@@ -346,7 +352,7 @@ func (a *app) lockCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&message, "message", "m", "", "why the environment is locked")
-	cmd.Flags().BoolVar(&force, "force", false, "take over someone else's manual lock")
+	cmd.Flags().BoolVar(&force, "force", false, "take over or release someone else's manual lock")
 	return cmd
 }
 
@@ -388,7 +394,19 @@ func (a *app) configCmd() *cobra.Command {
 				"secrets":  l.Secrets.Describe(), "services": l.App.Services, "networks": l.App.Networks, "volumes": l.App.Volumes,
 			}
 			b, _ := json.MarshalIndent(doc, "", "  ")
-			fmt.Fprintln(a.stdout, a.mask(string(b)))
+			if !a.json {
+				// YAML for people, as the files it comes from; through JSON for the field names
+				var v any
+				json.Unmarshal(b, &v)
+				var buf bytes.Buffer
+				enc := yaml.NewEncoder(&buf)
+				enc.SetIndent(2)
+				if err := enc.Encode(v); err != nil {
+					return errs.Internal("encode the configuration: %v", err)
+				}
+				b = buf.Bytes()
+			}
+			fmt.Fprintln(a.stdout, strings.TrimRight(a.mask(string(b)), "\n"))
 			return nil
 		},
 	})

@@ -48,7 +48,7 @@ No options besides the global ones.
 dockflow config show [<env>] [flags]
 ```
 
-Print the resolved configuration of an environment as JSON, with secrets masked: the app, the environment, the version label, `releases.keep`, `on_failure`, where each secret comes from, and the services, networks and volumes as Dockflow will deploy them. The output is JSON with or without `--json`. It does not contact the server.
+Print the resolved configuration of an environment, with secrets masked: the app, the environment, the version label, `releases.keep`, `on_failure`, where each secret comes from, and the services, networks and volumes as Dockflow will deploy them. The output is YAML, or JSON with `--json`. It does not contact the server.
 
 No options besides the global ones.
 
@@ -388,11 +388,11 @@ Without a kind, removes stopped containers, untagged images and networks that Do
 dockflow lock status|acquire|release [<env>] [flags]
 ```
 
-Hold an environment's lock by hand, for a maintenance window. `acquire` sets a manual lock, which never expires: until `release`, every command that takes the lock (`deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`) is refused with exit code 5, except `deploy --force`. `acquire` fails with code 5 when a manual lock is already set, unless `--force` is given. `status` shows the manual lock, who set it, when and why.
+Hold an environment's lock by hand, for a maintenance window. `acquire` sets a manual lock, which never expires: until `release`, every command that takes the lock (`deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`) is refused with exit code 5, except `deploy --force`. `acquire` fails with code 5 when a manual lock is already set, unless `--force` is given; `release` of a lock someone else set needs `--force` too. `status` shows the manual lock, who set it, when and why.
 
 | Option | Default | Description |
 |---|---|---|
-| `--force` | `false` | Take over someone else's manual lock. |
+| `--force` | `false` | Take over (`acquire`) or release (`release`) someone else's manual lock. |
 | `-m, --message string` | none | Why the environment is locked. |
 
 ## server

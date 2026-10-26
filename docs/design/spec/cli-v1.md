@@ -29,7 +29,7 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 |---|---|
 | `dockflow init` | Writes `dockflow.yml` (and a `compose.yml` if there is none), adds `.env.dockflow` to `.gitignore`, and with `--ci github\|gitlab` a CI workflow: build on branches, deploy on tags, scheduled backups |
 | `dockflow validate [<env>]` | Loads and checks everything that can be checked without a server |
-| `dockflow config show [<env>] [--json]` | The resolved configuration, plugins expanded, secrets masked |
+| `dockflow config show [<env>] [--json]` | The resolved configuration, plugins expanded, secrets masked: YAML, or JSON with `--json` |
 | `dockflow plugins list` | Built-in and project plugins, with their inputs ([ADR-0017](../adr/0017-plugins.md)) |
 | `dockflow build [<env>] [--only <services>] [--push] [--platform <os/arch>] [--skip-hooks]` | Builds images, without deploying. Without `--push`, for `--platform` (default: this machine's architecture); with it, for the server's, and pushes them where a deploy would. With `build.builder: remote`, the build runs on the server and `--push` is implied |
 | `dockflow plan [<env>] [--out <file>] [--no-build] [--render] [--only <services>]` | Prints the plan. `--render` prints the service specs that would be sent; `--only` plans as `deploy --only` |
@@ -54,12 +54,12 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 | `dockflow run [<env>] <service> [-e K=V]… -- <cmd…>` | A one-off job with the service's spec (a console, a script) |
 | `dockflow cp [<env>] <src> <dest> [--pick]` | Copies files between the local machine and a container, in either direction (`service:/path`) |
 | `dockflow ssh [<env>] [-- <command>…]` | A shell, or a command, on the server |
-| `dockflow restart [<env>] [<service>]` | Restarts services with their rollout strategy, so routed services restart without downtime |
-| `dockflow stop [<env>] [<service>]` | Scales services to 0; `deploy` or `restart` brings them back |
+| `dockflow restart [<env>] [<service>…]` | Restarts services with their rollout strategy, so routed services restart without downtime |
+| `dockflow stop [<env>] [<service>…]` | Scales services to 0; `deploy` or `restart` brings them back |
 | `dockflow scale [<env>] <service> <replicas>` | Changes replicas until the next deploy, which restores Compose's count and says so in its plan |
 | `dockflow prune [<env>] [--images] [--containers] [--volumes] [--networks] [-a]` | Cleans unused Docker objects on the server. Without a kind: stopped containers, untagged images and networks. `-a` removes every unused image, not only untagged ones. Never removes what Dockflow manages, app volumes, or the images of releases in retention; `--volumes` removes unused anonymous volumes only |
 | `dockflow list envs\|services [<env>]\|images [<env>] [-a]` | Lists |
-| `dockflow lock status\|acquire\|release [<env>] [-m <message>] [--force]` | `acquire` holds the lock by hand (a maintenance window) until `release`; a manual lock never expires. `--force` releases or takes over someone else's |
+| `dockflow lock status\|acquire\|release [<env>] [-m <message>] [--force]` | `acquire` holds the lock by hand (a maintenance window) until `release`; a manual lock never expires, and it refuses every run that changes the environment except `deploy --force`. `--force` releases or takes over someone else's |
 
 Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`, `backup restore`) take the environment's lock.
 
@@ -101,7 +101,7 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 | `dockflow completion <shell>` | Shell completion script |
 | `dockflow help [<command>]` | Help, also as `-h` on every command |
 
-Internal commands are hidden from help: `agent`, `provision` and `filter apply`.
+Internal commands are hidden from help: `agent` (the agent's entry point in its container) and `upload-helper` (the helper container of uploads); `filter apply` arrives with the port filter (M3). Provisioning runs as a shell script over SSH, with no command of its own ([ADR-0013](../adr/0013-servers-access-security.md#implementation-status-m2)).
 
 ## Saved plans
 
