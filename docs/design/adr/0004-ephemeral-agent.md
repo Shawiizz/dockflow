@@ -30,7 +30,7 @@ The CLI computes the plan, then hands it to an **agent** that runs on a manager 
 
 Read-only commands (`status`, `releases`, `logs`) do not start an agent: the CLI calls the API of a manager directly.
 
-The CLI needs SSH access to managers only. The one exception is `dockflow exec` into a running container on a worker: the Engine API on a manager cannot exec on another node, so the CLI reaches that worker by SSH, using the manager as a jump host.
+The CLI needs SSH access to managers only. The exceptions are the commands whose purpose is a node itself: `dockflow ssh` and `host` hooks ([ADR-0022](0022-hooks.md)). `exec` into a container on a worker goes through a job on that worker ([ADR-0022](0022-hooks.md#running-inside-containers)), not through SSH.
 
 ## Consequences
 

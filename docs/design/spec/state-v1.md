@@ -34,7 +34,7 @@ There is one lock per environment, `dockflow-lock-<stack>`, and one for the clus
 
 | Lock | Taken by |
 |---|---|
-| Environment lock | `deploy`, `rollback`, `backup run`, `backup restore` |
+| Environment lock | `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `backup run`, `backup restore` |
 | Cluster lock | `cluster upgrade`, `cluster proxy sync`, `cluster label` |
 | Neither | Read-only commands, and `run` |
 
@@ -50,6 +50,8 @@ A lock config is created once and **never deleted**. Its labels:
 | `dockflow.by` | `user@machine` of whoever started the run, and the CI provider when there is one |
 | `dockflow.since` | When it was taken (informational) |
 | `dockflow.beat` | A counter the holder increments |
+| `dockflow.manual` | `true` for a lock taken with `dockflow lock acquire`: it has no heartbeat and is never taken over automatically; only `lock release` or `--force` frees it |
+| `dockflow.message` | The reason given with `-m` |
 
 The heartbeat interval is 15 s and the lease is 60 s. Both are constants of v1.
 
@@ -61,6 +63,7 @@ The heartbeat interval is 15 s and the lease is 60 s. Both are constants of v1.
    - If `state=held`, watch `dockflow.beat` using the local monotonic clock:
      - if it changes, the holder is alive, and the attempt fails with `LockHeld` (holder, operation, since, by). With `--wait`, it keeps waiting instead;
      - if the object's version stays unchanged for a full lease, the holder is dead. Compare-and-swap it to the new holder (a takeover, reported as `lock.taken_over`).
+   - If `dockflow.manual=true`, the attempt fails with `LockHeld` at once, unless `--force` is given.
 
 **Renew:** every 15 s, compare-and-swap `beat+1`. A conflict means the lock was taken over: the run emits `lock.lost`, makes no further change and exits with the lock-lost code. The new holder plans from the actual state ([ADR-0008](../adr/0008-plan-apply-releases.md)).
 
@@ -91,7 +94,14 @@ applying ──► active ──► superseded
 - the newest `releases.keep` releases with status `active` or `superseded`;
 - every release newer than the oldest of those.
 
-It deletes the other releases, then the app secrets, app configs, routes objects and registry manifests that no kept release references.
+It deletes the other releases, then the app secrets, app configs, routes objects, registry manifests and previous upload contents that no kept release references.
+
+## Uploads
+
+Uploaded content is data, not state: it lives where the user sends it ([ADR-0021](../adr/0021-uploads-and-templates.md)). To roll back and to send only what changed, Dockflow keeps, on each target node:
+
+- next to each destination, `.<name>.dockflow-<seq>`: the previous content moved aside, until release `<seq>` leaves retention;
+- for each destination, its manifest (the path, size, mode and SHA-256 of every file), stored in the release record as a content digest. The full manifest is a config object, `dockflow-manifest-<hash12>`.
 
 ## Release record
 
@@ -120,6 +130,9 @@ The data of a release config is a gzipped JSON document:
   "secrets": ["shop-production_secret_9f2c1ab3e4d5"],
   "configs": [],
   "routes": "dockflow-routes-shop-production-4be1c0aa",
+  "uploads": [
+    { "dest": "volume:site", "nodes": ["main"], "manifest": "sha256:…", "files": 12873 }
+  ],
   "published_ports": [],
   "plan_fingerprint": "sha256:…"
 }

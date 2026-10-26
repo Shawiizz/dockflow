@@ -50,6 +50,16 @@ The failed release ends `rolled-back`. If the rollback itself fails, it ends `fa
 
 `--no-rollback` leaves a failed run in place for debugging and marks the environment degraded.
 
+**What a failure triggers** is set by `on_failure` in `dockflow.yml`, as in 1.x:
+
+| Value | Effect |
+|---|---|
+| `rollback` | The default |
+| `fail` | The failed release stays in place, marked failed, and the environment is degraded |
+| `ignore` | A failed HTTP check or `after_*` hook is reported as a warning, and the release becomes active |
+
+Webhooks are sent in every case ([config spec](../spec/config-v1.md)). A failure of Swarm itself (crash loop, paused update, timeout) always rolls back, because leaving a service half-updated is never a useful state.
+
 ### Recovery from a dead run
 
 If an agent dies (its manager fails or is rebooted), its release stays `applying` and its lock lease expires ([state spec](../spec/state-v1.md#lock)). The next run that takes the lock marks that release `abandoned` and plans from the actual state as usual. Because the plan is computed from what is really running, it converges whatever the dead run had done.
@@ -65,7 +75,7 @@ If an agent dies (its manager fails or is rebooted), its release stays `applying
 - `dockflow plan` can be posted on a pull request, and a reviewed plan is exactly what gets applied.
 - Rollback restores the whole app to a state that is known to have worked, never a mix of versions.
 - No separate journal is needed: the release status plus the actual state are enough to recover.
-- There is no `on_failure` option and no "keep the failed deploy" mode beyond `--no-rollback`.
+- `on_failure` keeps the three 1.x behaviours that matter (`rollback`, `fail`, `ignore`). The 1.x `notify` value is covered by webhooks, which fire whatever the outcome.
 
 ## Alternatives considered
 

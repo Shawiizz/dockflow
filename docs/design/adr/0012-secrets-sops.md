@@ -1,42 +1,71 @@
-# ADR-0012: Secrets: SOPS and age, delivered as Swarm secrets
+# ADR-0012: Secrets: CI variables, a local file, optionally SOPS; delivered by interpolation or as Swarm secrets
 
 - Status: Accepted
-- Date: 2026-10-25
+- Date: 2026-10-25, revised 2026-10-26 (CI secrets as in 1.x, after review by the project owner)
 
 ## Context
 
-In Dockflow 1.x, secrets reach the CLI through `.env.dockflow`, a JSON variable or process variables whose names derive from server names. A server named `web-1` therefore needs a variable that GitHub and GitLab refuse. They reach containers as plain text in the rendered Compose file, which is stored in the release directory on the manager.
+Dockflow 1.x reads secrets from three places:
+
+- process variables in CI, usually all the repository's secrets at once through `DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}`;
+- a local `.env.dockflow`;
+- a JSON variable.
+
+A secret named `PRODUCTION_X` overrides the value `X` of the production environment. Its values can be used anywhere a template can, in particular in the `environment:` of a Compose service. Real projects rely on this (ValientRP, MohistMC), and the project owner wants it kept.
+
+Its weak points:
+
+- variable names are derived from server names, so `web-1` gives a name CI providers refuse;
+- an undefined variable renders as an empty string;
+- values reach containers only as plain text in the rendered Compose file, which is kept in a file on the manager.
 
 ## Decision
 
-### Where secrets are kept
+### Where secrets come from
 
-- **A SOPS file per environment:** `secrets/<env>.sops.yaml` by default, holding a flat map of `KEY: value`.
-  - It is encrypted with age, and the recipients are declared in the repository's standard `.sops.yaml`.
-  - It is committed: secret changes are versioned and reviewed like code.
-  - The CLI decrypts it in memory with the SOPS Go library, using SOPS's own locations for the age identity (`SOPS_AGE_KEY`, `SOPS_AGE_KEY_FILE`, the default key file). In CI that is one repository secret per environment, or one for all.
-- **Declared process variables:** for teams that keep secrets in their CI only, an environment can list keys under `secrets.env`. Each listed key is read from `DOCKFLOW_SECRET_<KEY>`. Only listed keys are read.
-- `dockflow secrets set <env> <KEY>` (value read from stdin) and `dockflow secrets list <env>` manage the file. `dockflow secrets edit <env>` delegates to the `sops` binary when it is installed.
+From highest to lowest priority:
 
-### How they reach containers
+1. **Process variables:** the variables prefixed with the environment's name (`PRODUCTION_*` for `production`), and the content of `DOCKFLOW_SECRETS`, a JSON object (typically `${{ toJSON(secrets) }}` in GitHub Actions). Other process variables (`PATH`, `HOME`, …) are never read.
+2. **`.env.dockflow`** at the project root, for local use. `dockflow init` adds it to `.gitignore`.
+3. **An optional SOPS file per environment** (`secrets/<env>.sops.yaml`, encrypted with age), for teams that want their secrets versioned and reviewed in git. The CLI decrypts it in memory with the SOPS library.
 
-1. **Compose `secrets:` (preferred).** A Compose secret whose source is `environment: KEY` becomes a Swarm secret named `<stack>_<name>_<hash8>`, where the hash covers the value. It is mounted at `/run/secrets/<name>`, encrypted in Raft and not readable through the API. Locally, `docker compose` reads the same `KEY` from the shell, so the file works on a laptop as is.
-2. **Interpolation.** `${KEY}` anywhere in Compose resolves to the secret value. The value then sits in the service spec, readable by anyone with Docker access, and in the release record. This is allowed because many images only read environment variables, and the documentation says what it exposes.
+**Scoping.** For environment `production`, the key `X` resolves to `PRODUCTION_X` when it exists, otherwise to `X`. One repository can therefore hold `DB_PASSWORD` for every environment and `PRODUCTION_DB_PASSWORD` for production only, as in 1.x.
 
-The same file holds the credentials Dockflow itself needs: the registry, restic, webhook signing.
+**Override.** Secrets override the environment's `vars` in `dockflow.yml`, so a non-secret default in `vars` (`RCON_PASSWORD: changeme`) is replaced by the CI secret of the same name.
+
+**Names.** Keys are `^[A-Z][A-Z0-9_]*$`. Secret names never depend on server names, so they are always valid in GitHub and GitLab.
+
+### Where secrets can be used
+
+Everywhere interpolation applies ([ADR-0006](0006-compose-as-written.md)):
+
+- in Compose (`environment:`, `build.args`, labels, …), as in 1.x;
+- in `dockflow.yml`;
+- in the files listed under `templates:`;
+- in hooks.
+
+There are two ways to hand a secret to a container:
+
+1. **Interpolation**, `${DB_PASSWORD}` in `environment:`. This is what 1.x does and what most images expect. The value sits in the service spec, readable by anyone with Docker access, and in the release record (Swarm Raft, encrypted at rest).
+2. **Compose `secrets:`**, with source `environment: DB_PASSWORD`. The value becomes a Swarm secret named `<stack>_secret_<hash12>`, mounted at `/run/secrets/<name>`, encrypted in Raft and not readable through the API. The documentation recommends it for anything sensitive, and shows the `*_FILE` variables that official images (Postgres, MySQL, …) support.
+
+**At build time**, Compose `build.secrets` (handled by bake) pass a secret to a build without leaving it in the image history. `build.args` still work, as in 1.x.
 
 ### Rotation
 
-Changing a value changes its hash, so a new Swarm secret is created, services move to it in the normal rollout, and the old one is removed once no retained release references it. `dockflow secrets revoke <env> <KEY>` removes old versions at once, at the cost of making older releases impossible to roll back to.
+Changing a secret used through Compose `secrets:` changes its hash: a new Swarm secret is created, the services move to it in the normal rollout, and the old one is removed once no retained release references it. `dockflow secrets revoke <env> <KEY>` removes old versions at once.
+
+### Commands
+
+`dockflow secrets list <env>` lists keys with their source, never their values. `dockflow secrets set` and `dockflow secrets edit` work on the SOPS file when the environment uses one.
 
 ## Consequences
 
-- Secret names never depend on server or environment names.
-- Secrets never touch a server's file system outside Swarm's own encrypted store.
-- Teams need age keys. The docs cover creating one and storing it in CI.
-- Values in `${…}` are as visible as any environment variable. The documentation recommends Compose `secrets:` for anything sensitive.
+- The 1.x workflow is unchanged: `DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}` in CI, `.env.dockflow` locally, `${KEY}` in Compose.
+- A missing secret is an error, not an empty string ([ADR-0006](0006-compose-as-written.md)). An optional value is written `${KEY:-}`.
+- Secrets used through `${…}` are as visible as any environment variable. Compose `secrets:` are not.
 
 ## Alternatives considered
 
-- **CI variables only.** Kept as the declared-keys fallback, not as the main path.
-- **External managers (1Password, Infisical, Vault).** Deferred. SOPS supports cloud KMS keys already. Direct integrations may come behind their own ADR.
+- **SOPS only, with process variables declared one by one (first draft of this ADR).** Rejected by the project owner: it breaks the 1.x workflow of passing all CI secrets at once.
+- **External managers (1Password, Infisical, Vault).** Deferred.

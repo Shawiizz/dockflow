@@ -1,6 +1,6 @@
 # Events, version 1
 
-Every operation reports its progress as a stream of events ([ADR-0016](../adr/0016-interfaces.md)). The agent writes them to its stdout. The CLI renders them for humans, or prints them as they are with `--json`, one JSON object per line (JSON Lines). The TUI, the MCP server and the GitHub Action read the same stream.
+Every operation reports its progress as a stream of events ([ADR-0016](../adr/0016-interfaces.md)). The agent writes them to its stdout. The CLI renders them for humans, or prints them as they are with `--json`, one JSON object per line (JSON Lines). The web UI, the MCP server and the GitHub Action read the same stream.
 
 ## Envelope
 
@@ -65,12 +65,18 @@ Every operation reports its progress as a stream of events ([ADR-0016](../adr/00
 | `health.check` | `service`, `url`, `attempt`, `status?`, `ok` |
 | `routes.applied` | `domains`, `proxy_tasks` |
 | `filter.applied` | `nodes`, `ports` |
+| `hook.started` | `phase`, `name`, `kind` (`local`, `host`, `exec`), `target` |
+| `hook.log` | `name`, `target`, `line` |
+| `hook.finished` | `name`, `target`, `exit_code`, `fatal` |
+| `upload.progress` | `dest`, `files_sent`, `files_total`, `bytes_sent`, `bytes_total` |
+| `upload.finished` | `dest`, `nodes`, `files_changed`, `files_deleted` |
+| `backup.finished` | `service`, `snapshot`, `bytes_added`, `duration_ms` |
 | `rollback.started` | `reason`, `target_seq` |
 | `rollback.finished` | `ok` |
 | `cancel.requested` | `by` (`signal`, `cancel`) |
 | `log` | `line` (anything else worth showing) |
 | `run.finished` | `outcome`, `exit_code`, `release_seq?`, `duration_ms`, `error?` |
 
-`outcome` is one of: `success`, `noop`, `rolled_back`, `failed`, `cancelled`, `lock_lost`. `exit_code` is the [CLI's exit code](cli-v1.md#exit-codes) for that outcome.
+`outcome` is one of: `success`, `noop`, `rolled_back`, `failed`, `cancelled`, `lock_lost`, `hook_failed`. `exit_code` is the [CLI's exit code](cli-v1.md#exit-codes) for that outcome.
 
 `error` is `{ "code": "…", "message": "…", "hint": "…" }`. `code` is stable and dotted (`config.invalid`, `ssh.host_key_mismatch`, `plan.stale`, `plan.domain_conflict`, `build.failed`, `health.failed`, …). `hint` says what to do about it.

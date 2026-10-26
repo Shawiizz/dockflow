@@ -33,9 +33,10 @@ Dockflow keeps the user's Compose file as the source of truth, uses Docker Swarm
 3. **Finish what was started.** A deploy runs on the cluster itself. Losing the CLI, the network or the CI runner never leaves an app half-deployed: the run completes or rolls back on its own.
 4. **The cluster is the database.** Locks, releases and the current version live in the Swarm Raft store. Any manager can answer, nothing needs syncing, nothing is stored in files on one server.
 5. **Delegate.** Swarm schedules, rolls out and rolls back. buildx builds. A registry distributes images. Caddy terminates TLS. restic stores backups. SOPS encrypts secrets. Dockflow composes them.
-6. **One core, several faces.** The CLI, the TUI, the MCP server and the GitHub Action call the same functions and read the same event stream.
+6. **One core, several faces.** The CLI, the local web UI, the MCP server and the GitHub Action call the same functions and read the same event stream.
 7. **Fail loudly.** A missing variable, an unknown key, an unsupported Compose feature or an unverified host key is an error, never a silent default.
 8. **Honest security.** Access to the Docker socket is root. Dockflow says so, limits who holds the keys, and does not pretend otherwise.
+9. **Nothing lost from 1.x.** Every feature of Dockflow 1.x has an equivalent in v2, often built differently. [parity.md](parity.md) maps each one, and a feature leaves that table only by a decision of the project owner.
 
 ## Non-goals
 
@@ -54,6 +55,6 @@ Dockflow v2 will not:
 
 - The domain model and the planner are pure: no I/O, no Docker types leaking in, tested without mocks.
 - Every interaction with the outside world goes through a port with one adapter in v1.
-- No shell strings in the deploy path. Docker is reached through its API; shell is used only to provision servers.
+- No shell strings in the deploy path. Docker is reached through its API; shell is used only to provision servers and to run the `host` hooks the user writes.
 - Output is events, rendered by the interface. No package prints.
-- Budget: the core (everything except tests, the TUI and the MCP server) stays under **10,000 lines of Go** up to v1.0. Going over it requires an ADR that says what was worth it.
+- Budget: the core (everything except tests, the web UI and the MCP server) stays under **15,000 lines of Go** up to v1.0. Going over it requires an ADR that says what was worth it.

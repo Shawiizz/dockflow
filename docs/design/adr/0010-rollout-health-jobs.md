@@ -34,7 +34,9 @@ Swarm already holds tasks until their `HEALTHCHECK` passes, rolls a service back
 ### Health
 
 - **The container `HEALTHCHECK` is the primary signal**, and Swarm gates tasks on it. A routed service without one gets a warning in the plan.
-- **HTTP checks** (`x-dockflow.health.http`) are a post-condition, run after the service has converged. The agent attaches to the app's network and requests the service by its internal name, so the check tests the service itself, not DNS or the proxy. A failed check fails the run and triggers the whole-app rollback ([ADR-0008](0008-plan-apply-releases.md)).
+- **HTTP checks** (`x-dockflow.health.http`) are a post-condition, run after the service has converged. The agent attaches to the app's network and requests the service by its internal name, so the check tests the service itself, not DNS or the proxy.
+- **Public checks** (`health.endpoints` in `dockflow.yml`, as in 1.x) request a full URL, such as `https://shop.example.com/`, after routes are switched. They test the whole path: DNS, Cloudflare, proxy, TLS. Their options are `method`, `expected_status`, `timeout`, `retries`, `retry_delay` and `validate_certs`.
+- A failed check of either kind fails the run. What happens next follows `on_failure` ([ADR-0008](0008-plan-apply-releases.md)). `health.startup_delay` waits before the first check.
 
 ### Jobs
 
@@ -57,10 +59,10 @@ The planner refuses a stateful service that breaks these rules.
 
 ### Hooks
 
-Hooks in `dockflow.yml` run only on the CLI's machine (`before_build`, `after_deploy`, `after_failure`). Anything that has to run in the cluster is a job.
+Hooks run locally, on hosts or inside running containers ([ADR-0022](0022-hooks.md)). Work that needs the new image runs as a job.
 
 ## Consequences
 
 - No fixed polling loop, no fixed timeout, no stack removal on a stuck update.
 - Migrations run in the cluster, on the new image, and their exit code gates the deploy.
-- Accessories as a separate stack disappear: a database is a stateful service of the app, in the same Compose file.
+- Accessories as a separate stack disappear: a database is a stateful service of the app. It can sit in the same Compose file, or in a second one (`accessories.yml`, as in 1.x) listed under `compose:`. `dockflow deploy --only db` redeploys it alone, as `deploy --accessories` did.

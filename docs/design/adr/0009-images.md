@@ -18,7 +18,9 @@ A registry deduplicates layers, lets every node pull in parallel and is how Swar
 - **Where builds run:**
   - by default, on the machine running the CLI (a laptop or a CI runner), which needs Docker with buildx;
   - with `build.builder: remote` in `dockflow.yml`, on a manager, through a buildx builder that reaches the manager's Docker over SSH. The CLI's machine then needs only the `docker` CLI and buildx, not a daemon.
-- Tags are `<registry>/<app>/<service>:<version>`. The plan pins the resulting digests.
+- With `build.engine: podman`, services are built one by one with `podman build`, from the same Compose build keys, as 1.x's `container_engine: podman` did. The CLI reads the result through Podman's Docker-compatible API.
+- Tags are `<registry>/<app>/<service>:<version>`, plus any `registry.additional_tags` (for example `${DOCKFLOW_ENV}-latest`). The plan pins the resulting digests.
+- `dockflow build [<env>] [--only <services>] [--push]` builds without deploying, as in 1.x. CI runs it on every branch push.
 
 ### Distribution
 

@@ -10,6 +10,7 @@ The project is in its design phase. Start with:
 - [Architecture decisions](docs/design/adr/README.md): one record per decision
 - [Specifications](docs/design/README.md#specifications): configuration, cluster state, events, CLI
 - [Roadmap](docs/design/roadmap.md): milestones and their exit criteria
+- [Parity with 1.x](docs/design/parity.md): every 1.x feature and its v2 equivalent
 
 ## License
 

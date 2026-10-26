@@ -16,7 +16,7 @@ Every interaction with Docker uses the Docker Engine API through the official Mo
 - **Waiting** uses the `/events` stream, plus a periodic read of service `UpdateStatus` and task states as a safety net. There is no fixed polling loop as the primary mechanism.
 - **Errors** come back as typed API errors (not found, conflict, invalid parameter) and map to Dockflow errors by type, never by message.
 
-Shell commands remain only in provisioning ([ADR-0013](0013-servers-access-security.md)). There they are built with a typed command builder that quotes every value, a design carried over from 1.x.
+Shell commands remain only in provisioning ([ADR-0013](0013-servers-access-security.md)) and in the `host` hooks the user writes ([ADR-0022](0022-hooks.md)). There they are built with a typed command builder that quotes every value, a design carried over from 1.x.
 
 ## Consequences
 

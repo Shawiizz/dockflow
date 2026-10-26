@@ -11,7 +11,14 @@ Dockflow 1.x has a plugin system: manifests with inputs, uploads and hooks, expa
 
 v1 has no plugin system:
 
-- What 1.x plugins did is covered by Compose itself (services, `configs:`), by jobs ([ADR-0010](0010-rollout-health-jobs.md)) and by local hooks.
+- What 1.x plugins did is covered elsewhere:
+
+  | 1.x plugin | v2 |
+  |---|---|
+  | `nginx` vhosts | Routes ([ADR-0011](0011-ingress-caddy.md)) |
+  | `systemd` units | Uploads to host paths ([ADR-0021](0021-uploads-and-templates.md)) with `host` hooks ([ADR-0022](0022-hooks.md)), or volume plugins for mounts ([ADR-0018](0018-shared-clusters.md)) |
+  | Anything else | Compose itself and jobs ([ADR-0010](0010-rollout-health-jobs.md)) |
+
 - Common setups are documented **recipes**: Compose snippets with their `x-dockflow` keys, for example a Postgres with backups, a worker with a migration job, a static site, a monitoring stack.
 
 If extension becomes necessary after v1, it takes the form of executables named `dockflow-<name>` on the `PATH`, called with the environment's resolved context as JSON on stdin, the way git and kubectl find their plugins. That needs its own ADR.

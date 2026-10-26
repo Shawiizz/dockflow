@@ -5,8 +5,9 @@ The design of Dockflow v2, written before any code ([roadmap, M0](roadmap.md#m0-
 | Document | Contents |
 |---|---|
 | [vision.md](vision.md) | The one-sentence pitch, who it is for, goals, non-goals, the code budget |
-| [adr/](adr/README.md) | Twenty architecture decisions, each with its context, consequences and rejected alternatives |
+| [adr/](adr/README.md) | Twenty-two architecture decisions, each with its context, consequences and rejected alternatives |
 | [roadmap.md](roadmap.md) | Milestones M1 to M5 and v1.0, with exit criteria |
+| [parity.md](parity.md) | Every 1.x feature and its v2 equivalent: nothing is lost |
 
 ## Specifications
 
@@ -19,7 +20,7 @@ The design of Dockflow v2, written before any code ([roadmap, M0](roadmap.md#m0-
 
 ## How a deploy works, end to end
 
-1. **The CLI loads** `dockflow.yml`, the environment's Compose files and its secrets, and resolves interpolation. A missing variable or an unsupported key stops it here.
+1. **The CLI loads** `dockflow.yml`, the environment's Compose files, its secrets (CI variables, `.env.dockflow`, SOPS) and its connection string, and resolves interpolation. A missing variable or an unsupported key stops it here.
 2. **It builds** images with buildx bake and pushes them, to an external registry or to the cluster registry through an SSH tunnel to a manager.
 3. **It connects** to the first manager that answers, verifies its host key and reaches its Docker API through the SSH connection.
 4. **It computes the plan** from the desired state and what the cluster actually runs, and shows it. On a terminal, it asks for confirmation.
