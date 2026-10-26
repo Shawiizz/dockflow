@@ -18,6 +18,7 @@ import (
 
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/errs"
+	"github.com/Shawiizz/dockflow/internal/render"
 )
 
 // FileName is the name of the configuration file at the project root.
@@ -39,11 +40,11 @@ type Settings struct {
 
 	Registry *Registry      `yaml:"registry"`
 	Build    *BuildSettings `yaml:"build"`
-	Health   *Health        `yaml:"health"`
+	Health    *Health          `yaml:"health"`
+	Templates []TemplateEntry `yaml:"templates"`
 
 	// Keys of the specification that arrive in later milestones. They are refused with a clear
 	// message instead of being ignored.
-	Templates *yaml.Node `yaml:"templates"`
 	Uploads   *yaml.Node `yaml:"uploads"`
 	Hooks     *yaml.Node `yaml:"hooks"`
 	Notify    *yaml.Node `yaml:"notify"`
@@ -77,6 +78,22 @@ type Endpoint struct {
 	Retries        *int   `yaml:"retries"`
 	RetryDelay     string `yaml:"retry_delay"`
 	ValidateCerts  *bool  `yaml:"validate_certs"`
+}
+
+// TemplateEntry is one entry of templates: a path rendered in place, or src and dest.
+type TemplateEntry struct {
+	Src  string `yaml:"src"`
+	Dest string `yaml:"dest"`
+}
+
+// UnmarshalYAML reads a plain path as a file rendered in place.
+func (t *TemplateEntry) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		t.Src, t.Dest = n.Value, n.Value
+		return nil
+	}
+	type plain TemplateEntry
+	return n.Decode((*plain)(t))
 }
 
 // BuildSettings is the build block.
@@ -141,11 +158,12 @@ type Resolved struct {
 	// StartupDelay is waited after the switch, before the public checks.
 	StartupDelay time.Duration
 	Endpoints    []domain.Endpoint
+	Templates    []render.Template
 }
 
 // laterKeys are spec keys not available yet, with the milestone that brings them.
 var laterKeys = map[string]string{
-	"templates": "M2", "uploads": "M2", "hooks": "M2",
+"uploads": "M2", "hooks": "M2",
 	"notify": "M2", "firewall": "M3", "routes": "M3", "plugins": "M3",
 	"backups": "M4", "secrets_file": "M3",
 }
@@ -304,6 +322,13 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 				return nil, err
 			}
 		}
+		if s.Templates != nil {
+			t, err := templates(s.Templates)
+			if err != nil {
+				return nil, err
+			}
+			res.Templates = t
+		}
 	}
 	if err := res.validateImages(env); err != nil {
 		return nil, err
@@ -330,6 +355,23 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 		}
 	}
 	return res, nil
+}
+
+func templates(entries []TemplateEntry) ([]render.Template, error) {
+	out := make([]render.Template, 0, len(entries))
+	for i, e := range entries {
+		if e.Dest == "" {
+			e.Dest = e.Src
+		}
+		for _, p := range []string{e.Src, e.Dest} {
+			clean := filepath.Clean(p)
+			if p == "" || filepath.IsAbs(p) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+				return nil, errs.Config("templates[%d]: %q must be a path inside the project", i, p)
+			}
+		}
+		out = append(out, render.Template{Src: filepath.Clean(e.Src), Dest: filepath.Clean(e.Dest)})
+	}
+	return out, nil
 }
 
 func (res *Resolved) readHealth(h *Health) error {

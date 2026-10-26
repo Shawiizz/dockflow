@@ -118,3 +118,35 @@ func TestBuildPushAndDeploy(t *testing.T) {
 		t.Fatalf("served %q after the rollback, want first", got)
 	}
 }
+
+// The Dockerfile is a template: rendered with the environment's vars in a temporary copy, the
+// project left untouched.
+func TestTemplatedBuild(t *testing.T) {
+	app := "journey8"
+	host := app + ".test"
+	dir := filepath.Join(workDir, app)
+	builtApp(t, dir, app, "unused")
+	cfg := fmt.Sprintf(`version: 1
+app: %s
+templates:
+  - docker/Dockerfile
+environments:
+  production:
+    vars:
+      GREETING: hello
+    deploy:
+      timeout: 60s
+`, app)
+	os.WriteFile(filepath.Join(dir, "dockflow.yml"), []byte(cfg), 0o644)
+	dockerfile := fmt.Sprintf("FROM %s\nENV WHOAMI_NAME={{ GREETING }}-{{ DOCKFLOW_ENV }}\n", whoamiImage)
+	os.WriteFile(filepath.Join(dir, "docker", "Dockerfile"), []byte(dockerfile), 0o644)
+
+	mustSucceed(t, dockflow(t, dir, "deploy"), "deploy a templated build")
+	waitServing(t, host)
+	if got := served(t, host); got != "hello-production" {
+		t.Fatalf("served %q, want hello-production", got)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "docker", "Dockerfile")); !strings.Contains(string(b), "{{ GREETING }}") {
+		t.Fatalf("the project's Dockerfile was modified:\n%s", b)
+	}
+}

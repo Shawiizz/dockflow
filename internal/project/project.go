@@ -73,6 +73,8 @@ type Loaded struct {
 	App      domain.App
 	Builds   []image.Build
 	Builtins map[string]string
+	// Values are every variable templates see: built-ins, secrets and vars.
+	Values map[string]string
 	Warnings []string
 	Version  string
 	Git      Git
@@ -161,7 +163,7 @@ func Load(ctx context.Context, o Options) (*Loaded, error) {
 		return nil, err
 	}
 	return &Loaded{
-		Raw: raw, Config: cfg, Secrets: store, App: res.App, Builds: res.Builds, Builtins: builtins,
+		Raw: raw, Config: cfg, Secrets: store, App: res.App, Builds: res.Builds, Builtins: builtins, Values: all,
 		Warnings: res.Warnings, Version: version, Git: o.Git,
 	}, nil
 }

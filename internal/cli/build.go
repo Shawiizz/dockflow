@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/image/buildx"
 	"github.com/Shawiizz/dockflow/internal/image/oci"
 	"github.com/Shawiizz/dockflow/internal/project"
+	"github.com/Shawiizz/dockflow/internal/render"
 )
 
 // buildTail is how many lines of a failed build are shown without --verbose.
@@ -30,6 +32,23 @@ func (a *app) build(ctx context.Context, l *project.Loaded, platform, dir string
 	builds, err := selectBuilds(l.Builds, only)
 	if err != nil || len(builds) == 0 {
 		return nil, err
+	}
+	// templates are rendered in a temporary copy, and bake reads the contexts from it
+	contexts := make([]string, 0, len(builds))
+	for _, b := range builds {
+		contexts = append(contexts, b.Context)
+	}
+	ws, err := render.Prepare(l.Config.Dir, l.Config.Templates, l.Values, contexts)
+	if err != nil {
+		return nil, err
+	}
+	defer ws.Close()
+	for i := range builds {
+		b := &builds[i]
+		if filepath.IsAbs(b.Dockerfile) {
+			b.Dockerfile = ws.Path(b.Dockerfile)
+		}
+		b.Context = ws.Path(b.Context)
 	}
 	names := make([]string, 0, len(builds))
 	for _, b := range builds {
@@ -67,7 +86,8 @@ func (a *app) build(ctx context.Context, l *project.Loaded, platform, dir string
 
 func selectBuilds(all []image.Build, only []string) ([]image.Build, error) {
 	if len(only) == 0 {
-		return all, nil
+		// a copy: the caller points contexts at the rendered workspace
+		return append([]image.Build(nil), all...), nil
 	}
 	byName := map[string]image.Build{}
 	for _, b := range all {
