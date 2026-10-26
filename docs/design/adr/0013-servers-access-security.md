@@ -85,6 +85,8 @@ Provisioning commands build their shell commands with a typed command builder th
 - the steps run as one shell script sent over the administrator's SSH session (`sh -s`, or `sudo -n sh -s`), built with the typed builder (`internal/shell`), rather than by uploading the binary and running `dockflow provision`: nothing is left on the server, and the script is contract-tested in Debian and Alpine containers;
 - `--deploy-key` takes a private key file, not a public one, since the connection string must hold the private key.
 
+`sudo dockflow server init`, without an argument and outside a project, runs the same script on the server itself, with `sh -s`. The connection string takes the server's public address (the source address of its route to the internet, refused when private: `--host` then), the SSH port of `sshd_config` (`--port`), and the fingerprint of the local host key, ed25519 first. The deploy key is generated there, in memory, printed and never written to disk; the deploy user is then reached through the SSH server on 127.0.0.1 with that key and host key, which checks both as the CI will.
+
 The rest (interactive mode, running on the server itself, `from=`, SSH hardening, fail2ban, unattended updates, time synchronisation, the port filter, the watchdog, `--nginx`, `server cloud-init`) stays in M3.
 
 ## Consequences

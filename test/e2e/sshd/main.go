@@ -52,6 +52,11 @@ func main() {
 	if err := os.WriteFile(*fingerprint, []byte(ssh.FingerprintSHA256(signer.PublicKey())), 0o644); err != nil {
 		log.Fatal(err)
 	}
+	// where OpenSSH keeps it, for server init run on the server
+	os.MkdirAll("/etc/ssh", 0o755)
+	if err := os.WriteFile("/etc/ssh/ssh_host_ed25519_key.pub", ssh.MarshalAuthorizedKey(signer.PublicKey()), 0o644); err != nil {
+		log.Fatal(err)
+	}
 	l, err := net.Listen("tcp", *addr)
 	if err != nil {
 		log.Fatal(err)

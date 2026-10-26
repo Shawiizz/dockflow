@@ -162,13 +162,13 @@ export DOCKFLOW_AGENT_BINARY=$PWD/dockflow-linux-amd64
 
 ## Server requirements
 
-`dockflow server init <admin>@<host>` prepares a server from an administrator's account: it installs Docker on Debian and Ubuntu when it is missing, creates the deploy user and its key, and installs the switch and the registry. See the [Quickstart](/start/quickstart/). The server needs:
+`dockflow server init <admin>@<host>` (or `sudo dockflow server init` on the server itself) prepares a server from an administrator's account: it installs Docker on Debian and Ubuntu when it is missing, creates the deploy user and its key, and installs the switch and the registry. See the [Quickstart](/start/quickstart/). The server needs:
 
 | Requirement | Why |
 |---|---|
 | Linux on `amd64` or `arm64` | The agent is a Linux binary for one of these architectures |
 | Docker Engine 27 or later | `server init` installs it on Debian and Ubuntu; elsewhere, install it first. The CLI checks the version when it connects, and refuses older engines (exit code 4) |
-| SSH as `root` or a user with passwordless `sudo`, for `server init` | It creates the deploy user `dockflow`, in the `docker` group, which every other command uses. A user of your own in the `docker` group works too, with [`server connection`](/reference/cli/#server-connection). Dockflow reaches the Docker socket through SSH stream-local forwarding, which OpenSSH allows by default (`AllowStreamLocalForwarding`); when the server refuses it, it falls back to `docker system dial-stdio`, which needs the `docker` CLI on the server |
+| SSH as `root` or a user with passwordless `sudo`, for `server init` (or a root shell on the server) | It creates the deploy user `dockflow`, in the `docker` group, which every other command uses. A user of your own in the `docker` group works too, with [`server connection`](/reference/cli/#server-connection). Dockflow reaches the Docker socket through SSH stream-local forwarding, which OpenSSH allows by default (`AllowStreamLocalForwarding`); when the server refuses it, it falls back to `docker system dial-stdio`, which needs the `docker` CLI on the server |
 | A known SSH host key | Every connection verifies it: pinned in the configuration or the connection string, or present in your `~/.ssh/known_hosts`. Nothing is trusted on first use |
 | Ports 80 and 443 free, for the `builtin` edge | The switch publishes them and obtains TLS certificates. With the `external` edge, behind your own proxy, the switch listens on `127.0.0.1:8080` instead. See [The switch and edges](/concepts/switch-and-edges/) |
 | Port 5959 free on loopback | The server-local registry listens on `127.0.0.1:5959`, unless you use `--no-registry` |

@@ -385,6 +385,7 @@ Hold an environment's lock by hand, for a maintenance window. `acquire` sets a m
 
 ```sh
 dockflow server init <admin>@<host>[:port] [flags]
+sudo dockflow server init [flags]          # on the server, outside a project
 dockflow server init [<env>] [flags]
 ```
 
@@ -395,6 +396,8 @@ With `<admin>@<host>`, prepares a server from an administrator's account (`root`
 3. reconnects as the deploy user and installs the switch and the server-local registry.
 
 The server's host key must be known: in your `~/.ssh/known_hosts`, or given with `--host-key`. Every step can be run again; a new run adds a new key.
+
+Without an argument, in a directory without `dockflow.yml`, prepares the server it runs on, which must be Linux, as root: the same steps, with the key generated in memory and never written to disk. The connection string gives the server's public address (the source address of its route to the internet; a private address is refused, give `--host`), the SSH port of `sshd_config` (following its `Include` lines; 22 when it has none) and the fingerprint of `/etc/ssh/ssh_host_ed25519_key.pub` (`ecdsa`, then `rsa`, when there is no ed25519 key). The deploy user is then checked through the SSH server on `127.0.0.1`, as the CI will reach it.
 
 With an environment, installs or updates the switch and the registry on the server of that environment, reached as for a deploy.
 
@@ -417,10 +420,12 @@ Running it again applies the new options, and the switch keeps every app's route
 | `-k, --key string` | `ssh-agent`, `~/.ssh` | With `<admin>@<host>`: the administrator's private key. |
 | `--password-file string` | none | With `<admin>@<host>`: a file holding the administrator's password. |
 | `--host-key string` | `known_hosts` | With `<admin>@<host>`: the server's host key fingerprint (`SHA256:…`). |
-| `--user string` | `dockflow` | With `<admin>@<host>`: the deploy user to create. |
-| `--deploy-key string` | a new key | With `<admin>@<host>`: a private key to use for the deploy user instead of generating one. |
-| `--name string` | `main` | With `<admin>@<host>`: the server's name in the connection string. |
-| `--skip-docker-install` | `false` | With `<admin>@<host>`: refuse a server without Docker instead of installing it. |
+| `--user string` | `dockflow` | When preparing a server: the deploy user to create. |
+| `--deploy-key string` | a new key | When preparing a server: a private key to use for the deploy user instead of generating one. |
+| `--name string` | `main` | When preparing a server: its name in the connection string. |
+| `--skip-docker-install` | `false` | When preparing a server: refuse one without Docker instead of installing it. |
+| `--host string` | its public address | On the server itself: the address or domain name the CI reaches it at. |
+| `--port int` | `Port` of `sshd_config`, or 22 | On the server itself: the SSH port the CI uses. |
 
 ```sh
 dockflow server init root@203.0.113.10 --edge external

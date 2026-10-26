@@ -117,3 +117,40 @@ func TestServerInitProvisions(t *testing.T) {
 		t.Fatalf("a second server init must keep the user and add its new key, got exit %d:\n%s", code, again)
 	}
 }
+
+func TestServerInitOnTheServer(t *testing.T) {
+	// as an OpenSSH configuration would give it
+	if _, err := inServer("mkdir -p /etc/ssh/sshd_config.d && echo 'Include /etc/ssh/sshd_config.d/*.conf' >/etc/ssh/sshd_config && echo 'Port 2222' >/etc/ssh/sshd_config.d/port.conf"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sh("docker", "cp", binary, dind+":/usr/local/bin/dockflow"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := sh("docker", "exec", "-w", "/", dind, "dockflow", "server", "init", "--host", serverIP, "--user", "deployer",
+		"--switch-image", caddyImage, "--registry-image", registryImage)
+	if err != nil {
+		t.Fatalf("server init on the server: %v", err)
+	}
+	if !strings.Contains(out, "creating the user deployer") || !strings.Contains(out, "is ready") {
+		t.Fatalf("server init must create the user and finish:\n%s", out)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	cs := lines[len(lines)-1]
+	decoded, _ := base64.StdEncoding.DecodeString(cs)
+	fp, _ := inServer("cat /host_key_fingerprint")
+	for _, want := range []string{`"host":"` + serverIP + `"`, `"port":2222`, `"user":"deployer"`, fp} {
+		if !strings.Contains(string(decoded), want) {
+			t.Fatalf("the connection string must hold %s: %s", want, decoded)
+		}
+	}
+
+	// the printed string deploys from another machine
+	app := "journey21"
+	dir := filepath.Join(workDir, app)
+	writeProject(t, dir, app, webApp(app, "whoami-e2e:v1", ""))
+	cmd := exec.Command(binary, "--json", "-y", "-C", dir, "deploy")
+	cmd.Env = append(os.Environ(), "HOME="+workDir, "PRODUCTION_CONNECTION="+cs)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("deploy with the printed connection string: %v\n%s", err, out)
+	}
+}

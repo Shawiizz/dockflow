@@ -45,7 +45,7 @@ v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no featu
 | `accessories deploy/list/logs/exec/restart/stop/remove` | `deploy --only`, `ps`, `logs`, `exec`, `restart`, `stop`, `destroy --only <services> [--volumes]` on stateful services | replaced | M2 |
 | `backup create/list/restore/prune` (`--from` date, `--keep`, `--node`, `--json`) | `backup run/list/restore/prune` with the same options (`--node` has no use on one server) | better: restic ([ADR-0015](adr/0015-backups-restic.md)) | M4 |
 | `plugins list` | `plugins list` ([ADR-0017](adr/0017-plugins.md)) | same | M3 |
-| `setup` (interactive, local) | `server init` (interactive, local) | better: hardening | M3 |
+| `setup` (interactive, local) | `server init` (interactive, local): local in M2, interactive in M3 | better: hardening | M3 |
 | `setup user@host` (`-k`, `--port`, `--user`, `--deploy-password`, `--host-key`, `--skip-docker-install`, `--no-port-filter`, `--nginx`) | `server init user@host` with the same options, `--nginx` included | better | M3 |
 | `setup --host --user --password --generate-key` (non-interactive) | `server init --host --user --password-file --generate-key` | same | M3 |
 | `setup swarm` | None: no Swarm ([ADR-0003](adr/0003-single-host-docker.md)) | dropped by decision of the project owner | – |

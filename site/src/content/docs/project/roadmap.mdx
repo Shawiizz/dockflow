@@ -42,7 +42,7 @@ Everything a web app needs to go to production from CI.
 - **Day-2 commands:** `logs`, `exec`, `run`, `cp`, `ssh`, `ps`, `details`, `diagnose`, `restart`, `stop`, `scale`, `prune`, `list`, `destroy`, `releases --stats` and `cancel`.
 - **CI:** the environment and version derived from tags, on GitHub Actions, GitLab CI, Jenkins, Buildkite and Bitbucket Pipelines; signed webhooks.
 - **Cleanup:** release retention, and pruning of images and the registry.
-- `dockflow server init <admin>@<host>`: Docker installed on Debian and Ubuntu, the deploy user with a key generated on your machine, the switch and the registry, and the connection string printed at the end; `dockflow server connection`; the release workflow, the installer, and the download of the agent binary checked against the release's checksums.
+- `dockflow server init <admin>@<host>`, or `sudo dockflow server init` on the server itself: Docker installed on Debian and Ubuntu, the deploy user with a key that is never written to disk, the switch and the registry, and the connection string printed at the end; `dockflow server connection`; the release workflow, the installer, and the download of the agent binary checked against the release's checksums.
 
 ## Coming next
 
@@ -52,7 +52,7 @@ Everything a web app needs to go to production from CI.
 
 Take a blank server to a hardened production host, and cover the needs of larger apps.
 
-- **Provisioning:** the rest of `server init`: interactive questions, running on the server itself, SSH hardening, fail2ban, security updates, time synchronisation, `from=` restrictions on the deploy key, and `--nginx`. Plus `server cloud-init`, `server check`, `server status`, `server edge` and `server upgrade`.
+- **Provisioning:** the rest of `server init`: interactive questions, SSH hardening, fail2ban, security updates, time synchronisation, `from=` restrictions on the deploy key, and `--nginx`. Plus `server cloud-init`, `server check`, `server status`, `server edge` and `server upgrade`.
 - **Edges and routes:** the `cloudflare` edge; route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks.
 - **Plugins:** project plugins and the built-in `nginx` and `systemd` plugins, with `plugins list`.
 - **Firewall:** the published-port filter, with `firewall.public_ports` and per-port source ranges, and Cloudflare's ranges refreshed automatically.

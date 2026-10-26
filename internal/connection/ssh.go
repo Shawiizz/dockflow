@@ -74,6 +74,15 @@ func (t *Target) Addr() string {
 	return net.JoinHostPort(t.Server.Host, strconv.Itoa(t.Server.Port))
 }
 
+// HostKeyAlgorithms is the order in which the server is asked for its host key: ed25519 first,
+// as OpenSSH does, so the key pinned from `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`, or
+// recorded by OpenSSH in known_hosts, is the one the server presents.
+var HostKeyAlgorithms = []string{
+	ssh.KeyAlgoED25519,
+	ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521,
+	ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256,
+}
+
 // Dial opens an SSH connection, verifying the server's host key.
 func Dial(ctx context.Context, t *Target) (*ssh.Client, error) {
 	auth, closeAuth, err := authMethods(t)
@@ -82,10 +91,11 @@ func Dial(ctx context.Context, t *Target) (*ssh.Client, error) {
 	}
 	defer closeAuth()
 	cfg := &ssh.ClientConfig{
-		User:            t.Server.User,
-		Auth:            auth,
-		HostKeyCallback: hostKeyCallback(t),
-		Timeout:         20 * time.Second,
+		User:              t.Server.User,
+		Auth:              auth,
+		HostKeyCallback:   hostKeyCallback(t),
+		HostKeyAlgorithms: HostKeyAlgorithms,
+		Timeout:           20 * time.Second,
 	}
 	d := net.Dialer{Timeout: 20 * time.Second}
 	conn, err := d.DialContext(ctx, "tcp", t.Addr())

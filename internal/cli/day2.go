@@ -408,14 +408,23 @@ func (a *app) serverCmd() *cobra.Command {
 			"missing (Debian, Ubuntu), creates the deploy user with a key generated on this machine, then installs " +
 			"the switch and the registry as that user, and prints the connection string for your CI. The server's " +
 			"host key must be known: --host-key, or your known_hosts. Every step can be run again.\n\n" +
+			"Without an argument, outside a project, prepares the server it runs on, as root: the same steps, with " +
+			"the address, the SSH port and the host key read on the server.\n\n" +
 			"With an environment, installs or updates the switch and the registry on its server, reached as for a deploy.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			init := func(req *agent.Request) {
+				req.Edge, req.SwitchImage, req.SwitchListen, req.TrustedProxies = edge, switchImage, switchListen, trusted
+				req.Registry, req.RegistryImage = !noRegistry, registryImage
+			}
+			if len(args) == 0 && !inProject(a.dir) {
+				return a.provisionHere(cmd.Context(), pf, init)
+			}
+			if pf.host != "" || pf.port != 0 {
+				return errs.Usage("--host and --port are for server init without an argument, on the server itself")
+			}
 			if len(args) == 1 && strings.Contains(args[0], "@") {
-				return a.provisionServer(cmd.Context(), args[0], pf, func(req *agent.Request) {
-					req.Edge, req.SwitchImage, req.SwitchListen, req.TrustedProxies = edge, switchImage, switchListen, trusted
-					req.Registry, req.RegistryImage = !noRegistry, registryImage
-				})
+				return a.provisionServer(cmd.Context(), args[0], pf, init)
 			}
 			s, err := a.connect(cmd.Context(), envArg(args), "")
 			if err != nil {
@@ -447,10 +456,12 @@ func (a *app) serverCmd() *cobra.Command {
 	f.StringVarP(&pf.key, "key", "k", "", "with <admin>@<host>: the administrator's private key (default: ssh-agent, ~/.ssh)")
 	f.StringVar(&pf.passwordFile, "password-file", "", "with <admin>@<host>: a file holding the administrator's password")
 	f.StringVar(&pf.hostKey, "host-key", "", "with <admin>@<host>: the server's host key fingerprint (SHA256:…), when known_hosts does not have it")
-	f.StringVar(&pf.user, "user", "", "with <admin>@<host>: the deploy user to create (default dockflow)")
-	f.StringVar(&pf.deployKey, "deploy-key", "", "with <admin>@<host>: use this private key for the deploy user instead of generating one")
-	f.StringVar(&pf.name, "name", "", "with <admin>@<host>: the server's name in the connection string (default main)")
-	f.BoolVar(&pf.skipDocker, "skip-docker-install", false, "with <admin>@<host>: refuse a server without Docker instead of installing it")
+	f.StringVar(&pf.user, "user", "", "when preparing a server: the deploy user to create (default dockflow)")
+	f.StringVar(&pf.deployKey, "deploy-key", "", "when preparing a server: use this private key for the deploy user instead of generating one")
+	f.StringVar(&pf.name, "name", "", "when preparing a server: its name in the connection string (default main)")
+	f.BoolVar(&pf.skipDocker, "skip-docker-install", false, "when preparing a server: refuse one without Docker instead of installing it")
+	f.StringVar(&pf.host, "host", "", "on the server itself: the address or domain name the CI reaches it at (default: its public address)")
+	f.IntVar(&pf.port, "port", 0, "on the server itself: the SSH port the CI uses (default: the Port of sshd_config, or 22)")
 	cmd.AddCommand(initCmd, a.connectionCmd())
 	return cmd
 }
