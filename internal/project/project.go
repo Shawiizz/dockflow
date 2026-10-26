@@ -35,6 +35,10 @@ func ReadGit(dir string) Git {
 		return strings.TrimSpace(string(out))
 	}
 	g := Git{SHA: run("rev-parse", "HEAD"), Branch: run("rev-parse", "--abbrev-ref", "HEAD")}
+	if g.Branch == "HEAD" {
+		// a detached checkout
+		g.Branch = ""
+	}
 	if g.SHA != "" {
 		g.Dirty = run("status", "--porcelain") != ""
 	}

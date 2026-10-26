@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/Shawiizz/dockflow/internal/agent"
+	"github.com/Shawiizz/dockflow/internal/ci"
 	"github.com/Shawiizz/dockflow/internal/connection"
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/engine"
@@ -27,6 +28,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/hooks"
 	"github.com/Shawiizz/dockflow/internal/ignore"
 	"github.com/Shawiizz/dockflow/internal/launcher"
+	"github.com/Shawiizz/dockflow/internal/notify"
 	"github.com/Shawiizz/dockflow/internal/project"
 	"github.com/Shawiizz/dockflow/internal/render"
 	"github.com/Shawiizz/dockflow/internal/upload"
@@ -56,6 +58,15 @@ type session struct {
 func (a *app) load(ctx context.Context, env, versionFlag string) (*project.Loaded, error) {
 	dir := a.dir
 	git := project.ReadGit(dir)
+	// CI checkouts are often detached and shallow: the provider knows the branch and commit
+	if run := ci.Detect(os.Getenv); run.Provider != "" {
+		if git.Branch == "" {
+			git.Branch = run.Branch
+		}
+		if git.SHA == "" {
+			git.SHA = run.SHA
+		}
+	}
 	if versionFlag == "" {
 		versionFlag = ciVersion()
 	}
@@ -269,6 +280,7 @@ func (s *session) runAgent(ctx context.Context, req agent.Request) (*launcher.Re
 	if !s.app.json {
 		s.app.human.finish(res.RunFinishedData)
 	}
+	s.notify(ctx, req, res)
 	if res.ExitCode != 0 {
 		return res, &errs.Error{Code: errCode(res.Error), Exit: res.ExitCode, Message: errMessage(res.Error), Hint: errHint(res.Error), Reported: true}
 	}
@@ -302,25 +314,18 @@ func author() domain.Author {
 		a.User = u.Username
 	}
 	a.Machine, _ = os.Hostname()
-	switch {
-	case os.Getenv("GITHUB_ACTIONS") == "true":
-		a.CI = "github"
-		a.User = os.Getenv("GITHUB_ACTOR")
-	case os.Getenv("GITLAB_CI") == "true":
-		a.CI = "gitlab"
-		a.User = os.Getenv("GITLAB_USER_LOGIN")
-	case os.Getenv("CI") != "":
-		a.CI = "ci"
+	if run := ci.Detect(os.Getenv); run.Provider != "" {
+		a.CI = run.Provider
+		if run.Actor != "" {
+			a.User = run.Actor
+		}
 	}
 	return a
 }
 
 // ciTag returns the tag a CI run was started for, if any.
 func ciTag() string {
-	if os.Getenv("GITHUB_REF_TYPE") == "tag" {
-		return os.Getenv("GITHUB_REF_NAME")
-	}
-	return os.Getenv("CI_COMMIT_TAG")
+	return ci.Detect(os.Getenv).Tag
 }
 
 // ciVersion is the version label of a CI run started for a tag: the tag without its suffix.
@@ -429,4 +434,32 @@ func execHooks(all []domain.Hook) []domain.Hook {
 		}
 	}
 	return out
+}
+
+// notifies are the operations that change an environment, which webhooks report.
+var notifies = map[string]bool{
+	agent.OpDeploy: true, agent.OpRollback: true, agent.OpRestart: true, agent.OpStop: true,
+	agent.OpScale: true, agent.OpDestroy: true,
+}
+
+// notify sends the environment's webhooks for a run that changed something or failed.
+func (s *session) notify(ctx context.Context, req agent.Request, res *launcher.Result) {
+	hooks := s.loaded.Config.Notify
+	if len(hooks) == 0 || !notifies[req.Op] || res.Outcome == events.OutcomeNoop || errCode(res.Error) == "lock.held" {
+		return
+	}
+	p := notify.Payload{
+		Event: "run.finished", App: req.App, Env: req.Env, Server: req.Server, Op: req.Op, Run: req.Run,
+		Version: req.Version, Release: res.ReleaseSeq, Outcome: res.Outcome, Status: "failure",
+		ExitCode: res.ExitCode, DurationMS: res.DurationMS, At: time.Now().UTC(),
+	}
+	if res.Outcome == events.OutcomeSuccess {
+		p.Status = "success"
+	}
+	if res.Error != nil {
+		p.Error = s.app.mask(res.Error.Message)
+	}
+	for _, err := range notify.Send(context.WithoutCancel(ctx), hooks, p, nil) {
+		s.app.emitter.Warn(events.Warning, s.app.mask(err.Error()), map[string]any{"code": "notify.failed"})
+	}
 }

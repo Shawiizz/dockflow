@@ -19,6 +19,7 @@ import (
 
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/errs"
+	"github.com/Shawiizz/dockflow/internal/notify"
 	"github.com/Shawiizz/dockflow/internal/render"
 )
 
@@ -45,10 +46,10 @@ type Settings struct {
 	Templates []TemplateEntry `yaml:"templates"`
 	Hooks     *Hooks          `yaml:"hooks"`
 	Uploads   []UploadEntry   `yaml:"uploads"`
+	Notify    []NotifyEntry   `yaml:"notify"`
 
 	// Keys of the specification that arrive in later milestones. They are refused with a clear
 	// message instead of being ignored.
-	Notify   *yaml.Node `yaml:"notify"`
 	Firewall *yaml.Node `yaml:"firewall"`
 	Routes   *yaml.Node `yaml:"routes"`
 	Plugins  *yaml.Node `yaml:"plugins"`
@@ -79,6 +80,15 @@ type Endpoint struct {
 	Retries        *int   `yaml:"retries"`
 	RetryDelay     string `yaml:"retry_delay"`
 	ValidateCerts  *bool  `yaml:"validate_certs"`
+}
+
+// NotifyEntry is one webhook.
+type NotifyEntry struct {
+	URL     string            `yaml:"url"`
+	On      []string          `yaml:"on"`
+	Secret  string            `yaml:"secret"`
+	Headers map[string]string `yaml:"headers"`
+	Timeout string            `yaml:"timeout"`
 }
 
 // UploadEntry is one entry of uploads (ADR-0021).
@@ -194,11 +204,12 @@ type Resolved struct {
 	Templates    []render.Template
 	Hooks        []domain.Hook
 	Uploads      []UploadEntry
+	Notify       []notify.Webhook
 }
 
 // laterKeys are spec keys not available yet, with the milestone that brings them.
 var laterKeys = map[string]string{
-	"notify": "M2", "firewall": "M3", "routes": "M3", "plugins": "M3",
+	"firewall": "M3", "routes": "M3", "plugins": "M3",
 	"backups": "M4", "secrets_file": "M3",
 }
 
@@ -363,6 +374,13 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 			}
 			res.Hooks = h
 		}
+		if s.Notify != nil {
+			w, err := webhooks(s.Notify)
+			if err != nil {
+				return nil, err
+			}
+			res.Notify = w
+		}
 		if s.Uploads != nil {
 			if err := checkUploads(s.Uploads); err != nil {
 				return nil, err
@@ -402,6 +420,32 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 		}
 	}
 	return res, nil
+}
+
+func webhooks(entries []NotifyEntry) ([]notify.Webhook, error) {
+	out := make([]notify.Webhook, 0, len(entries))
+	for i, e := range entries {
+		at := fmt.Sprintf("notify[%d]", i)
+		u, err := url.Parse(e.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return nil, errs.Config("%s.url %q is not an http or https URL", at, e.URL)
+		}
+		for _, on := range e.On {
+			if on != "success" && on != "failure" {
+				return nil, errs.Config("%s.on: %q is not success or failure", at, on)
+			}
+		}
+		w := notify.Webhook{URL: e.URL, On: e.On, Secret: e.Secret, Headers: e.Headers}
+		if e.Timeout != "" {
+			d, err := time.ParseDuration(e.Timeout)
+			if err != nil || d <= 0 {
+				return nil, errs.Config("%s.timeout %q is not a duration", at, e.Timeout)
+			}
+			w.Timeout = d
+		}
+		out = append(out, w)
+	}
+	return out, nil
 }
 
 func checkUploads(entries []UploadEntry) error {

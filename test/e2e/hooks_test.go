@@ -3,7 +3,12 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,13 +18,31 @@ import (
 func hooksProject(t *testing.T, dir, app, hooks, image string) {
 	t.Helper()
 	writeProject(t, dir, app, webApp(app, image, ""))
-	cfg := fmt.Sprintf("version: 1\napp: %s\nhooks:\n%s\nenvironments:\n  production:\n    deploy:\n      timeout: 60s\n", app, hooks)
+	cfg := fmt.Sprintf("version: 1\napp: %s\nhooks:\n%s\nnotify:\n  - url: %s\n    secret: hook-secret\nenvironments:\n  production:\n    deploy:\n      timeout: 60s\n", app, hooks, webhookURL)
 	if err := os.WriteFile(filepath.Join(dir, "dockflow.yml"), []byte(cfg), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
 
+// webhookURL receives the runs' webhooks, on this machine, where the CLI runs.
+var webhookURL string
+
 func TestHooks(t *testing.T) {
+	var mu sync.Mutex
+	var received []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var p map[string]any
+		json.Unmarshal(body, &p)
+		if r.Header.Get("X-Dockflow-Signature") == "" {
+			p["unsigned"] = true
+		}
+		mu.Lock()
+		received = append(received, p)
+		mu.Unlock()
+	}))
+	defer srv.Close()
+	webhookURL = srv.URL
 	app := "journey11"
 	dir := filepath.Join(workDir, app)
 	secret := []string{"PRODUCTION_TOKEN=s3cret-token"}
@@ -47,6 +70,12 @@ func TestHooks(t *testing.T) {
 		t.Fatalf("the exec hook wrote %q", got)
 	}
 
+	mu.Lock()
+	if len(received) != 1 || received[0]["status"] != "success" || received[0]["release"] != float64(1) || received[0]["unsigned"] != nil {
+		t.Fatalf("the deploy must send one signed success webhook: %v", received)
+	}
+	mu.Unlock()
+
 	// a fatal before_deploy hook stops the deploy with nothing changed
 	hooksProject(t, dir, app, `  before_deploy:
     - run: exit 4`, "whoami-e2e:v2")
@@ -63,5 +92,11 @@ func TestHooks(t *testing.T) {
 	r = dockflowEnv(t, dir, secret, "deploy")
 	if r.code != 8 || !r.has("rollback.started") {
 		t.Fatalf("a failing after_deploy hook must roll back (exit 8), got %d:\n%s", r.code, r.out)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	last := received[len(received)-1]
+	if last["status"] != "failure" || last["outcome"] != "rolled_back" {
+		t.Fatalf("the rolled back deploy must send a failure webhook: %v", last)
 	}
 }
