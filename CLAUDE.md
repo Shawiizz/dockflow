@@ -29,7 +29,7 @@ Dockflow v2, a rewrite from scratch in Go. It shares nothing with Dockflow 1.x (
 - Docker is reached only through the Engine API (ADR-0005). No `docker` CLI invocations in the deploy path. Shell commands exist only in provisioning, built with the typed command builder.
 - No package prints. Operations emit events (`docs/design/spec/events-v1.md`). The CLI, the web UI and the MCP server render them.
 - Errors carry a stable dotted code and a hint, and map to the exit codes in `docs/design/spec/cli-v1.md`.
-- Secrets never go into logs, events, command lines, container environments of the agent, or files on servers. Any output that is shown or stored (events, hook and build output, errors) masks secret values.
+- Secrets never go into logs, events, command lines, container environments of the agent, or files on servers, except where ADR-0012 puts them: values interpolated into a service's spec, in release records readable by root only (as `docker inspect` shows them), and Compose secrets, on a tmpfs. Any output that is shown or stored (events, hook and build output, errors) masks secret values.
 
 ## Tests
 
