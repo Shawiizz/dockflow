@@ -40,7 +40,7 @@ Several apps on one cluster ([ADR-0018](0018-shared-clusters.md)) must share por
 - Ports 80 and 443 are published in host mode, so client IPs are preserved.
 - Its data (certificates, autosaved configuration) is in a volume on that node, and it starts with `--resume`.
 - It has **no access to the Docker socket**.
-- `--no-proxy` at `cluster init` leaves ingress to the user, who can then publish ports and run their own proxy, as 1.x allowed.
+- **The proxy is optional.** `--no-proxy` at `cluster init` leaves ingress to the user. The usual choice is the host's nginx, through the built-in `nginx` plugin ([ADR-0017](0017-plugins.md)), as in 1.x; any other proxy works too. Without the proxy, `x-dockflow.routes` and `routes:` are refused at plan time, since nothing would serve them. Apps publish ports for nginx to reach on `127.0.0.1`.
 
 ### Routes
 

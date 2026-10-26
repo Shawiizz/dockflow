@@ -40,7 +40,7 @@ The filter keeps 1.x's design, with these changes:
 
 - **What it allows from outside:**
   - the ports an app lists under `firewall.public_ports` in `dockflow.yml`, as in 1.x. Each is open to everyone, or only to the CIDRs given in its `from`. A port that is published in Compose but not listed stays reachable from the cluster's nodes and private networks only, and the plan says so;
-  - 80 and 443 on ingress nodes, restricted to the edge's ranges when the edge is `cloudflare` or `proxy` ([ADR-0011](0011-ingress-caddy.md#edge));
+  - 80 and 443 on ingress nodes, restricted to the edge's ranges when the edge is `cloudflare` or `proxy` ([ADR-0011](0011-ingress-caddy.md#edge)). With `--no-proxy` and the host's nginx, the same restriction applies to the host's own ports 80 and 443, the one case where the filter also writes `INPUT` rules;
   - SSH.
 
   Every other port Docker has DNATed is dropped.

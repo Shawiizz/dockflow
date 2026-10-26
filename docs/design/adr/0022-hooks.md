@@ -36,8 +36,9 @@ Entry options: `name`, `timeout` (default 5 minutes), and `fatal` (default `true
 
 **Variables:**
 
-- Hook commands and scripts are interpolated like any template ([ADR-0006](0006-compose-as-written.md)).
-- Local and host hooks also get, as environment variables, `DOCKFLOW_APP`, `DOCKFLOW_ENV`, `DOCKFLOW_STACK`, `DOCKFLOW_VERSION`, and the secrets they list under `secrets:`.
+- Hook commands are not interpolated: their `$` belongs to the shell.
+- Every hook gets, as environment variables, the built-in `DOCKFLOW_*` values, the environment's `vars` (overridden per node for `host` and `exec` hooks), and the secrets it lists under `secrets:`.
+- A script that needs a real template is listed under `templates:` and rendered with Jinja ([ADR-0006](0006-compose-as-written.md)).
 
 ### Running inside containers
 

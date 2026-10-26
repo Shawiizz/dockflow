@@ -16,14 +16,15 @@ A project is configured by three things, all in its repository ([ADR-0006](../ad
 | service | `^[a-z][a-z0-9-]*$`, with `<stack>_<service>` at most 63 | Swarm service names are DNS labels |
 | secret and variable keys | `^[A-Z][A-Z0-9_]*$` | Valid in every CI provider |
 
-## Interpolation
+## Variables and templating
 
-`${VAR}`, `${VAR:-default}`, `${VAR:?message}`, and `$$` for a literal `$`. It applies to:
+Two syntaxes, each where it is native ([ADR-0006](../adr/0006-compose-as-written.md)):
 
-- the Compose files;
-- the string values of `dockflow.yml`, except names;
-- the files listed under `templates:`;
-- hook commands and scripts.
+| Where | Syntax |
+|---|---|
+| Compose files, and the string values of `dockflow.yml` except names | Compose interpolation: `${VAR}`, `${VAR:-default}`, `${VAR:?message}`, `$$` for a literal `$` |
+| Files listed under `templates:`, upload sources rendered as templates, plugin templates | Jinja (gonja), with undefined variables as errors: `{{ VAR }}`, `{{ VAR \| default('x') }}`, `{% if %}`, `{% for %}`, `{% raw %}` |
+| Hook commands | Not interpolated: values arrive as environment variables |
 
 **Lookup**, first match wins:
 
@@ -37,14 +38,17 @@ A project is configured by three things, all in its repository ([ADR-0006](../ad
    | `DOCKFLOW_VERSION` | the release's version label |
    | `DOCKFLOW_GIT_SHA` | the full commit |
    | `DOCKFLOW_GIT_BRANCH` | the branch |
+   | `DOCKFLOW_NODE` | the node, where values are resolved per node |
 
-2. **Secrets.** For environment `production`, the key `X` is looked up as `PRODUCTION_X`, then as `X`, in each source in turn:
+2. **Secrets.** For environment `production`, the key `X` is looked up as `PRODUCTION_<NODE>_X` (only where values are resolved per node), then `PRODUCTION_X`, then `X`, in each source in turn:
    1. process variables (only `PRODUCTION_*` ones) and the JSON in `DOCKFLOW_SECRETS`;
    2. `.env.dockflow`;
    3. the SOPS file.
-3. **The environment's `vars`.**
+3. **`vars`:** the node's `node_vars`, where values are resolved per node, then the environment's `vars`.
 
-A variable with no value and no default is an error.
+Values are resolved per node for templates rendered for uploads to host paths, plugins, and `host` and `exec` hooks. Compose is rendered once for the cluster, with the environment's values.
+
+A variable with no value and no default is an error, in both syntaxes.
 
 > Interpolating `DOCKFLOW_VERSION` or `DOCKFLOW_GIT_SHA` into a service changes its spec on every commit, so that service is restarted by every deploy.
 
@@ -61,7 +65,7 @@ compose: [compose.yml]              # optional; default: the first that exists o
                                     # compose.yml, docker-compose.yaml, docker-compose.yml.
                                     # Several files are merged in order; an app with none is valid.
 
-templates:                          # files rendered with interpolation before build and uploads
+templates:                          # files rendered with Jinja before build and uploads
   - src: config/app.conf.tpl
     dest: config/app.conf           # relative to the project; a temporary copy, never the source tree
   - docker/entrypoint.sh            # rendered in place, in the temporary copy
@@ -116,9 +120,16 @@ uploads:                            # ADR-0021
     mode: "644"
     nodes: managers
 
-hooks:                              # ADR-0022
+plugins:                            # ADR-0017
+  - use: nginx                      # built-in; needs `server init --nginx` and `cluster init --no-proxy`
+    with: { domain: "${DOMAIN}", port: 3013, template: deploy/nginx/api.conf }
+  - use: ./deploy/plugins/rclone    # the project's own
+    id: archives
+    with: { remote: "ovhs3:archives" }
+
+hooks:                              # ADR-0022; commands are not interpolated
   before_build:
-    - run: ./scripts/generate-keys.sh
+    - run: ./scripts/generate-keys.sh   # gets JWT_PRIVATE_KEY as an environment variable
       secrets: [JWT_PRIVATE_KEY]
   before_deploy:
     - service: minecraft
@@ -146,7 +157,9 @@ environments:                       # required; at least one
   production:
     # Servers: the PRODUCTION_CONNECTION secret (ADR-0013), or nodes listed here
     nodes:                          # optional when the connection string exists
-      - { host: 203.0.113.10, port: 22, user: dockflow, role: manager, host_key: "SHA256:Xq…" }
+      - { name: main, host: 203.0.113.10, port: 22, user: dockflow, role: manager, host_key: "SHA256:Xq…" }
+    node_vars:                      # per-node overrides of vars, by node name
+      main: { DATA_PATH: /srv/data }
     compose: [compose.yml, compose.prod.yml]   # optional; replaces the top-level list
     profiles: [web]                 # optional Compose profiles
     vars:
@@ -259,16 +272,16 @@ Every Compose key falls in one of three groups.
 | 1.x | v2 |
 |---|---|
 | `.dockflow/config.yml` + `servers.yml` | `dockflow.yml` |
-| `{{ current.env.x }}` | `${X}` |
-| `{{ x \| default('y') }}` | `${X:-y}` |
-| `{{ env }}`, `{{ project_name }}` | `${DOCKFLOW_ENV}`, `${DOCKFLOW_APP}` |
+| `{{ current.env.x }}` | `${X}` in Compose and `dockflow.yml`; `{{ X }}` in templates |
+| `{{ x \| default('y') }}` | `${X:-y}` in Compose; unchanged in templates |
+| `{{ env }}`, `{{ project_name }}` | `${DOCKFLOW_ENV}`, `${DOCKFLOW_APP}` (`{{ DOCKFLOW_ENV }}` in templates) |
 | `accessories.yml` | A Compose file listed under `compose:`, its services marked `stateful` |
-| The `nginx` plugin and its vhost | `x-dockflow.routes` and `routes:` |
+| The `nginx` plugin and its vhost | The `nginx` plugin, with the vhost as a Jinja template; or `x-dockflow.routes` with the built-in proxy |
 | `<ENV>_<SERVER>_CONNECTION` | `dockflow server connection <env>`, stored as `<ENV>_CONNECTION` |
 | `health_checks.endpoints` with `remote: true` | `x-dockflow.health.http` |
 | `health_checks.endpoints` with a public URL | `health.endpoints` |
 | `hooks.pre-deploy` running `docker exec` | `hooks.before_deploy` with `exec` |
-| Secrets in CI | Unchanged; per-server prefixes (`PRODUCTION_MANAGER_X`) become `PRODUCTION_X` |
+| Secrets in CI | Unchanged, per-server prefixes (`PRODUCTION_MANAGER_X`) included, with the node's name |
 | `build.dockerfile` relative to the Compose file's folder (a 1.x quirk every real project relies on: `context: ../..` with `dockerfile: Dockerfile.app` in `.dockflow/docker/`) | Relative to the build context, as Compose defines it: `dockerfile: .dockflow/docker/Dockerfile.app`. |
 | `deploy` failing on a held lock in CI, worked around with a concurrency group | `deploy --wait-lock` |
 

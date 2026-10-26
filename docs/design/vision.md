@@ -32,7 +32,7 @@ Dockflow keeps the user's Compose file as the source of truth, uses Docker Swarm
 2. **Plan, then apply.** Every change to a cluster is computed as a plan the user can read, save and review, then applied exactly.
 3. **Finish what was started.** A deploy runs on the cluster itself. Losing the CLI, the network or the CI runner never leaves an app half-deployed: the run completes or rolls back on its own.
 4. **The cluster is the database.** Locks, releases and the current version live in the Swarm Raft store. Any manager can answer, nothing needs syncing, nothing is stored in files on one server.
-5. **Delegate.** Swarm schedules, rolls out and rolls back. buildx builds. A registry distributes images. Caddy terminates TLS. restic stores backups. SOPS encrypts secrets. Dockflow composes them.
+5. **Delegate.** Swarm schedules, rolls out and rolls back. buildx builds. A registry distributes images. Caddy terminates TLS. gonja renders templates. restic stores backups. SOPS encrypts secrets. Dockflow composes them.
 6. **One core, several faces.** The CLI, the local web UI, the MCP server and the GitHub Action call the same functions and read the same event stream.
 7. **Fail loudly.** A missing variable, an unknown key, an unsupported Compose feature or an unverified host key is an error, never a silent default.
 8. **Honest security.** Access to the Docker socket is root. Dockflow says so, limits who holds the keys, and does not pretend otherwise.
@@ -48,7 +48,6 @@ Dockflow v2 will not:
 - schedule containers, build a mesh network or implement its own reverse proxy
 - create servers through cloud provider APIs
 - store metrics or logs; it streams them and documents integrations
-- offer a plugin system in v1
 - provide multi-user access control; whoever holds an environment's SSH key can deploy it
 
 ## Principles for the code

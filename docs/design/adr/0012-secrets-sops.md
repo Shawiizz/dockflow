@@ -29,7 +29,7 @@ From highest to lowest priority:
 2. **`.env.dockflow`** at the project root, for local use. `dockflow init` adds it to `.gitignore`.
 3. **An optional SOPS file per environment** (`secrets/<env>.sops.yaml`, encrypted with age), for teams that want their secrets versioned and reviewed in git. The CLI decrypts it in memory with the SOPS library.
 
-**Scoping.** For environment `production`, the key `X` resolves to `PRODUCTION_X` when it exists, otherwise to `X`. One repository can therefore hold `DB_PASSWORD` for every environment and `PRODUCTION_DB_PASSWORD` for production only, as in 1.x.
+**Scoping.** For environment `production`, the key `X` resolves to `PRODUCTION_X` when it exists, otherwise to `X`. One repository can therefore hold `DB_PASSWORD` for every environment and `PRODUCTION_DB_PASSWORD` for production only, as in 1.x. Where a value is resolved for one node ([ADR-0006](0006-compose-as-written.md#values)), `PRODUCTION_<NODE>_X` comes first, as 1.x's per-server secrets did. A key that could be read both ways (a node `db` and a key `DB_PASSWORD`) is reported by the plan.
 
 **Override.** Secrets override the environment's `vars` in `dockflow.yml`, so a non-secret default in `vars` (`RCON_PASSWORD: changeme`) is replaced by the CI secret of the same name.
 

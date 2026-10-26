@@ -29,7 +29,8 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 |---|---|
 | `dockflow init` | Writes `dockflow.yml` (and a `compose.yml` if there is none), adds `.env.dockflow` to `.gitignore`, and with `--ci github\|gitlab` a CI workflow: build on branches, deploy on tags, scheduled backups |
 | `dockflow validate [<env>]` | Loads and checks everything that can be checked without a cluster |
-| `dockflow config show [<env>] [--json]` | The resolved configuration, secrets masked |
+| `dockflow config show [<env>] [--json]` | The resolved configuration, plugins expanded, secrets masked |
+| `dockflow plugins list` | Built-in and project plugins, with their inputs ([ADR-0017](../adr/0017-plugins.md)) |
 | `dockflow build [<env>] [--only <services>] [--push] [--skip-hooks]` | Builds images, without deploying |
 | `dockflow plan [<env>] [--out <file>] [--no-build] [--render] [--only <services>]` | Prints the plan. `--render` prints the service specs that would be sent |
 | `dockflow deploy [<env>] [--plan <file>] [--version <label>] [--only <services>] [--skip-build] [--no-rollback] [--detach] [--force] [--wait-lock [<duration>]] [--no-wait] [--branch <name>] [--manager <node>]` | Plans, confirms, applies. `--wait-lock` queues behind a running deploy instead of failing with code 5, for CI runs that may overlap (a push to `main` and a release) |
@@ -80,7 +81,7 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 
 | Command | What it does |
 |---|---|
-| `dockflow server init [<user@host[:port]>] [-k <key>] [--host <ip>] [--user <name>] [--password-file <path>] [--deploy-key <file.pub> \| --generate-key] [--host-key <SHA256:…>] [--from <cidr>…] [--skip-docker-install] [--no-port-filter]` | Provisions a server. Interactive when options are missing; runs locally when no host is given. Prints the connection string at the end |
+| `dockflow server init [<user@host[:port]>] [-k <key>] [--host <ip>] [--user <name>] [--password-file <path>] [--deploy-key <file.pub> \| --generate-key] [--host-key <SHA256:…>] [--from <cidr>…] [--skip-docker-install] [--no-port-filter] [--nginx]` | Provisions a server. Interactive when options are missing; runs locally when no host is given. Prints the connection string at the end |
 | `dockflow server cloud-init [--deploy-key <file.pub>] [--from <cidr>…]` | Prints cloud-init user-data that does the same on first boot |
 | `dockflow server check [<target>]` | Checks a server's prerequisites: OS, Docker, user, filter, ports |
 | `dockflow server connection [<env>]` | Prints the environment's connection string, rebuilt from the cluster's nodes |
@@ -88,7 +89,7 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 | `dockflow cluster join <target> <user@new-host> --role manager\|worker [--advertise-addr <ip>]` | Adds a provisioned server |
 | `dockflow cluster label <target> <node> <key>=<value>…` | Sets node labels |
 | `dockflow cluster network create\|list\|remove <target> [<name>]` | Shared networks between apps |
-| `dockflow cluster plugin install\|list\|remove <target> [<plugin>] [--alias <name>] [<key>=<value>…]` | Volume plugins on every node |
+| `dockflow cluster plugin install\|list\|remove <target> [<plugin>] [--alias <name>] [<key>=<value>…]` | Docker volume plugins on every node (not to be confused with Dockflow plugins) |
 | `dockflow cluster status <target>` | Nodes, system services, apps and their environments |
 | `dockflow cluster upgrade <target>` | Upgrades the system services to this CLI's version |
 | `dockflow cluster proxy sync <target>` | Rebuilds the proxy's configuration from the route records |

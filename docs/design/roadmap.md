@@ -38,7 +38,7 @@ Also answered in M1: the minimum Docker version ([ADR-0003](adr/0003-swarm-behin
 - Internal and public health checks, `on_failure`
 - Whole-app and per-service rollback, `rollback`, `cancel`, Ctrl+C semantics, `--no-rollback`
 - Jobs (`before`, `after`); hooks: local, `host`, `exec` ([ADR-0022](adr/0022-hooks.md))
-- Templates and uploads, incremental with `mirror` ([ADR-0021](adr/0021-uploads-and-templates.md))
+- Templates with gonja (Jinja), values per node, and uploads, incremental with `mirror` ([ADR-0021](adr/0021-uploads-and-templates.md))
 - Day-2: `logs`, `exec`, `run`, `cp`, `ssh`, `ps`, `details`, `diagnose`, `restart`, `stop`, `scale`, `prune`, `list`, `destroy`, `releases --stats`
 - CI detection of environment and version (GitHub Actions, GitLab CI, Jenkins, Buildkite, Bitbucket)
 - Webhooks
@@ -49,7 +49,8 @@ Exit criteria: the e2e journeys of [ADR-0019](adr/0019-testing.md) that don't in
 
 ## M3: Production-ready
 
-- `server init` (interactive, local and remote), `server cloud-init`, `server check`, `server connection`
+- `server init` (interactive, local and remote, `--nginx`), `server cloud-init`, `server check`, `server connection`
+- Plugins: the project's own and the built-in `nginx` and `systemd`, `plugins list` ([ADR-0017](adr/0017-plugins.md))
 - `cluster init`, `join`, `label`, `network`, `plugin`, `status`, `upgrade`
 - Caddy ingress: routes and their options, `redirect`/`proxy`/`files` routes, raw Caddy blocks, (domain, path) uniqueness, edge modes (`direct`, `cloudflare`, `proxy`)
 - The published-port filter with `public_ports` and `from`, its global job, the Cloudflare ranges timer

@@ -43,9 +43,9 @@ v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no featu
 | `lock acquire/status/release` (`-m`, `--force`) | `lock acquire/status/release` (a manual lock never expires) | same | M1 |
 | `accessories deploy/list/logs/exec/restart/stop/remove` | `deploy --only`, `ps`, `logs`, `exec`, `restart`, `stop`, `destroy --only <services> [--volumes]` on stateful services | replaced | M2 |
 | `backup create/list/restore/prune` (`--from` date, `--keep`, `--node`, `--json`) | `backup run/list/restore/prune` with the same options | better: restic ([ADR-0015](adr/0015-backups-restic.md)) | M4 |
-| `plugins list` | none: the plugin system is replaced ([ADR-0017](adr/0017-no-plugins.md)) | replaced | – |
+| `plugins list` | `plugins list` ([ADR-0017](adr/0017-plugins.md)) | same | M3 |
 | `setup` (interactive, local) | `server init` (interactive, local) | better: hardening | M3 |
-| `setup user@host` (`-k`, `--port`, `--user`, `--deploy-password`, `--host-key`, `--skip-docker-install`, `--no-port-filter`, `--nginx`) | `server init user@host` with the same options; `--nginx` is replaced by the proxy | better | M3 |
+| `setup user@host` (`-k`, `--port`, `--user`, `--deploy-password`, `--host-key`, `--skip-docker-install`, `--no-port-filter`, `--nginx`) | `server init user@host` with the same options, `--nginx` included | better | M3 |
 | `setup --host --user --password --generate-key` (non-interactive) | `server init --host --user --password-file --generate-key` | same | M3 |
 | `setup swarm` | `cluster init`, `cluster join` | better | M1–M3 |
 | `setup check` | `server check` | same | M3 |
@@ -60,11 +60,11 @@ v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no featu
 | `.dockflow/` layout, flat `dockflow.yml` layout | One `dockflow.yml`; Compose files anywhere (`.dockflow/docker/` still works when listed) | replaced |
 | `servers.yml`: servers, roles, tags (environments), `defaults` | `environments.<env>` with `nodes` or a connection string | replaced |
 | `servers.yml` `env` per tag | `environments.<env>.vars` | same |
-| `servers.yml` `env` per server (`PRODUCTION_MANAGER_X`) | `vars` per environment. Per-server values were only ever rendered for the manager | replaced |
+| `servers.yml` `env` per server, `<ENV>_<SERVER>_<VAR>` secrets | `node_vars` and `<ENV>_<NODE>_<KEY>` secrets, resolved per node for uploads, plugins and hooks; Compose sees the environment's values, as 1.x rendered it for the manager only ([ADR-0006](adr/0006-compose-as-written.md#values)) | same |
 | Connection string per server (`<ENV>_<SERVER>_CONNECTION`) or shared (`<ENV>_CONNECTION`), with `privateKey` or `password` | Connection string per environment (`<ENV>_CONNECTION`), with host keys, key or password | better |
 | `servers.yml` `private_host` (Swarm on a private network) | `cluster init/join --advertise-addr` | same |
 | `DOCKFLOW_SECRETS`, `.env.dockflow`, `<ENV>_<VAR>` overrides | Same, plus an optional SOPS file ([ADR-0012](adr/0012-secrets-sops.md)) | same |
-| Nunjucks in every `.dockflow/` file, `templates:` (including files baked into images, as the docs do) | `${VAR}` interpolation in Compose, `dockflow.yml`, listed templates (rendered in a copy that bake builds from) and hooks ([ADR-0006](adr/0006-compose-as-written.md)) | replaced: conditions and loops are gone, unused in real projects; a missing template is now an error |
+| Nunjucks in every `.dockflow/` file, `templates:` (including files baked into images, as the docs do) | Jinja through gonja for listed templates (rendered in a copy that bake builds from), uploads and plugins, with conditions, loops, filters and `raw`; Compose interpolation `${VAR}` in Compose and `dockflow.yml` ([ADR-0006](adr/0006-compose-as-written.md)) | better: undefined variables and missing templates are errors |
 | `container_engine: podman` | `build.engine: podman` | same |
 | `registry` (`type`, `url`, `username`, `password`, `token`, `namespace`, `additional_tags`, `enabled`) | `registry` (`url`, `username`, `password`, `additional_tags`); none means the cluster registry | same |
 | `options.remote_build` | `build.builder: remote` | same |
@@ -81,7 +81,7 @@ v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no featu
 | `proxy` (Traefik: `enabled`, `email`, `acme`, `domains`, `routes`, `trusted_ips`, `dashboard`) | Caddy: `cluster init --acme-email --edge`, `x-dockflow.routes`, `routes:` ([ADR-0011](adr/0011-ingress-caddy.md)); the dashboard is replaced by the web UI's routes page | better |
 | `firewall.public_ports` (with `from`) | `firewall.public_ports` (with `from`), plus Cloudflare-only 80/443 ([ADR-0014](adr/0014-networking-port-filter.md)) | better |
 | `notifications.webhooks` (`url`, `on`, `secret`, `headers`, `timeout`) | `notify` with the same fields | same |
-| `plugins` (`nginx`, `systemd`, the project's own) | Routes, uploads, `host` hooks, volume plugins ([ADR-0017](adr/0017-no-plugins.md)) | replaced |
+| `plugins` (`nginx`, `systemd`, the project's own; inputs, uploads, hooks) | `plugins`, same model, expanded into v2's uploads, templates and hooks; built-in `nginx` and `systemd` ([ADR-0017](adr/0017-plugins.md)) | same |
 | `uploads` (`src`, `dest`, `service`, `permissions`, `owner`, `exclude`, `compress`) | `uploads` with the same fields, plus `mirror` and volume destinations ([ADR-0021](adr/0021-uploads-and-templates.md)) | better |
 | `no_services` | An app with no Compose file or no services | same |
 | `accessories.yml` | A second Compose file listed under `compose:`, with `stateful` services | replaced |
@@ -99,6 +99,6 @@ v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no featu
 | Image distribution by `docker save \| load` or registry | Registry only: the cluster registry by default ([ADR-0009](adr/0009-images.md)) | better |
 | Accessories redeployed when their hash changes | The plan touches only what changed | better |
 | Audit log and metrics replicated to every node | Release records in Raft | better |
-| Host nginx installed by `setup --nginx` | Caddy proxy in the cluster | replaced |
+| Host nginx installed by `setup --nginx` | `server init --nginx` and the `nginx` plugin, with `cluster init --no-proxy`; or the built-in Caddy proxy ([ADR-0011](adr/0011-ingress-caddy.md)) | same |
 | MCP server (docs and validation) | `dockflow mcp` (validation with the real loader, plus status, logs, plan, gated deploy) | better |
 | Ctrl+C releases the lock and undoes the deploy | Ctrl+C rolls back on the cluster, and the CLI can detach | better |

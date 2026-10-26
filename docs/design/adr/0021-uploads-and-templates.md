@@ -32,17 +32,18 @@ Options:
 
 ### How it works
 
-1. **The CLI hashes every file** and asks the agent for the manifest of what each destination holds (the hashes recorded by the previous upload).
-2. **Only new or changed files are sent**, over the agent's stdin. The agent serves them on the `dockflow-system` network ([ADR-0004](0004-ephemeral-agent.md)).
-3. **On each target node, a job writes them** to a staging directory next to the destination, then swaps them in:
+1. **Templates are rendered**, per node when the upload targets several nodes whose values differ ([ADR-0006](0006-compose-as-written.md#values)).
+2. **The CLI hashes every file** and asks the agent for the manifest of what each destination holds (the hashes recorded by the previous upload).
+3. **Only new or changed files are sent**, over the agent's stdin. The agent serves them on the `dockflow-system` network ([ADR-0004](0004-ephemeral-agent.md)).
+4. **On each target node, a job writes them** to a staging directory next to the destination, then swaps them in:
    - a directory by rename;
    - a file by atomic replace.
 
    The previous content is moved aside, not deleted.
-4. **On success**, the previous content is kept until the release leaves retention, then removed. **On failure**, the agent swaps it back.
+5. **On success**, the previous content is kept until the release leaves retention, then removed. **On failure**, the agent swaps it back.
    - A backup that fails is fatal *before* anything is overwritten, which fixes the 1.x bug.
    - The plan of what was written is kept even when the upload fails halfway, which fixes the other one.
-5. **The release record lists each destination with its manifest.** Rollback re-applies the previous manifest.
+6. **The release record lists each destination with its manifest.** Rollback re-applies the previous manifest.
 
 An app may have no services at all and consist only of uploads (`no_services` in 1.x): an empty Compose file, or none, is valid.
 
