@@ -19,6 +19,9 @@ import (
 // recover brings the environment back to its current release after a run that did not finish:
 // an agent that died, or a failed run left in place. It runs under the lock, before planning.
 func (r *runner) recover(ctx context.Context) error {
+	if err := r.removeJobs(ctx); err != nil {
+		return err
+	}
 	env, err := r.app.Env()
 	if err != nil {
 		return err
@@ -99,7 +102,9 @@ func (r *runner) status(ctx context.Context) events.RunFinishedData {
 		sum := Summarise(o.current)
 		st.Current = &sum
 		for _, s := range o.current.Desired.Services {
-			names[s.Name] = true
+			if s.Job == "" {
+				names[s.Name] = true
+			}
 		}
 	}
 	for name := range o.actual.Services {

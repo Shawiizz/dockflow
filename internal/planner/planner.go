@@ -51,9 +51,13 @@ func Plan(desired domain.App, actual domain.Actual) (*domain.Plan, error) {
 	if err != nil {
 		return nil, err
 	}
+	infra := len(p.Actions)
 	routesChanged := false
 	for _, name := range order {
 		s, _ := desired.Service(name)
+		if s.Job != "" {
+			continue
+		}
 		cur, exists := actual.Services[name]
 		switch {
 		case !exists:
@@ -81,7 +85,7 @@ func Plan(desired domain.App, actual domain.Actual) (*domain.Plan, error) {
 
 	var removed []string
 	for name := range actual.Services {
-		if _, ok := desired.Service(name); !ok {
+		if s, ok := desired.Service(name); !ok || s.Job != "" {
 			removed = append(removed, name)
 		}
 	}
@@ -100,8 +104,39 @@ func Plan(desired domain.App, actual domain.Actual) (*domain.Plan, error) {
 		// a degraded environment is redeployed even when its services look unchanged
 		add(domain.ActionRoutes, desired.Stack, "the environment is degraded", "")
 	}
+	addJobs(p, &desired, order, infra)
 	p.Fingerprint = Fingerprint(desired, actual)
 	return p, nil
+}
+
+// addJobs inserts the jobs of a plan that changes something: before jobs after the networks and
+// volumes, after jobs at the end, each in depends_on order (ADR-0010).
+func addJobs(p *domain.Plan, desired *domain.App, order []string, infra int) {
+	if len(p.Actions) == infra {
+		return
+	}
+	var before, after []domain.Action
+	for _, name := range order {
+		s, _ := desired.Service(name)
+		a := domain.Action{Kind: domain.ActionJob, Target: name, Reason: "job, " + s.Job + " the services"}
+		switch s.Job {
+		case domain.JobBefore:
+			before = append(before, a)
+		case domain.JobAfter:
+			after = append(after, a)
+		}
+	}
+	if len(before)+len(after) == 0 {
+		return
+	}
+	actions := append([]domain.Action{}, p.Actions[:infra]...)
+	actions = append(actions, before...)
+	actions = append(actions, p.Actions[infra:]...)
+	actions = append(actions, after...)
+	for i := range actions {
+		actions[i].ID = fmt.Sprintf("%02d-%s-%s", i+1, actions[i].Kind, actions[i].Target)
+	}
+	p.Actions = actions
 }
 
 func running(s domain.ActualService) int {

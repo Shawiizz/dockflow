@@ -88,10 +88,60 @@ func Convert(p *types.Project, app, env string) (*Result, error) {
 		}
 		r.App.Services = append(r.App.Services, *s)
 	}
+	if err := markJobs(&r.App); err != nil {
+		return nil, err
+	}
 	if err := checkDependencies(&r.App); err != nil {
 		return nil, err
 	}
 	return r, nil
+}
+
+// markJobs makes a job of every service another one depends on with
+// service_completed_successfully, as `docker compose up` runs it to completion first.
+func markJobs(a *domain.App) error {
+	for _, s := range a.Services {
+		for _, d := range s.DependsOn {
+			if d.Condition != types.ServiceConditionCompletedSuccessfully {
+				continue
+			}
+			dep, ok := a.Service(d.Service)
+			if !ok {
+				continue
+			}
+			switch dep.Job {
+			case "":
+				dep.Job = domain.JobBefore
+			case domain.JobAfter:
+				return errs.Config("service %s waits for %s to complete, which runs after the deploy (x-dockflow.run: after)", s.Name, dep.Name)
+			}
+		}
+	}
+	for i := range a.Services {
+		if a.Services[i].Job != "" {
+			if err := asJob(&a.Services[i]); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// asJob checks and adjusts a job: one container, never restarted, no routes.
+func asJob(s *domain.Service) error {
+	at := "service " + s.Name
+	switch {
+	case len(s.Routes) > 0 || s.HTTPCheck != nil:
+		return errs.Config("%s: a job serves no traffic: routes and health checks do not apply", at)
+	case s.Stateful:
+		return errs.Config("%s: a job is not a long-running service: it cannot be stateful", at)
+	case s.Replicas > 1:
+		return errs.Config("%s: a job runs once: deploy.replicas must be 1", at)
+	}
+	s.Replicas = 1
+	s.Spec.Restart = "no"
+	s.Strategy = ""
+	return nil
 }
 
 // httpCheck reads x-dockflow.health.http. Its port defaults to the first route's.
@@ -467,10 +517,14 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 		if cond == "" {
 			cond = types.ServiceConditionStarted
 		}
-		if cond == types.ServiceConditionCompletedSuccessfully {
-			return nil, nil, errs.Config("%s: depends_on with condition service_completed_successfully (jobs) arrives with milestone M2", at)
-		}
 		svc.DependsOn = append(svc.DependsOn, domain.Dependency{Service: depName, Condition: cond})
+	}
+	switch x.Run {
+	case "":
+	case domain.JobBefore, domain.JobAfter:
+		svc.Job = x.Run
+	default:
+		return nil, nil, errs.Config("%s: x-dockflow.run must be before or after, not %q", at, x.Run)
 	}
 	for _, rt := range x.Routes {
 		route := domain.Route{Domains: rt.Domains, Path: rt.Path, Port: rt.Port, TLS: true, StripPrefix: rt.StripPrefix}

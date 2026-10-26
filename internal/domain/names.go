@@ -17,6 +17,11 @@ var (
 // Stack is the Compose project name of an environment.
 func Stack(app, env string) string { return app + "-" + env }
 
+// JobName is the container of a job in release seq.
+func JobName(stack, service string, seq int) string {
+	return fmt.Sprintf("%s-%s-%d-job", stack, service, seq)
+}
+
 // ContainerName is the name of the n-th container of a service in a release.
 func ContainerName(stack, service string, release, n int) string {
 	return fmt.Sprintf("%s-%s-%d-%d", stack, service, release, n)

@@ -25,6 +25,8 @@ const (
 	SwitchChanged    = "switch.changed"
 	DrainStarted     = "drain.started"
 	HealthCheck      = "health.check"
+	JobLog           = "job.log"
+	JobFinished      = "job.finished"
 	RoutesApplied    = "routes.applied"
 	RollbackStarted  = "rollback.started"
 	RollbackFinished = "rollback.finished"

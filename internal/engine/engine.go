@@ -53,8 +53,9 @@ type Engine interface {
 	Attach(ctx context.Context, id string) (*Attached, error)
 	// Wait returns the container's exit code once it stops.
 	Wait(ctx context.Context, id string) (int, error)
-	// Logs streams the container's stdout from the start, following it while it runs.
-	Logs(ctx context.Context, id string, follow bool) (io.ReadCloser, error)
+	// Logs streams the container's stdout, and stderr when asked, from the start, following it
+	// while it runs.
+	Logs(ctx context.Context, id string, follow, stderr bool) (io.ReadCloser, error)
 	// WaitHealthy returns once the container is healthy, or, without a healthcheck, once it has
 	// been running for grace. It fails when the container exits, becomes unhealthy, restarts in a
 	// loop, or when timeout passes.

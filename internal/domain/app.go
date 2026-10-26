@@ -40,6 +40,12 @@ func (a *App) Service(name string) (*Service, bool) {
 	return nil, false
 }
 
+// Job kinds.
+const (
+	JobBefore = "before"
+	JobAfter  = "after"
+)
+
 // HasRoutes reports whether any service is routed by the switch.
 func (a *App) HasRoutes() bool {
 	for _, s := range a.Services {
@@ -58,6 +64,9 @@ type Service struct {
 	Spec     ContainerSpec `json:"spec"`
 	// PullPolicy is Compose's pull_policy: missing (default), always, never.
 	PullPolicy string `json:"pull_policy"`
+	// Job is before or after for a one-off job run in every deploy that changes something; empty
+	// for a long-running service (ADR-0010).
+	Job string `json:"job,omitempty"`
 	// Build tells that Dockflow builds the image, so it is named and pinned at deploy time.
 	Build     bool         `json:"build,omitempty"`
 	Routes    []Route      `json:"routes,omitempty"`

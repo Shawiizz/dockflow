@@ -53,7 +53,8 @@ Each service gets one of three strategies, chosen automatically and overridable 
 
 - **Before jobs:** a service that other services depend on with `condition: service_completed_successfully` is a job run before them, exactly as `docker compose up` does. That is the Compose-native way to run migrations.
 - **Explicit jobs:** `x-dockflow.run: before` or `after` declares a job without a dependency.
-- **How a job runs:** as a one-off container (`com.docker.compose.oneoff=True`) on the new image, which must exit 0.
+- **How a job runs:** as a one-off container (`com.docker.compose.oneoff=True`) on the new image, which must exit 0. The container is removed once it has exited.
+- **When:** in every deploy that changes something; a deploy with an empty plan runs no job. `dockflow rollback` runs none: it does not replay old migrations.
 - **On failure:** a failed `before` job stops the run with nothing switched. A failed `after` job triggers the rollback.
 - **Logs:** job output is streamed as events.
 - **Ordering:** `depends_on` with `condition: service_healthy` or `service_started` orders the rollout, as Compose orders startup.

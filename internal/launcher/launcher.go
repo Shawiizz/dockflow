@@ -119,7 +119,7 @@ func (l *Launcher) Attach(ctx context.Context, run string) (*Result, error) {
 		return nil, errs.Newf("run.unknown", errs.ExitUsage, "no run %s on this server", run).
 			WithHint("finished runs are kept: the %d most recent", keepRuns)
 	}
-	logs, err := l.Engine.Logs(ctx, c.ID, true)
+	logs, err := l.Engine.Logs(ctx, c.ID, true, false)
 	if err != nil {
 		return nil, err
 	}

@@ -20,7 +20,7 @@ type Extension struct {
 	Rollout  *RolloutExt      `json:"rollout"`
 	Health   *HealthExt       `json:"health"`
 	Stateful bool             `json:"stateful"`
-	Run      *json.RawMessage `json:"run"`
+	Run      string           `json:"run"`
 	Backup   *json.RawMessage `json:"backup"`
 }
 
@@ -74,8 +74,6 @@ func readExtension(s types.ServiceConfig) (Extension, error) {
 			WithHint("its keys are listed in docs/design/spec/config-v1.md")
 	}
 	switch {
-	case x.Run != nil:
-		return x, notYetExt(s.Name, "run", "M2")
 	case x.Backup != nil:
 		return x, notYetExt(s.Name, "backup", "M4")
 	case x.Health != nil && x.Health.RestartAfter != "":

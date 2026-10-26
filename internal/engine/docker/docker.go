@@ -245,14 +245,18 @@ func (e *Engine) Wait(ctx context.Context, id string) (int, error) {
 	}
 }
 
-func (e *Engine) Logs(ctx context.Context, id string, follow bool) (io.ReadCloser, error) {
-	r, err := e.c.ContainerLogs(ctx, id, client.ContainerLogsOptions{ShowStdout: true, Follow: follow})
+func (e *Engine) Logs(ctx context.Context, id string, follow, stderr bool) (io.ReadCloser, error) {
+	r, err := e.c.ContainerLogs(ctx, id, client.ContainerLogsOptions{ShowStdout: true, ShowStderr: stderr, Follow: follow})
 	if err != nil {
 		return nil, apiErr("read the logs of "+id, err)
 	}
 	pr, pw := io.Pipe()
 	go func() {
-		_, err := stdcopy.StdCopy(pw, io.Discard, r)
+		errOut := io.Discard
+		if stderr {
+			errOut = pw
+		}
+		_, err := stdcopy.StdCopy(pw, errOut, r)
 		r.Close()
 		pw.CloseWithError(err)
 	}()

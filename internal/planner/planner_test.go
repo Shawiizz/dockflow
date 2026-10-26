@@ -96,6 +96,39 @@ func TestRemovedServiceAndCrashedContainer(t *testing.T) {
 	testutil.Golden(t, "removed-and-crashed", p)
 }
 
+func withJobs() domain.App {
+	a := app()
+	a.Services = append(a.Services,
+		domain.Service{Name: "migrate", Job: domain.JobBefore, Replicas: 1,
+			Spec: domain.ContainerSpec{Image: "whoami@sha256:bbbb", Command: []string{"migrate"}, Restart: "no"}},
+		domain.Service{Name: "warm", Job: domain.JobAfter, Replicas: 1,
+			Spec: domain.ContainerSpec{Image: "whoami@sha256:bbbb", Command: []string{"warm"}, Restart: "no"}},
+	)
+	a.Services[1].DependsOn = append(a.Services[1].DependsOn, domain.Dependency{Service: "migrate", Condition: "service_completed_successfully"})
+	return a
+}
+
+func TestJobsRunAroundAChange(t *testing.T) {
+	a := withJobs()
+	a.Services[1].Spec.Image = "whoami@sha256:cccc"
+	act := deployed(app(), 3) // jobs never run as services
+	p, err := Plan(a, act)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.Golden(t, "jobs", p)
+}
+
+func TestJobsDoNotRunWithoutAChange(t *testing.T) {
+	p, err := Plan(withJobs(), deployed(app(), 3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Empty() {
+		t.Fatalf("jobs alone must not make a plan: %+v", p.Actions)
+	}
+}
+
 func TestMissingExternalNetwork(t *testing.T) {
 	a := app()
 	a.Networks = append(a.Networks, domain.Network{Key: "shared", Name: "shared", External: true})

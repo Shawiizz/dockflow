@@ -318,6 +318,8 @@ func actionMessage(a domain.Action) string {
 		return "removing " + a.Target
 	case domain.ActionRoutes:
 		return "applying routes"
+	case domain.ActionJob:
+		return "running job " + a.Target
 	}
 	return a.Kind + " " + a.Target
 }
@@ -349,6 +351,9 @@ func (r *runner) action(ctx context.Context, a domain.Action, desired *domain.Ap
 		return r.stopOld(ctx, st, nil)
 	case domain.ActionRoutes:
 		return r.setRoutes(ctx, desired, x)
+	case domain.ActionJob:
+		s, _ := desired.Service(a.Target)
+		return r.runJob(ctx, s, seq)
 	}
 	return nil
 }

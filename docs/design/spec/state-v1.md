@@ -153,4 +153,5 @@ It deletes the other release files, then the images, registry manifests, secret 
 - **`hashes`** identify each service's containers: an unchanged hash means unchanged containers.
 - **`error`** is set on a release that is `rolled-back`, `failed` or `abandoned`: `{ "code": "…", "message": "…" }`.
 - **Interpolated values.** Values interpolated into environment variables are part of the spec, as they are of `docker inspect`. The file is readable by root only.
-- **Later milestones** add `jobs` (M2), `secrets` (the hash of each secret's value, never the value, M3), `uploads` (M2) and `published_ports` to the record.
+- **Jobs** are services of `desired` with `"job": "before"` or `"after"`; they have no containers once the run is over.
+- **Later milestones** add `secrets` (the hash of each secret's value, never the value, M3), `uploads` (M2) and `published_ports` to the record.
