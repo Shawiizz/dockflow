@@ -593,12 +593,7 @@ func pin(ref, id string, repoDigests []string) string {
 }
 
 func (e *Engine) pull(ctx context.Context, ref string, auth *engine.RegistryAuth) error {
-	opts := client.ImagePullOptions{}
-	if auth != nil && authFor(ref, auth.Server) {
-		b, _ := json.Marshal(registry.AuthConfig{Username: auth.Username, Password: auth.Password, ServerAddress: auth.Server})
-		opts.RegistryAuth = base64.URLEncoding.EncodeToString(b)
-	}
-	r, err := e.c.ImagePull(ctx, ref, opts)
+	r, err := e.c.ImagePull(ctx, ref, client.ImagePullOptions{RegistryAuth: encodeAuth(ref, auth)})
 	if err == nil {
 		err = r.Wait(ctx)
 	}
@@ -607,6 +602,35 @@ func (e *Engine) pull(ctx context.Context, ref string, auth *engine.RegistryAuth
 			WithHint("check the image name and that the server can reach the registry (and is logged in to it)")
 	}
 	return nil
+}
+
+// encodeAuth returns auth in the Engine's header encoding, when ref lives on its registry.
+func encodeAuth(ref string, auth *engine.RegistryAuth) string {
+	if auth == nil || !authFor(ref, auth.Server) {
+		return ""
+	}
+	b, _ := json.Marshal(registry.AuthConfig{Username: auth.Username, Password: auth.Password, ServerAddress: auth.Server})
+	return base64.URLEncoding.EncodeToString(b)
+}
+
+func (e *Engine) PushImage(ctx context.Context, ref string, auth *engine.RegistryAuth) error {
+	r, err := e.c.ImagePush(ctx, ref, client.ImagePushOptions{RegistryAuth: encodeAuth(ref, auth)})
+	if err == nil {
+		err = r.Wait(ctx)
+	}
+	if err != nil {
+		return errs.New("push.failed", errs.ExitBuild, "cannot push "+ref).WithCause(err).
+			WithHint("check that the server can reach the registry and that the credentials can push")
+	}
+	return nil
+}
+
+func (e *Engine) InspectImage(ctx context.Context, ref string) (engine.Image, error) {
+	r, err := e.c.ImageInspect(ctx, ref)
+	if err != nil {
+		return engine.Image{}, apiErr("inspect image "+ref, err)
+	}
+	return engine.Image{ID: r.ID, Tags: r.RepoTags, Digests: r.RepoDigests, Size: r.Size}, nil
 }
 
 // authFor tells whether ref lives on the registry server.

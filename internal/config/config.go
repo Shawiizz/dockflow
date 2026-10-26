@@ -644,10 +644,9 @@ func (res *Resolved) validateImages(env string) error {
 		return errs.Config("build.builder must be local or remote, not %q", res.Build.Builder)
 	case res.Build.Engine != "docker" && res.Build.Engine != "podman":
 		return errs.Config("build.engine must be docker or podman, not %q", res.Build.Engine)
-	case res.Build.Builder == "remote":
-		return notYet("build.builder: remote", "M2, in a later step")
-	case res.Build.Engine == "podman":
-		return notYet("build.engine: podman", "M2, in a later step")
+	case res.Build.Builder == "remote" && res.Build.Engine == "podman":
+		return errs.Config("build.engine: podman builds on this machine; build.builder: remote builds with the server's Docker").
+			WithHint("choose one of them")
 	}
 	if r := res.Registry; r != nil {
 		if r.URL == "" {

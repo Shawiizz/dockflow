@@ -78,7 +78,7 @@ registry:                           # optional; absent means the server-local re
 
 build:
   builder: local                    # local (default) or remote (on the server)
-  engine: docker                    # docker (default) or podman
+  engine: docker                    # docker (default) or podman; podman builds locally only
 
 releases:
   keep: 10                          # releases kept per environment (default 10, minimum 2)
@@ -242,7 +242,7 @@ Docker runs Compose on one host, and so does Dockflow ([ADR-0003](../adr/0003-si
 | Key | Handling |
 |---|---|
 | `image` | Required unless `build` is set. Built services get `<app>/<service>` (or the external registry's name), and the plan pins the digest |
-| `build` | buildx bake, every key bake supports, interpolated by Dockflow. `secrets` arrives with secrets (M3); `isolation`, `ulimits`, `provenance` and `sbom` are refused; `platforms` and `tags` are ignored with a warning, because images are built for the server and tagged by Dockflow. Podman builds use `context`, `dockerfile`, `args`, `target` and `secrets` ([ADR-0009](../adr/0009-images.md)) |
+| `build` | buildx bake, every key bake supports, interpolated by Dockflow. `secrets` arrives with secrets (M3); `isolation`, `ulimits`, `provenance` and `sbom` are refused; `platforms` and `tags` are ignored with a warning, because images are built for the server and tagged by Dockflow. Podman builds use `context`, `dockerfile`, `dockerfile_inline`, `args`, `labels`, `additional_contexts`, `target`, `cache_from`, `cache_to`, `no_cache`, `pull`, `network`, `extra_hosts`, `ssh` and `shm_size` ([ADR-0009](../adr/0009-images.md)) |
 | `deploy.replicas` | n containers per service |
 | `deploy.resources`, `deploy.restart_policy` | Container limits and restart policy, as Compose applies them |
 | `deploy.update_config.order` | `start-first` or `stop-first` strategy ([ADR-0010](../adr/0010-rollout-health-jobs.md)) |

@@ -26,10 +26,13 @@ type Build struct {
 	Entitlements       []string          `json:"entitlements,omitempty"`
 }
 
-// Built is a built image: an OCI image layout on the local disk.
+// Built is a built image: an OCI image layout on the local disk, or an image loaded into the
+// daemon the build ran on.
 type Built struct {
 	Service string
 	Layout  string
+	// Image is the name of the loaded image, for a build that loads instead of writing a layout.
+	Image string
 }
 
 // Builder builds images for one platform.

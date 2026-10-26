@@ -31,7 +31,7 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 | `dockflow validate [<env>]` | Loads and checks everything that can be checked without a server |
 | `dockflow config show [<env>] [--json]` | The resolved configuration, plugins expanded, secrets masked |
 | `dockflow plugins list` | Built-in and project plugins, with their inputs ([ADR-0017](../adr/0017-plugins.md)) |
-| `dockflow build [<env>] [--only <services>] [--push] [--platform <os/arch>] [--skip-hooks]` | Builds images, without deploying. Without `--push`, for `--platform` (default: this machine's architecture); with it, for the server's, and pushes them where a deploy would |
+| `dockflow build [<env>] [--only <services>] [--push] [--platform <os/arch>] [--skip-hooks]` | Builds images, without deploying. Without `--push`, for `--platform` (default: this machine's architecture); with it, for the server's, and pushes them where a deploy would. With `build.builder: remote`, the build runs on the server and `--push` is implied |
 | `dockflow plan [<env>] [--out <file>] [--no-build] [--render] [--only <services>]` | Prints the plan. `--render` prints the service specs that would be sent |
 | `dockflow deploy [<env>] [--plan <file>] [--version <label>] [--only <services>] [--skip-build] [--no-rollback] [--detach] [--force] [--wait-lock [<duration>]] [--no-wait] [--branch <name>]` | Plans, confirms, applies. `--wait-lock` queues behind a running deploy instead of failing with code 5, for CI runs that may overlap (a push to `main` and a release) |
 | `dockflow rollback [<env>] [--to <seq\|version>] [--service <name>]` | Re-applies a recorded release, by default the previous one. `--service` restores one service only |

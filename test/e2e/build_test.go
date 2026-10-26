@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -172,5 +173,79 @@ func TestRegistryRetention(t *testing.T) {
 	mustSucceed(t, r, "prune --registry")
 	if !strings.Contains(r.out, `"registry_collected": true`) {
 		t.Fatalf("prune --registry:\n%s", r.out)
+	}
+}
+
+// build.builder: remote builds with the server's Docker: nothing is pushed, the service runs the
+// image by ID, and an unchanged build changes nothing.
+func TestRemoteBuild(t *testing.T) {
+	app := "journey16"
+	host := app + ".test"
+	dir := filepath.Join(workDir, app)
+	config := func() {
+		cfg := fmt.Sprintf("version: 1\napp: %s\nbuild:\n  builder: remote\nenvironments:\n  production:\n    deploy:\n      timeout: 60s\n", app)
+		os.WriteFile(filepath.Join(dir, "dockflow.yml"), []byte(cfg), 0o644)
+	}
+	builtApp(t, dir, app, "remote")
+	config()
+
+	r := dockflow(t, dir, "deploy")
+	mustSucceed(t, r, "deploy a remote build")
+	if !r.has("build.finished") || len(pushes(r)) != 0 {
+		t.Fatalf("a remote build must build and push nothing:\n%s", r.out)
+	}
+	waitServing(t, host)
+	if got := served(t, host); got != "remote" {
+		t.Fatalf("served %q, want remote", got)
+	}
+	images, _ := inServer("docker images --format '{{.Repository}}:{{.Tag}}' localhost/" + app + "/web")
+	if !strings.Contains(images, "localhost/"+app+"/web:") {
+		t.Fatalf("the image must be in the server's daemon: %q", images)
+	}
+
+	again := dockflow(t, dir, "deploy")
+	mustSucceed(t, again, "deploy the same code")
+	if !again.has("plan.empty") {
+		t.Fatalf("an unchanged remote build must change nothing:\n%s", again.out)
+	}
+
+	builtApp(t, dir, app, "remote-two")
+	config()
+	mustSucceed(t, dockflow(t, dir, "deploy"), "deploy a new remote build")
+	if got := served(t, host); got != "remote-two" {
+		t.Fatalf("served %q, want remote-two", got)
+	}
+	mustSucceed(t, dockflow(t, dir, "rollback"), "rollback")
+	if got := served(t, host); got != "remote" {
+		t.Fatalf("served %q after the rollback, want remote", got)
+	}
+}
+
+// build.engine: podman builds with Podman on this machine, and ships like a bake build.
+func TestPodmanBuild(t *testing.T) {
+	if err := exec.Command("podman", "version").Run(); err != nil {
+		t.Skip("no podman")
+	}
+	app := "journey17"
+	host := app + ".test"
+	dir := filepath.Join(workDir, app)
+	builtApp(t, dir, app, "podman")
+	// Podman resolves short names only through its registries.conf
+	qualified := whoamiImage
+	if strings.Count(strings.Split(qualified, "/")[0], ".") == 0 {
+		qualified = "docker.io/" + qualified
+	}
+	os.WriteFile(filepath.Join(dir, "docker", "Dockerfile"), []byte("FROM "+qualified+"\nARG MESSAGE\nENV WHOAMI_NAME=$MESSAGE\n"), 0o644)
+	cfg := fmt.Sprintf("version: 1\napp: %s\nbuild:\n  engine: podman\nenvironments:\n  production:\n    deploy:\n      timeout: 60s\n", app)
+	os.WriteFile(filepath.Join(dir, "dockflow.yml"), []byte(cfg), 0o644)
+
+	r := dockflow(t, dir, "deploy")
+	mustSucceed(t, r, "deploy a podman build")
+	if p := pushes(r); len(p) != 1 || !strings.HasPrefix(p[0]["image"].(string), "127.0.0.1:5959/"+app+"/web@sha256:") {
+		t.Fatalf("the image must be pushed to the server's registry: %v\n%s", p, r.out)
+	}
+	waitServing(t, host)
+	if got := served(t, host); got != "podman" {
+		t.Fatalf("served %q, want podman", got)
 	}
 }

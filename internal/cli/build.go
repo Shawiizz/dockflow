@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Shawiizz/dockflow/internal/agent"
+	"github.com/Shawiizz/dockflow/internal/connection"
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/engine"
 	"github.com/Shawiizz/dockflow/internal/errs"
@@ -20,6 +21,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/image"
 	"github.com/Shawiizz/dockflow/internal/image/buildx"
 	"github.com/Shawiizz/dockflow/internal/image/oci"
+	"github.com/Shawiizz/dockflow/internal/image/podman"
 	"github.com/Shawiizz/dockflow/internal/project"
 	"github.com/Shawiizz/dockflow/internal/render"
 )
@@ -40,9 +42,11 @@ func workspace(l *project.Loaded) (*render.Workspace, error) {
 	return render.Prepare(l.Config.Dir, l.Config.Templates, l.Values, dirs)
 }
 
-// build builds the images of l for platform, keeping only the services in only when given,
-// from the rendered workspace. The layouts live in dir.
-func (a *app) build(ctx context.Context, l *project.Loaded, ws *render.Workspace, platform, dir string, only []string) ([]image.Built, error) {
+// build builds the images of l for platform with bld, keeping only the services in only when
+// given, from the rendered workspace. The layouts live in dir. digest names the built image's
+// content for the build.finished event.
+func (a *app) build(ctx context.Context, l *project.Loaded, ws *render.Workspace, platform, dir string, only []string,
+	bld image.Builder, digest func(image.Built) (string, error)) ([]image.Built, error) {
 	builds, err := selectBuilds(l.Builds, only)
 	if err != nil || len(builds) == 0 {
 		return nil, err
@@ -68,7 +72,7 @@ func (a *app) build(ctx context.Context, l *project.Loaded, ws *render.Workspace
 		}
 		a.emitter.Debug(events.BuildLog, line, map[string]any{"service": svc, "line": line})
 	}
-	built, err := (&buildx.Builder{}).Build(ctx, builds, platform, dir, log)
+	built, err := bld.Build(ctx, builds, platform, dir, log)
 	if err != nil {
 		if !a.verbose {
 			for _, line := range tail {
@@ -78,14 +82,34 @@ func (a *app) build(ctx context.Context, l *project.Loaded, ws *render.Workspace
 		return nil, err
 	}
 	for _, b := range built {
-		img, err := oci.Image(b.Layout)
+		d, err := digest(b)
 		if err != nil {
-			return nil, errs.Internal("read the image of %s: %v", b.Service, err)
+			return nil, err
 		}
-		d, _ := img.Digest()
-		a.emitter.Info(events.BuildFinished, b.Service+" built", map[string]any{"service": b.Service, "digest": d.String()})
+		a.emitter.Info(events.BuildFinished, b.Service+" built", map[string]any{"service": b.Service, "digest": d})
 	}
 	return built, nil
+}
+
+// localBuilder is the builder of the machine running the CLI.
+func localBuilder(l *project.Loaded) image.Builder {
+	if l.Config.Build.Engine == "podman" {
+		return &podman.Builder{}
+	}
+	return &buildx.Builder{}
+}
+
+// layoutDigest is the digest of an image written as an OCI layout.
+func layoutDigest(b image.Built) (string, error) {
+	img, err := oci.Image(b.Layout)
+	if err != nil {
+		return "", errs.Internal("read the image of %s: %v", b.Service, err)
+	}
+	d, err := img.Digest()
+	if err != nil {
+		return "", errs.Internal("read the image of %s: %v", b.Service, err)
+	}
+	return d.String(), nil
 }
 
 func selectBuilds(all []image.Build, only []string) ([]image.Build, error) {
@@ -135,7 +159,8 @@ func destination(l *project.Loaded, service string) image.Destination {
 	return image.Destination{Repository: agent.RegistryAddr + "/" + l.Config.App + "/" + service, Tags: []string{tag}, Insecure: true}
 }
 
-// ship builds the session's images, pushes them, and pins each built service to its digest.
+// ship builds the session's images, sends them to the server, and pins each built service to
+// its content.
 func (s *session) ship(ctx context.Context, only []string) error {
 	l := s.loaded
 	if len(l.Builds) == 0 {
@@ -150,7 +175,10 @@ func (s *session) ship(ctx context.Context, only []string) error {
 	if err != nil {
 		return err
 	}
-	built, err := s.app.build(ctx, l, ws, "linux/"+s.info.Arch, dir, only)
+	if l.Config.Build.Builder == "remote" {
+		return s.buildRemote(ctx, ws, dir, only)
+	}
+	built, err := s.app.build(ctx, l, ws, "linux/"+s.info.Arch, dir, only, localBuilder(l), layoutDigest)
 	if err != nil {
 		return err
 	}
@@ -174,6 +202,72 @@ func (s *session) ship(ctx context.Context, only []string) error {
 	return nil
 }
 
+// buildRemote builds on the server's Docker, reached through a local socket forwarded over SSH
+// (ADR-0009). The images land in the server's daemon; with an external registry, the server
+// pushes them there too.
+func (s *session) buildRemote(ctx context.Context, ws *render.Workspace, dir string, only []string) error {
+	l := s.loaded
+	sock, err := connection.Forward(connection.DockerDialer(s.ssh))
+	if err != nil {
+		return err
+	}
+	defer sock.Close()
+	bx := &buildx.Builder{
+		Env:  []string{"DOCKER_HOST=unix://" + sock.Path, "DOCKER_CONTEXT=", "BUILDX_BUILDER="},
+		Load: func(service string) []string { return remoteNames(l, service) },
+	}
+	id := func(b image.Built) (string, error) {
+		img, err := s.engine.InspectImage(ctx, b.Image)
+		return img.ID, err
+	}
+	built, err := s.app.build(ctx, l, ws, "linux/"+s.info.Arch, dir, only, bx, id)
+	if err != nil {
+		return err
+	}
+	for _, b := range built {
+		img, err := s.engine.InspectImage(ctx, b.Image)
+		if err != nil {
+			return err
+		}
+		ref := img.ID
+		if l.Config.Registry != nil {
+			d := destination(l, b.Service)
+			for _, name := range remoteNames(l, b.Service) {
+				if err := s.engine.PushImage(ctx, name, registryAuth(l)); err != nil {
+					return err
+				}
+			}
+			if img, err = s.engine.InspectImage(ctx, b.Image); err != nil {
+				return err
+			}
+			for _, rd := range img.Digests {
+				if repo, digest, ok := strings.Cut(rd, "@"); ok && repo == d.Repository {
+					ref = d.Repository + "@" + digest
+				}
+			}
+			s.app.emitter.Info(events.PushFinished, b.Service+" pushed from the server",
+				map[string]any{"image": ref, "digest": strings.TrimPrefix(ref, d.Repository+"@")})
+		}
+		svc, _ := l.App.Service(b.Service)
+		svc.Spec.Image = ref
+	}
+	return nil
+}
+
+// remoteNames are the names of an image built on the server: those of its external registry, or
+// a local name the server never pulls (services run it by image ID).
+func remoteNames(l *project.Loaded, service string) []string {
+	if l.Config.Registry == nil {
+		return []string{"localhost/" + l.Config.App + "/" + service + ":" + imageTag(l.Version)}
+	}
+	d := destination(l, service)
+	names := make([]string, 0, len(d.Tags))
+	for _, t := range d.Tags {
+		names = append(names, d.Repository+":"+t)
+	}
+	return names
+}
+
 // registryAuth are the credentials the agent pulls with, for an external registry.
 func registryAuth(l *project.Loaded) *engine.RegistryAuth {
 	r := l.Config.Registry
@@ -194,15 +288,20 @@ func (a *app) buildCmd() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			if push {
+			l, err := a.load(ctx, envArg(args), "")
+			if err != nil {
+				return err
+			}
+			if len(l.Builds) == 0 {
+				return errs.Usage("no service of %s has a build", l.Config.Env)
+			}
+			// a remote build lands on the server: it is pushed by nature
+			if push || l.Config.Build.Builder == "remote" {
 				s, err := a.connect(ctx, envArg(args), "")
 				if err != nil {
 					return err
 				}
 				defer s.Close()
-				if len(s.loaded.Builds) == 0 {
-					return errs.Usage("no service of %s has a build", s.loaded.Config.Env)
-				}
 				var hookList []domain.Hook
 				if !skipHooks {
 					if hookList, err = s.hooks(); err != nil {
@@ -218,13 +317,6 @@ func (a *app) buildCmd() *cobra.Command {
 				}
 				return hk.Run(ctx, domain.HookAfterBuild, hookList)
 			}
-			l, err := a.load(ctx, envArg(args), "")
-			if err != nil {
-				return err
-			}
-			if len(l.Builds) == 0 {
-				return errs.Usage("no service of %s has a build", l.Config.Env)
-			}
 			if platform == "" {
 				platform = "linux/" + runtime.GOARCH
 			}
@@ -238,7 +330,7 @@ func (a *app) buildCmd() *cobra.Command {
 				return err
 			}
 			defer ws.Close()
-			_, err = a.build(ctx, l, ws, platform, dir, only)
+			_, err = a.build(ctx, l, ws, platform, dir, only, localBuilder(l), layoutDigest)
 			return err
 		},
 	}

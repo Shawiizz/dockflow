@@ -1,7 +1,7 @@
 # ADR-0009: Images: buildx bake, sent to the server through a server-local registry
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (single server: no cluster registry; the bake definition written by Dockflow)
+- Date: 2026-10-25, revised 2026-10-26 (single server: no cluster registry; the bake definition written by Dockflow; remote and Podman builds)
 
 ## Context
 
@@ -18,8 +18,9 @@ On one server, the problem is simpler than on a cluster: images must reach one D
 - The target platform is the server's architecture, read from the Engine at plan time.
 - **Where builds run:**
   - on the machine running the CLI (a laptop or a CI runner), by default;
-  - on the server, with `build.builder: remote`, through a buildx builder that reaches the server's Docker over SSH. Nothing is transferred after such a build;
-  - with `build.engine: podman`, services are built one by one with `podman build`, from the same Compose keys.
+  - on the server, with `build.builder: remote`. The CLI opens a unix socket in a directory only its user can enter, forwards each connection to the server's Docker socket over SSH, and runs bake with `DOCKER_HOST` pointing at it, on the builder of that daemon. Bake loads the images into the server's daemon (`type=docker`) under `localhost/<app>/<service>:<version>`, a name that is never pulled: services run them by image ID. Nothing is transferred after such a build. With an external registry, the images are named for it instead, and the server's daemon pushes them there;
+  - with `build.engine: podman`, services are built one by one with `podman build` from the same Compose keys, each image exported as an OCI layout (`podman push <id> oci:<dir>`) and pushed like a bake build. Short image names resolve as Podman's `registries.conf` says.
+- Bake runs without default attestations (`BUILDX_NO_DEFAULT_ATTESTATIONS=1`): a provenance attestation records when the image was built, so the same code would make a new image, and a deploy that changes nothing would replace the containers.
 - Images are `127.0.0.1:5959/<app>/<service>:<version>` in the server-local registry, or `<registry.url>/<app>/<service>:<version>` plus `registry.additional_tags` in an external one. Services run them pinned by digest.
 - `dockflow build [<env>] [--only <services>] [--push]` builds without deploying, as in 1.x.
 
@@ -29,7 +30,7 @@ On one server, the problem is simpler than on a cluster: images must reach one D
 |---|---|
 | **Server-local registry** (default) | `server init` runs `dockflow-registry`, the CNCF distribution registry pinned by digest, published on `127.0.0.1:5959` only, with its storage in a volume. The CLI opens an SSH tunnel to that port and pushes with go-containerregistry, reading the image from the local daemon or the bake output; blobs the registry already has are skipped. The agent then pulls `127.0.0.1:5959/<app>/<service>@sha256:…` into the daemon. This works with Docker Desktop too, because the push is made by the CLI process |
 | **External registry** | `registry.url` is set (ghcr.io, Docker Hub, a private registry): bake pushes there, and the agent pulls with the credentials from the environment's secrets ([ADR-0012](0012-secrets-sops.md)) |
-| **Remote build** | The image is already in the server's daemon |
+| **Remote build** | The image is already in the server's daemon, run by image ID; with `registry.url`, the server's daemon also pushes it there, and services run it by digest |
 
 ### Retention
 

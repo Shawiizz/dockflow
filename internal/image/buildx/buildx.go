@@ -32,6 +32,9 @@ type Builder struct {
 	Docker string
 	// Env is added to bake's environment (SOURCE_DATE_EPOCH, for example).
 	Env []string
+	// Load, when set, loads each image into the daemon bake reaches, under the names it returns,
+	// instead of writing OCI layouts: remote builds, where Env points DOCKER_HOST at the server.
+	Load func(service string) []string
 }
 
 var _ image.Builder = (*Builder)(nil)
@@ -63,8 +66,9 @@ type definition struct {
 	Target map[string]target              `json:"target"`
 }
 
-// Definition returns the bake definition for builds.
-func Definition(builds []image.Build, platform, dir string) ([]byte, error) {
+// Definition returns the bake definition for builds, written as OCI layouts under dir, or loaded
+// under the names load returns when it is set.
+func Definition(builds []image.Build, platform, dir string, load func(service string) []string) ([]byte, error) {
 	def := definition{Group: map[string]map[string][]string{"default": {"targets": {}}}, Target: map[string]target{}}
 	for _, b := range builds {
 		t := target{
@@ -73,6 +77,9 @@ func Definition(builds []image.Build, platform, dir string) ([]byte, error) {
 			NoCache: b.NoCache, NoCacheFilter: b.NoCacheFilter, Pull: b.Pull, Network: b.Network, SSH: b.SSH,
 			Entitlements: b.Entitlements, Platforms: []string{platform},
 			Output: []string{"type=oci,tar=false,dest=" + filepath.Join(dir, b.Service)},
+		}
+		if load != nil {
+			t.Output = []string{`type=docker,"name=` + strings.Join(load(b.Service), ",") + `"`}
 		}
 		if b.ShmSize > 0 {
 			t.ShmSize = strconv.FormatInt(b.ShmSize, 10) + "b"
@@ -92,12 +99,12 @@ func Definition(builds []image.Build, platform, dir string) ([]byte, error) {
 	return json.MarshalIndent(def, "", "  ")
 }
 
-// Build runs bake for every build and returns the OCI layouts it wrote.
+// Build runs bake for every build and returns the OCI layouts it wrote, or the images it loaded.
 func (bx *Builder) Build(ctx context.Context, builds []image.Build, platform, dir string, log func(service, line string)) ([]image.Built, error) {
 	if len(builds) == 0 {
 		return nil, nil
 	}
-	def, err := Definition(builds, platform, dir)
+	def, err := Definition(builds, platform, dir, bx.Load)
 	if err != nil {
 		return nil, errs.Internal("bake definition: %v", err)
 	}
@@ -109,8 +116,13 @@ func (bx *Builder) Build(ctx context.Context, builds []image.Build, platform, di
 	for _, b := range builds {
 		services = append(services, b.Service)
 	}
-	out, err := bx.bake(ctx, file, "", services, log)
-	if err != nil && unsupportedExporter(out) {
+	builder := ""
+	if bx.Load != nil {
+		// the builder of the daemon DOCKER_HOST names, whatever builder this machine uses
+		builder = "default"
+	}
+	out, err := bx.bake(ctx, file, builder, services, log)
+	if err != nil && bx.Load == nil && unsupportedExporter(out) {
 		if err := bx.ensureBuilder(ctx); err != nil {
 			return nil, err
 		}
@@ -125,6 +137,10 @@ func (bx *Builder) Build(ctx context.Context, builds []image.Build, platform, di
 	}
 	built := make([]image.Built, 0, len(builds))
 	for _, b := range builds {
+		if bx.Load != nil {
+			built = append(built, image.Built{Service: b.Service, Image: bx.Load(b.Service)[0]})
+			continue
+		}
 		built = append(built, image.Built{Service: b.Service, Layout: filepath.Join(dir, b.Service)})
 	}
 	return built, nil
@@ -155,6 +171,9 @@ func (bx *Builder) bake(ctx context.Context, file, builder string, services []st
 	// the definition and the outputs live in a temporary directory, the contexts in the project:
 	// bake's filesystem entitlements would refuse both
 	cmd.Env = append(cmd.Env, "BUILDX_BAKE_ENTITLEMENTS_FS=0")
+	// a provenance attestation records when the image was built: the same code would make a new
+	// image, and a deploy that changes nothing would replace the containers
+	cmd.Env = append(cmd.Env, "BUILDX_NO_DEFAULT_ATTESTATIONS=1")
 	pr, pw := io.Pipe()
 	cmd.Stdout, cmd.Stderr = pw, pw
 	known := map[string]bool{}
