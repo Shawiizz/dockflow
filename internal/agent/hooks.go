@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
@@ -30,7 +29,7 @@ func (r *runner) execHooks(ctx context.Context, phase string) error {
 		}
 		if h.Fatal {
 			exit := errs.ExitHook
-			if !strings.HasPrefix(phase, "before_") {
+			if phase == domain.HookAfterDeploy {
 				exit = errs.ExitRolledBack
 			}
 			return errs.Newf("hook.failed", exit, "hook %s (%s) failed: %v", h.Name, phase, err)
@@ -48,8 +47,14 @@ func (r *runner) execHook(ctx context.Context, h domain.Hook) error {
 		return err
 	}
 	if len(cs) == 0 {
+		if h.Phase == domain.HookBeforeDeploy {
+			// the first deploy of the service: nothing runs yet to prepare
+			r.ev.Info(events.Log, fmt.Sprintf("hook %s skipped: %s has no container yet", h.Name, h.Service), map[string]any{"line": "skip " + h.Name})
+			return nil
+		}
 		return fmt.Errorf("service %s has no running container", h.Service)
 	}
+	cs = newest(cs)
 	ctx, cancel := context.WithTimeout(ctx, h.Timeout.D())
 	defer cancel()
 	for _, c := range cs {
@@ -90,4 +95,22 @@ func (r *runner) execHook(ctx context.Context, h domain.Hook) error {
 		}
 	}
 	return nil
+}
+
+// newest keeps the containers of the newest release: after a switch, those that serve, not
+// the previous release's waiting to drain.
+func newest(cs []engine.Container) []engine.Container {
+	top := 0
+	for _, c := range cs {
+		if c.Release > top {
+			top = c.Release
+		}
+	}
+	out := cs[:0:0]
+	for _, c := range cs {
+		if c.Release == top {
+			out = append(out, c)
+		}
+	}
+	return out
 }

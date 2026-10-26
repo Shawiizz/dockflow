@@ -1,6 +1,7 @@
 package planner
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
@@ -117,6 +118,27 @@ func TestJobsRunAroundAChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	testutil.Golden(t, "jobs", p)
+}
+
+// On a first deploy, a migration that depends on the database runs once the database is up,
+// and before the service that depends on it.
+func TestBeforeJobRunsAfterItsDependencies(t *testing.T) {
+	a := withJobs()
+	a.Services[2].DependsOn = []domain.Dependency{{Service: "db", Condition: "service_healthy"}}
+	p, err := Plan(a, domain.Actual{Services: map[string]domain.ActualService{}, Networks: map[string]bool{}, Volumes: map[string]bool{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.Golden(t, "jobs-first-deploy", p)
+	var order []string
+	for _, a := range p.Actions {
+		order = append(order, a.Kind+" "+a.Target)
+	}
+	got := strings.Join(order, ", ")
+	want := "network.create shop-production_default, volume.create shop-production_pgdata, service.create db, job.run migrate, service.create web, routes.apply shop-production, job.run warm"
+	if got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
 }
 
 func TestJobsDoNotRunWithoutAChange(t *testing.T) {

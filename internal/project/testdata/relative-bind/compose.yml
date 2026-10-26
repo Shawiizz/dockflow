@@ -1,0 +1,6 @@
+services:
+  web:
+    image: nginx:alpine
+    volumes:
+      - ./data:/data
+      - /srv/shared:/shared

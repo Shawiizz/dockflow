@@ -100,3 +100,20 @@ func TestRoutedWithoutHealthcheckWarning(t *testing.T) {
 		t.Fatalf("only the service without a check must be warned about: %q", l.Warnings)
 	}
 }
+
+// ./data names a directory of this machine: the server has no such path.
+func TestRelativeBindMountIsRefused(t *testing.T) {
+	_, err := load(t, "relative-bind", "production")
+	e, ok := errs.As(err)
+	if !ok || e.Exit != errs.ExitConfig || !strings.Contains(e.Message, "data") {
+		t.Fatalf("want a config error naming the bind mount, got %v", err)
+	}
+}
+
+// Without an environment, a file with several still reads: choosing one from a CI tag needs it.
+func TestReadWithoutEnvironmentKeepsTheFile(t *testing.T) {
+	raw, _, err := Read("testdata/basic", "")
+	if raw == nil || len(raw.EnvNames()) < 2 {
+		t.Fatalf("the file must be read even when no environment is picked: %v", err)
+	}
+}

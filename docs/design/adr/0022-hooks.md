@@ -44,11 +44,11 @@ Entry options: `name`, `timeout` (default 5 minutes), and `fatal` (default `true
 
 A deploy must survive the CLI's death ([ADR-0004](0004-ephemeral-agent.md)), so the agent never waits on the CLI's connection in the middle of a run:
 
-- **`exec` hooks run in the agent**, at the points above: `before_deploy` right before the first service changes, `after_deploy` after the public checks and before the old containers are drained, so a fatal one rolls back like a failed check, and `after_failure` after the rollback.
+- **`exec` hooks run in the agent**, at the points above: `before_deploy` right before the first service changes, `after_deploy` after the public checks and before the old containers are drained, in the containers of the new release, so a fatal one rolls back like a failed check, and `after_failure` after the rollback.
 - **Local and `host` hooks run in the CLI**, around the agent's run: `before_deploy` before the agent starts (so before the `before` jobs), `after_deploy` once the release is committed, and `after_failure` once the agent reports the failure. A fatal `after_deploy` hook there rolls back with a rollback run to the previous release.
 - **A `host` hook's script travels on stdin** to `sh -s`, its environment exported in it, so no value appears in a command line on the server.
 
-A fatal `before_*` hook exits with code 11, before any release is created; a fatal `after_deploy` hook with code 8, once the previous release is back.
+A fatal `before_*` hook exits with code 11, before any release is created; a fatal `after_deploy` hook with code 8, once the previous release is back; a fatal `after_build` hook with code 11, nothing having changed. A `before_deploy` `exec` hook is skipped, with a notice, when its service has no container yet (its first deploy).
 
 ### Running inside containers
 

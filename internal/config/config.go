@@ -21,6 +21,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/notify"
 	"github.com/Shawiizz/dockflow/internal/render"
+	"github.com/Shawiizz/dockflow/internal/upload"
 )
 
 // FileName is the name of the configuration file at the project root.
@@ -225,7 +226,7 @@ func Find(dir string) (string, error) {
 		}
 		if filepath.Dir(d) == d {
 			return "", errs.Config("no %s found in %s or its parents", FileName, abs).
-				WithHint("run `dockflow init`, or pass the project directory with -C")
+				WithHint("run dockflow in the project directory, or pass it with -C")
 		}
 	}
 }
@@ -330,7 +331,7 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 		return nil, err
 	}
 	node := cloneNode(&r.root)
-	if err := interpolateNode(node, lookup, nil); err != nil {
+	if err := (interpolation{lookup: lookup, env: env, overridden: r.overridden(env)}).node(node, nil); err != nil {
 		return nil, err
 	}
 	var f File
@@ -388,7 +389,7 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 			res.Uploads = s.Uploads
 		}
 		if s.Templates != nil {
-			t, err := templates(s.Templates)
+			t, err := templates(r.Dir, s.Templates)
 			if err != nil {
 				return nil, err
 			}
@@ -469,6 +470,9 @@ func checkUploads(entries []UploadEntry) error {
 			return errs.Config("%s.dest %s is the destination of two uploads", at, u.Dest)
 		}
 		dests[u.Dest] = true
+		if _, _, err := upload.ParseOwner(u.Owner); err != nil {
+			return errs.Config("%s.owner: %v", at, err)
+		}
 		if u.Mode != "" {
 			if _, err := strconv.ParseUint(u.Mode, 8, 32); err != nil {
 				return errs.Config("%s.mode %q is not an octal mode like 644", at, u.Mode)
@@ -559,7 +563,7 @@ func hookName(h domain.Hook) string {
 	return s
 }
 
-func templates(entries []TemplateEntry) ([]render.Template, error) {
+func templates(dir string, entries []TemplateEntry) ([]render.Template, error) {
 	out := make([]render.Template, 0, len(entries))
 	for i, e := range entries {
 		if e.Dest == "" {
@@ -570,6 +574,9 @@ func templates(entries []TemplateEntry) ([]render.Template, error) {
 			if p == "" || filepath.IsAbs(p) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 				return nil, errs.Config("templates[%d]: %q must be a path inside the project", i, p)
 			}
+		}
+		if fi, err := os.Stat(filepath.Join(dir, e.Src)); err != nil || fi.IsDir() {
+			return nil, errs.Config("templates[%d]: %s is not a file of the project", i, e.Src)
 		}
 		out = append(out, render.Template{Src: filepath.Clean(e.Src), Dest: filepath.Clean(e.Dest)})
 	}
@@ -782,13 +789,21 @@ func cloneNode(n *yaml.Node) *yaml.Node {
 	return &c
 }
 
-// interpolateNode replaces ${VAR} in string scalars. Mapping keys are never interpolated, and
-// neither are the app name, environment names or vars (path tells where we are).
-func interpolateNode(n *yaml.Node, lookup Lookup, path []string) error {
+// interpolation replaces ${VAR} in the string scalars env uses. Mapping keys are never
+// interpolated, and neither are the app name, vars or hook commands (ADR-0022: they get values
+// as environment variables). Other environments, and the top-level keys env overrides, are left
+// alone: their variables need not exist for env.
+type interpolation struct {
+	lookup     Lookup
+	env        string
+	overridden map[string]bool
+}
+
+func (in interpolation) node(n *yaml.Node, path []string) error {
 	switch n.Kind {
 	case yaml.DocumentNode, yaml.SequenceNode:
 		for _, c := range n.Content {
-			if err := interpolateNode(c, lookup, path); err != nil {
+			if err := in.node(c, path); err != nil {
 				return err
 			}
 		}
@@ -796,13 +811,10 @@ func interpolateNode(n *yaml.Node, lookup Lookup, path []string) error {
 		for i := 0; i+1 < len(n.Content); i += 2 {
 			key := n.Content[i].Value
 			p := append(append([]string{}, path...), key)
-			if len(p) == 1 && (key == "app" || key == "version") {
+			if in.skip(p) {
 				continue
 			}
-			if len(p) == 3 && p[0] == "environments" && key == "vars" {
-				continue
-			}
-			if err := interpolateNode(n.Content[i+1], lookup, p); err != nil {
+			if err := in.node(n.Content[i+1], p); err != nil {
 				return err
 			}
 		}
@@ -810,12 +822,62 @@ func interpolateNode(n *yaml.Node, lookup Lookup, path []string) error {
 		if n.Tag != "!!str" && n.Tag != "" {
 			return nil
 		}
-		out, err := Interpolate(n.Value, lookup)
+		out, err := Interpolate(n.Value, in.lookup)
 		if err != nil {
 			return errs.Config("%s: %s: %s", FileName, strings.Join(path, "."), err.Error()).
 				WithHint("define it under environments.<env>.vars or as a secret, or write ${NAME:-default}")
 		}
 		n.Value = out
+	}
+	return nil
+}
+
+func (in interpolation) skip(p []string) bool {
+	switch {
+	case len(p) == 1:
+		return p[0] == "app" || p[0] == "version" || in.overridden[p[0]]
+	case p[0] == "environments" && len(p) >= 2 && p[1] != in.env:
+		return true
+	case p[0] == "environments" && len(p) == 3:
+		return p[2] == "vars"
+	}
+	// hook commands: hooks.<phase>[i].run|host|exec, at the top level or in the environment
+	hook := p
+	if p[0] == "environments" && len(p) > 2 {
+		hook = p[2:]
+	}
+	return len(hook) == 3 && hook[0] == "hooks" && (hook[2] == "run" || hook[2] == "host" || hook[2] == "exec")
+}
+
+// overridden are the top-level keys env sets itself.
+func (r *Raw) overridden(env string) map[string]bool {
+	out := map[string]bool{}
+	doc := &r.root
+	if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
+		doc = doc.Content[0]
+	}
+	envs := mapValue(doc, "environments")
+	if envs == nil {
+		return out
+	}
+	e := mapValue(envs, env)
+	if e == nil || e.Kind != yaml.MappingNode {
+		return out
+	}
+	for i := 0; i+1 < len(e.Content); i += 2 {
+		out[e.Content[i].Value] = true
+	}
+	return out
+}
+
+func mapValue(n *yaml.Node, key string) *yaml.Node {
+	if n == nil || n.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if n.Content[i].Value == key {
+			return n.Content[i+1]
+		}
 	}
 	return nil
 }

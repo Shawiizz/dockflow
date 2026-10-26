@@ -1,0 +1,56 @@
+{
+  "app": "shop",
+  "env": "production",
+  "fingerprint": "sha256:f5aad710e95e8d116c127dde7cd54c81a86a251d79d054539a7281fd371aa6d5",
+  "actions": [
+    {
+      "id": "01-network.create-shop-production_default",
+      "kind": "network.create",
+      "target": "shop-production_default",
+      "reason": "does not exist"
+    },
+    {
+      "id": "02-volume.create-shop-production_pgdata",
+      "kind": "volume.create",
+      "target": "shop-production_pgdata",
+      "reason": "does not exist"
+    },
+    {
+      "id": "03-service.create-db",
+      "kind": "service.create",
+      "target": "db",
+      "reason": "new service",
+      "strategy": "stop-first"
+    },
+    {
+      "id": "04-job.run-migrate",
+      "kind": "job.run",
+      "target": "migrate",
+      "reason": "job, before the services"
+    },
+    {
+      "id": "05-service.create-web",
+      "kind": "service.create",
+      "target": "web",
+      "reason": "new service",
+      "strategy": "switch"
+    },
+    {
+      "id": "06-routes.apply-shop-production",
+      "kind": "routes.apply",
+      "target": "shop-production",
+      "reason": "routes changed"
+    },
+    {
+      "id": "07-job.run-warm",
+      "kind": "job.run",
+      "target": "warm",
+      "reason": "job, after the services"
+    }
+  ],
+  "summary": {
+    "create": 2,
+    "update": 0,
+    "remove": 0
+  }
+}

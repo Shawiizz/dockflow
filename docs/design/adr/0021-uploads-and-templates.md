@@ -27,7 +27,7 @@ Options:
 |---|---|
 | `exclude` | Glob patterns, plus the `.dockerignore`-style `!` negation |
 | `mirror` | `true` deletes, at the destination, the files that no longer exist locally (what the Maven hook did by hand) |
-| `mode`, `owner` | For host paths; the deploy user must be able to write there, or the path belongs to a sudo rule installed by `server init` |
+| `mode`, `owner` | For host paths: the mode in octal, the owner numeric (`uid` or `uid:gid`). The helper container writes as root through the Engine API, so the deploy user needs no write access of its own |
 
 ### How it works
 
@@ -46,7 +46,7 @@ An app may have no services at all and consist only of uploads (`no_services` in
 
 - A 2.7 GB tree is sent once. Later deploys send only what changed, and deleted files are removed with `mirror: true`.
 - Host files are replaced atomically and restored exactly on failure.
-- Writing to host paths keeps a sudo rule or ownership requirement, documented per destination.
+- Writing to host paths needs nothing of the deploy user beyond Docker access, which is already root-equivalent.
 - The previous versions of uploaded content take disk space until they leave retention.
 
 ## Alternatives considered

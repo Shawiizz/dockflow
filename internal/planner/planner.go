@@ -128,30 +128,64 @@ func Plan(desired domain.App, actual domain.Actual, restart ...string) (*domain.
 	return p, nil
 }
 
-// addJobs inserts the jobs of a plan that changes something: before jobs after the networks and
-// volumes, after jobs at the end, each in depends_on order (ADR-0010).
+// addJobs inserts the jobs of a plan that changes something, in depends_on order (ADR-0010):
+// a before job right after the actions of the services it depends on, so a migration runs once
+// its database is up, and before the services that depend on it; after jobs at the end.
 func addJobs(p *domain.Plan, desired *domain.App, order []string, infra int) {
 	if len(p.Actions) == infra {
 		return
 	}
-	var before, after []domain.Action
+	rest := p.Actions[infra:]
+	acted := map[string]int{} // service → index of its action in rest
+	for i, a := range rest {
+		if a.Kind == domain.ActionCreateService || a.Kind == domain.ActionUpdateService {
+			acted[a.Target] = i
+		}
+	}
+	// at is where a before job goes in rest: after every action it depends on
+	at := map[string]int{}
+	var after func(name string) int
+	after = func(name string) int {
+		if i, ok := at[name]; ok {
+			return i
+		}
+		s, _ := desired.Service(name)
+		pos := 0
+		if i, ok := acted[name]; ok && s.Job == "" {
+			pos = i + 1
+		}
+		for _, d := range s.DependsOn {
+			if dp := after(d.Service); dp > pos {
+				pos = dp
+			}
+		}
+		at[name] = pos
+		return pos
+	}
+	before := map[int][]domain.Action{}
+	var afterJobs []domain.Action
 	for _, name := range order {
 		s, _ := desired.Service(name)
 		a := domain.Action{Kind: domain.ActionJob, Target: name, Reason: "job, " + s.Job + " the services"}
 		switch s.Job {
 		case domain.JobBefore:
-			before = append(before, a)
+			pos := after(name)
+			before[pos] = append(before[pos], a)
 		case domain.JobAfter:
-			after = append(after, a)
+			afterJobs = append(afterJobs, a)
 		}
 	}
-	if len(before)+len(after) == 0 {
+	if len(before)+len(afterJobs) == 0 {
 		return
 	}
 	actions := append([]domain.Action{}, p.Actions[:infra]...)
-	actions = append(actions, before...)
-	actions = append(actions, p.Actions[infra:]...)
-	actions = append(actions, after...)
+	for i := 0; i <= len(rest); i++ {
+		actions = append(actions, before[i]...)
+		if i < len(rest) {
+			actions = append(actions, rest[i])
+		}
+	}
+	actions = append(actions, afterJobs...)
 	for i := range actions {
 		actions[i].ID = fmt.Sprintf("%02d-%s-%s", i+1, actions[i].Kind, actions[i].Target)
 	}

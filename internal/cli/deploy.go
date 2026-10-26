@@ -199,7 +199,7 @@ func (a *app) rollbackCmd() *cobra.Command {
 			return err
 		},
 	}
-	cmd.Flags().StringVar(&to, "to", "", "the release to restore (see `dockflow releases`)")
+	cmd.Flags().StringVar(&to, "to", "", "the release to restore: its number in dockflow releases")
 	return cmd
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -162,7 +163,7 @@ func httpCheck(at string, h *HTTPExt, routes []RouteExt) (*domain.HTTPCheck, err
 		return nil, errs.Config("%s.port is required for a service without routes", at)
 	}
 	if h.Status != "" {
-		lo, hi, isRange := strings.Cut(h.Status, "-")
+		lo, hi, isRange := strings.Cut(string(h.Status), "-")
 		var err1, err2 error
 		c.StatusMin, err1 = strconv.Atoi(strings.TrimSpace(lo))
 		c.StatusMax = c.StatusMin
@@ -355,6 +356,12 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 				}
 			}
 		case types.VolumeTypeBind:
+			// Compose resolves ./data against the project: a path of this machine, which the
+			// server does not have
+			if rel, err := filepath.Rel(p.WorkingDir, v.Source); p.WorkingDir != "" && err == nil && !strings.HasPrefix(rel, "..") {
+				return nil, nil, errs.Config("%s: the bind mount %s is a path of the project on this machine, not of the server", at, v.Source).
+					WithHint("use a named volume, an absolute path on the server, or send the files with uploads: in dockflow.yml")
+			}
 			m.Source = v.Source
 			if v.Bind != nil {
 				m.CreateHostPath = bool(v.Bind.CreateHostPath)

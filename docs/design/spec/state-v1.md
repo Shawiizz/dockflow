@@ -159,5 +159,4 @@ It deletes the other release files, then the images, registry manifests, secret 
 - **Interpolated values.** Values interpolated into environment variables are part of the spec, as they are of `docker inspect`. The file is readable by root only.
 - **Jobs** are services of `desired` with `"job": "before"` or `"after"`; they have no containers once the run is over.
 - **Uploads** are in `desired.uploads`: each destination with the digest of its manifest.
-- **Uploads** are in `desired.uploads`: each destination with the digest of its manifest.
 - **A later milestone** adds `secrets` to the record: the hash of each secret's value, never the value (M3).

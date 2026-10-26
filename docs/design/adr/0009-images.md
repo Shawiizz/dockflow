@@ -35,7 +35,7 @@ On one server, the problem is simpler than on a cluster: images must reach one D
 ### Retention
 
 - The images of the releases in retention stay in the daemon, so a rollback never needs a transfer.
-- Older images and their registry manifests are deleted after a successful run, and the registry's garbage collection runs as a one-off container.
+- Older images and their registry manifests are deleted after a successful run. The registry's garbage collection, which frees the layers, runs with `dockflow prune`, outside deploys.
 
 ## Consequences
 

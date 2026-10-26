@@ -92,7 +92,8 @@ func Read(dir, env string) (*config.Raw, string, error) {
 	}
 	name, err := raw.PickEnv(env)
 	if err != nil {
-		return nil, "", err
+		// the file is still read: callers that do not need an environment use it
+		return raw, "", err
 	}
 	return raw, name, nil
 }

@@ -31,6 +31,48 @@ type RouteExt struct {
 	Port        int      `json:"port"`
 	TLS         *bool    `json:"tls"`
 	StripPrefix bool     `json:"strip_prefix"`
+	// the route options of the spec that arrive in M3, refused by name
+	Headers    *json.RawMessage `json:"headers"`
+	Encode     *json.RawMessage `json:"encode"`
+	MaxBody    *json.RawMessage `json:"max_body"`
+	Timeouts   *json.RawMessage `json:"timeouts"`
+	ErrorPages *json.RawMessage `json:"error_pages"`
+	Auth       *json.RawMessage `json:"auth"`
+	Caddy      *json.RawMessage `json:"caddy"`
+}
+
+// later is the first route option set that arrives in a later milestone.
+func (r RouteExt) later() string {
+	for _, o := range []struct {
+		name string
+		set  bool
+	}{
+		{"headers", r.Headers != nil}, {"encode", r.Encode != nil}, {"max_body", r.MaxBody != nil},
+		{"timeouts", r.Timeouts != nil}, {"error_pages", r.ErrorPages != nil}, {"auth", r.Auth != nil},
+		{"caddy", r.Caddy != nil},
+	} {
+		if o.set {
+			return o.name
+		}
+	}
+	return ""
+}
+
+// StatusExt is a status or a range of statuses, written as a number or a string: 200, "200-399".
+type StatusExt string
+
+func (s *StatusExt) UnmarshalJSON(b []byte) error {
+	var n json.Number
+	if err := json.Unmarshal(b, &n); err == nil {
+		*s = StatusExt(n.String())
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(b, &str); err != nil {
+		return err
+	}
+	*s = StatusExt(str)
+	return nil
 }
 
 // RolloutExt is x-dockflow.rollout.
@@ -41,12 +83,12 @@ type RolloutExt struct {
 
 // HTTPExt is x-dockflow.health.http: an internal check, before the switch.
 type HTTPExt struct {
-	Path     string `json:"path"`
-	Port     int    `json:"port"`
-	Status   string `json:"status"` // 200, or a range 200-399
-	Timeout  string `json:"timeout"`
-	Retries  *int   `json:"retries"`
-	Interval string `json:"interval"`
+	Path     string    `json:"path"`
+	Port     int       `json:"port"`
+	Status   StatusExt `json:"status"` // 200, or a range 200-399
+	Timeout  string    `json:"timeout"`
+	Retries  *int      `json:"retries"`
+	Interval string    `json:"interval"`
 }
 
 // HealthExt is x-dockflow.health.
@@ -78,6 +120,11 @@ func readExtension(s types.ServiceConfig) (Extension, error) {
 		return x, notYetExt(s.Name, "backup", "M4")
 	case x.Health != nil && x.Health.RestartAfter != "":
 		return x, notYetExt(s.Name, "health.restart_after", "M3")
+	}
+	for _, r := range x.Routes {
+		if o := r.later(); o != "" {
+			return x, notYetExt(s.Name, "routes."+o, "M3")
+		}
 	}
 	return x, nil
 }

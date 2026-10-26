@@ -48,7 +48,7 @@ Two syntaxes, each where it is native ([ADR-0006](../adr/0006-compose-as-written
 
 An environment is one server in v1, so its values are that server's. Per-server overrides come with several servers ([ADR-0023](../adr/0023-several-servers-later.md)).
 
-A variable with no value and no default is an error, in both syntaxes.
+A variable with no value and no default is an error, in both syntaxes. In `dockflow.yml`, only what the environment uses is interpolated: other environments' sections, and the top-level keys the environment overrides, may use variables it does not define.
 
 > Interpolating `DOCKFLOW_VERSION` or `DOCKFLOW_GIT_SHA` into a service changes its spec on every commit, so that service is restarted by every deploy.
 
@@ -117,7 +117,7 @@ uploads:                            # ADR-0021
     exclude: [.git, .github, .dockflow]
   - src: deploy/rclone.service
     dest: /etc/systemd/system/rclone.service
-    mode: "644"
+    mode: "644"                     # owner: "1000" or "1000:1000", numeric
 
 plugins:                            # ADR-0017
   - use: nginx                      # built-in; needs `server init --nginx --edge external`
@@ -126,7 +126,7 @@ plugins:                            # ADR-0017
     id: archives
     with: { remote: "ovhs3:archives" }
 
-hooks:                              # ADR-0022; commands are not interpolated
+hooks:                              # ADR-0022; commands (run, host, exec) are not interpolated
   before_build:
     - run: ./scripts/generate-keys.sh   # gets JWT_PRIVATE_KEY as an environment variable
       secrets: [JWT_PRIVATE_KEY]
@@ -135,7 +135,8 @@ hooks:                              # ADR-0022; commands are not interpolated
       exec: ["/server/backup.sh", "deploy"]
       timeout: 10m
     - host: sudo systemctl daemon-reload
-  after_deploy: []
+  after_build: []                    # also: name, timeout (default 5m), fatal (default true for before_*),
+  after_deploy: []                   # script: <file> instead of run, sent to sh -s for a host hook
   after_failure: []
 
 notify:                             # webhooks, signed with HMAC-SHA256
@@ -229,7 +230,7 @@ These combinations are refused:
 
 | Combination | Why |
 |---|---|
-| `routes` or `health` with `run` | A job serves no traffic |
+| `routes` or `health.http` with `run` | A job serves no traffic |
 | `stateful` with `run` | A job is not a long-running service |
 | `stateful` with `deploy.replicas` above 1 | A stateful service runs once |
 | `rollout.strategy: switch` without `routes` | Nothing to switch |
@@ -256,7 +257,7 @@ Docker runs Compose on one host, and so does Dockflow ([ADR-0003](../adr/0003-si
 | `configs` | Files mounted read-only, with `file:`, `content:` or `environment:` sources |
 | `networks` | Bridge networks, aliases included. `external: true` for the server's shared networks ([ADR-0018](../adr/0018-shared-servers.md)) |
 | `network_mode` | Honoured (`host`, `service:…`). A service on the host network cannot be routed by the switch and uses `stop-first` |
-| `volumes` | Named volumes, `driver` and `driver_opts` for volume plugins, bind mounts |
+| `volumes` | Named volumes, `driver` and `driver_opts` for volume plugins, bind mounts of an absolute path on the server. A relative bind source (`./data`) is a path of the machine running the CLI and is refused: use a named volume or `uploads` |
 | `environment`, `env_file` | `env_file` paths are read by the CLI, relative to the Compose file |
 | `profiles`, `extends`, `include`, several files merged | Resolved by compose-go |
 | `privileged`, `devices`, `cap_add`, `cap_drop`, `pid`, `ipc`, `sysctls`, `ulimits`, `tmpfs`, `init`, `user`, `working_dir`, `hostname`, `extra_hosts`, `dns`, `logging`, `labels`, `stop_grace_period`, `stop_signal`, `command`, `entrypoint`, `read_only`, `shm_size`, `gpus` | Passed to the container, as Compose does |

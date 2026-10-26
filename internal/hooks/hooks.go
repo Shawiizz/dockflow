@@ -58,8 +58,9 @@ type Runner struct {
 
 // Failed is the error of a fatal hook.
 func Failed(h domain.Hook, detail string) *errs.Error {
+	// only a failed after_deploy hook rolls a deploy back; the others change nothing
 	exit := errs.ExitHook
-	if !strings.HasPrefix(h.Phase, "before_") {
+	if h.Phase == domain.HookAfterDeploy {
 		exit = errs.ExitRolledBack
 	}
 	return errs.Newf("hook.failed", exit, "hook %s (%s) failed: %s", h.Name, h.Phase, detail)
