@@ -8,10 +8,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
