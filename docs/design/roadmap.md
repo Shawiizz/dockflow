@@ -45,6 +45,7 @@ Also answered in M1:
 
 ## M2: Shipping real apps — shawiizz.dev and Dockflow's docs
 
+- **The `external` edge**, moved here from M3: both projects of this milestone sit behind the host's nginx, which keeps ports 80 and 443.
 - **Images:** `build`; builds with buildx bake or Podman; the server-local registry and the push through an SSH tunnel; external registries and additional tags; remote builds.
 - **Jobs and checks:** `depends_on` conditions and jobs; internal and public health checks; `on_failure`.
 - **Hooks and files:** local, `host` and `exec` hooks; templates with gonja; uploads, incremental, with `mirror`.
@@ -58,7 +59,7 @@ Exit criteria: **shawiizz.dev and Dockflow's docs site deploy with v2 in product
 ## M3: Production-ready — ValientRP
 
 - **Provisioning:** the full `server init` (interactive, local and remote, hardening, `--nginx`), `server cloud-init`, `check`, `connection`, `status`, `edge`, `upgrade`.
-- **Edges:** `cloudflare`, `external` and `none`; route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks, (domain, path) uniqueness.
+- **Edges:** `cloudflare` and `none`; route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks, (domain, path) uniqueness.
 - **Plugins:** the project's own and the built-in `nginx` and `systemd`, plus `plugins list`.
 - **Security:** the published-port filter with `public_ports` and `from`, and the Cloudflare ranges timer.
 - **Secrets:** Compose `secrets:` and `configs:`, the SOPS file and the `secrets` commands.

@@ -81,12 +81,15 @@ func (s *Store) Stacks() ([]string, error) {
 
 // Server is server.json.
 type Server struct {
-	Schema          int    `json:"schema"`
-	Name            string `json:"name"`
-	Edge            string `json:"edge"`
-	SwitchImage     string `json:"switch_image,omitempty"`
-	RegistryImage   string `json:"registry_image,omitempty"`
-	DockflowVersion string `json:"dockflow_version"`
+	Schema      int    `json:"schema"`
+	Name        string `json:"name"`
+	Edge        string `json:"edge"`
+	SwitchImage string `json:"switch_image,omitempty"`
+	// SwitchListen and TrustedProxies configure the external edge.
+	SwitchListen    string   `json:"switch_listen,omitempty"`
+	TrustedProxies  []string `json:"trusted_proxies,omitempty"`
+	RegistryImage   string   `json:"registry_image,omitempty"`
+	DockflowVersion string   `json:"dockflow_version"`
 }
 
 // Server reads server.json; nil when the server was never initialised.

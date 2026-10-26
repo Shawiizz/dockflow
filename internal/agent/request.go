@@ -57,8 +57,10 @@ type Request struct {
 	Lock *domain.LockInfo `json:"lock,omitempty"`
 
 	// Edge and SwitchImage configure the server (server.init).
-	Edge        string `json:"edge,omitempty"`
-	SwitchImage string `json:"switch_image,omitempty"`
+	Edge           string   `json:"edge,omitempty"`
+	SwitchImage    string   `json:"switch_image,omitempty"`
+	SwitchListen   string   `json:"switch_listen,omitempty"`
+	TrustedProxies []string `json:"trusted_proxies,omitempty"`
 
 	// RegistryAuth are the credentials of the external registry, when the app uses one.
 	RegistryAuth *engine.RegistryAuth `json:"registry_auth,omitempty"`

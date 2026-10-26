@@ -3,7 +3,10 @@ package agent
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/netip"
 	"sort"
+	"strconv"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/engine"
@@ -175,8 +178,27 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 	if edge == "" {
 		edge = proxy.EdgeBuiltin
 	}
-	if edge != proxy.EdgeBuiltin && edge != proxy.EdgeNone {
-		return failed(errs.Usage("edge %q is not available yet: use builtin or none", edge))
+	listen, trusted := "", r.req.TrustedProxies
+	switch edge {
+	case proxy.EdgeBuiltin, proxy.EdgeNone:
+		if r.req.SwitchListen != "" || len(trusted) > 0 {
+			return failed(errs.Usage("--switch-listen and --trusted-proxy go with --edge external"))
+		}
+	case proxy.EdgeExternal:
+		listen = r.req.SwitchListen
+		if listen == "" {
+			listen = proxy.DefaultListen
+		}
+		if _, _, err := splitListen(listen); err != nil {
+			return failed(err)
+		}
+		for _, cidr := range trusted {
+			if _, err := netip.ParsePrefix(cidr); err != nil {
+				return failed(errs.Usage("--trusted-proxy %q is not a CIDR", cidr))
+			}
+		}
+	default:
+		return failed(errs.Usage("edge %q is not available yet: use builtin, external or none", edge))
 	}
 	l, err := r.Store.LockServer()
 	if err != nil {
@@ -187,7 +209,7 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 	if err != nil {
 		return failed(err)
 	}
-	srv := state.Server{Name: r.req.Server, Edge: edge, DockflowVersion: r.req.DockflowVersion}
+	srv := state.Server{Name: r.req.Server, Edge: edge, DockflowVersion: r.req.DockflowVersion, SwitchListen: listen, TrustedProxies: trusted}
 
 	// the registry first: it needs no network, and the switch's ports are the likelier failure
 	if r.req.Registry {
@@ -219,8 +241,12 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 		if image == "" {
 			image = DefaultSwitchImage
 		}
-		if srv.SwitchImage, err = r.ensure(ctx, SwitchContainer, domain.KindSwitch, image, switchSpec,
-			"ports 80 and 443 must be free on the server"); err != nil {
+		hint := "ports 80 and 443 must be free on the server"
+		if edge == proxy.EdgeExternal {
+			hint = listen + " must be free on the server"
+		}
+		specOf := func(image string) domain.ContainerSpec { return switchSpec(image, edge, listen) }
+		if srv.SwitchImage, err = r.ensure(ctx, SwitchContainer, domain.KindSwitch, image, specOf, hint); err != nil {
 			return failed(err)
 		}
 	}
@@ -235,7 +261,7 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 		if r.Switch == nil {
 			return failed(errs.Internal("the agent has no switch client"))
 		}
-		if err := r.Switch.Apply(ctx, proxy.Config{Edge: edge, Routes: routes}); err != nil {
+		if err := r.Switch.Apply(ctx, switchConfig(&srv, routes)); err != nil {
 			return failed(err)
 		}
 	}
@@ -320,17 +346,45 @@ func registrySpec(image string) domain.ContainerSpec {
 	}
 }
 
-func switchSpec(image string) domain.ContainerSpec {
+// switchConfig is the switch's configuration for a server's settings and routes.
+func switchConfig(srv *state.Server, routes []proxy.Route) proxy.Config {
+	c := proxy.Config{Edge: proxy.EdgeBuiltin, Routes: routes}
+	if srv != nil && srv.Edge != "" {
+		c.Edge, c.TrustedProxies = srv.Edge, srv.TrustedProxies
+	}
+	return c
+}
+
+func splitListen(listen string) (string, string, error) {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return "", "", errs.Usage("--switch-listen %q is not an address and a port", listen)
+	}
+	if _, err := netip.ParseAddr(host); err != nil {
+		return "", "", errs.Usage("--switch-listen %q: the host must be an IP address", listen)
+	}
+	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+		return "", "", errs.Usage("--switch-listen %q: the port is not valid", listen)
+	}
+	return host, port, nil
+}
+
+func switchSpec(image, edge, listen string) domain.ContainerSpec {
+	ports := []domain.Port{
+		{HostPort: "80", ContainerPort: 80, Protocol: "tcp"},
+		{HostPort: "443", ContainerPort: 443, Protocol: "tcp"},
+		{HostPort: "443", ContainerPort: 443, Protocol: "udp"},
+	}
+	if edge == proxy.EdgeExternal {
+		host, port, _ := splitListen(listen)
+		ports = []domain.Port{{HostIP: host, HostPort: port, ContainerPort: proxy.ExternalPort, Protocol: "tcp"}}
+	}
 	return domain.ContainerSpec{
 		Image:   image,
 		Command: []string{"caddy", "run", "--resume"},
 		Env:     []string{"CADDY_ADMIN=unix/" + SwitchAdminDir + "/admin.sock"},
 		Restart: "unless-stopped",
-		Ports: []domain.Port{
-			{HostPort: "80", ContainerPort: 80, Protocol: "tcp"},
-			{HostPort: "443", ContainerPort: 443, Protocol: "tcp"},
-			{HostPort: "443", ContainerPort: 443, Protocol: "udp"},
-		},
+		Ports:   ports,
 		Mounts: []domain.Mount{
 			{Type: "volume", Source: switchDataVolume, Target: "/data"},
 			{Type: "volume", Source: switchConfigVolume, Target: "/config"},

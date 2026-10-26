@@ -22,14 +22,23 @@ type Route struct {
 
 // Edge modes (ADR-0011).
 const (
-	EdgeBuiltin = "builtin"
-	EdgeNone    = "none"
+	EdgeBuiltin  = "builtin"
+	EdgeExternal = "external"
+	EdgeNone     = "none"
 )
+
+// DefaultListen is where the switch listens with the external edge, on the server.
+const DefaultListen = "127.0.0.1:8080"
+
+// ExternalPort is the port the switch listens on inside its container with the external edge.
+const ExternalPort = 8080
 
 // Config is everything the switch serves.
 type Config struct {
 	Edge   string
 	Routes []Route
+	// TrustedProxies are the CIDRs whose X-Forwarded-For is believed (external edge).
+	TrustedProxies []string
 }
 
 // Switch applies a configuration to the running switch, without dropping connections.

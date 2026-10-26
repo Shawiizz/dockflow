@@ -46,7 +46,7 @@ How traffic reaches the switch is a server setting, `server init --edge <mode>`:
 |---|---|---|---|
 | `builtin` (default) | Caddy's automatic HTTPS (Let's Encrypt) | 80 and 443 | The connection's |
 | `cloudflare` | As `builtin`; Cloudflare's Full (strict) mode works, Flexible with `tls: false` per route | 80 and 443, open to Cloudflare's published ranges only, refreshed weekly ([ADR-0014](0014-networking-port-filter.md)) | `CF-Connecting-IP`, trusted from those ranges only |
-| `external` | The user's front proxy | One address, `127.0.0.1:8080` by default (`--switch-listen`), routing by `Host` and path | `X-Forwarded-For`, trusted from `--trusted-proxy` CIDRs (loopback by default) |
+| `external` | The user's front proxy | One address, `127.0.0.1:8080` by default (`--switch-listen`), routing by `Host` and path | `X-Forwarded-For`, trusted from `--trusted-proxy` CIDRs. By default, loopback and private ranges: the front proxy reaches the published port through Docker, so the switch sees a bridge address, and the port listens on loopback only |
 | `none` | – | Nothing: no switch is installed | – |
 
 **With `external`, any front proxy works.** It sends every routed domain to the switch's one address and keeps the `Host` header. For nginx, that is a vhost written once:

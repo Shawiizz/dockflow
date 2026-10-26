@@ -358,7 +358,8 @@ func (a *app) configCmd() *cobra.Command {
 
 func (a *app) serverCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "server", Short: "Manage servers"}
-	var edge, switchImage, registryImage string
+	var edge, switchImage, registryImage, switchListen string
+	var trusted []string
 	var noRegistry bool
 	initCmd := &cobra.Command{
 		Use:   "init [<env>]",
@@ -375,6 +376,8 @@ func (a *app) serverCmd() *cobra.Command {
 			req.Stack = ""
 			req.Edge = edge
 			req.SwitchImage = switchImage
+			req.SwitchListen = switchListen
+			req.TrustedProxies = trusted
 			req.Registry = !noRegistry
 			req.RegistryImage = registryImage
 			_, err = s.runAgent(cmd.Context(), req)
@@ -384,7 +387,9 @@ func (a *app) serverCmd() *cobra.Command {
 			return err
 		},
 	}
-	initCmd.Flags().StringVar(&edge, "edge", "builtin", "how traffic reaches the switch: builtin or none")
+	initCmd.Flags().StringVar(&edge, "edge", "builtin", "how traffic reaches the switch: builtin, external or none")
+	initCmd.Flags().StringVar(&switchListen, "switch-listen", "", "with --edge external: the address the switch listens on (default 127.0.0.1:8080)")
+	initCmd.Flags().StringSliceVar(&trusted, "trusted-proxy", nil, "with --edge external: CIDRs whose X-Forwarded-For is trusted (default: private ranges)")
 	initCmd.Flags().StringVar(&switchImage, "switch-image", "", "the Caddy image of the switch (default caddy:2, pinned by digest)")
 	initCmd.Flags().BoolVar(&noRegistry, "no-registry", false, "no server-local registry: every built image goes to registry.url")
 	initCmd.Flags().StringVar(&registryImage, "registry-image", "", "the image of the server-local registry (default registry:3, pinned by digest)")

@@ -52,6 +52,9 @@ func Build(c proxy.Config) ([]byte, error) {
 			http = append(http, route(r))
 		}
 	}
+	if c.Edge == proxy.EdgeExternal {
+		return external(c, routes)
+	}
 	refuse := obj{"handle": []any{obj{"handler": "static_response", "abort": true}}}
 	servers := obj{
 		"http": obj{
@@ -66,6 +69,34 @@ func Build(c proxy.Config) ([]byte, error) {
 	cfg := obj{
 		"admin": obj{"listen": "unix/" + AdminSocket},
 		"apps":  obj{"http": obj{"servers": servers}},
+	}
+	return json.MarshalIndent(cfg, "", "  ")
+}
+
+// external serves every route on one plain HTTP address, behind the user's own proxy, which
+// terminates TLS and sends X-Forwarded-For.
+func external(c proxy.Config, routes []proxy.Route) ([]byte, error) {
+	var rs []any
+	for _, r := range routes {
+		rs = append(rs, route(r))
+	}
+	rs = append(rs, obj{"handle": []any{obj{"handler": "static_response", "status_code": 404}}})
+	trusted := c.TrustedProxies
+	if len(trusted) == 0 {
+		// the front proxy reaches the published port through Docker's proxy or NAT, so the
+		// switch sees a bridge address, not loopback; the port listens on loopback only
+		trusted = []string{"127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fd00::/8"}
+	}
+	server := obj{
+		"listen":            []string{fmt.Sprintf(":%d", proxy.ExternalPort)},
+		"routes":            rs,
+		"automatic_https":   obj{"disable": true},
+		"trusted_proxies":   obj{"source": "static", "ranges": trusted},
+		"client_ip_headers": []string{"X-Forwarded-For"},
+	}
+	cfg := obj{
+		"admin": obj{"listen": "unix/" + AdminSocket},
+		"apps":  obj{"http": obj{"servers": obj{"switch": server}}},
 	}
 	return json.MarshalIndent(cfg, "", "  ")
 }

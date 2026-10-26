@@ -1,0 +1,70 @@
+{
+  "admin": {
+    "listen": "unix//run/dockflow-switch/admin.sock"
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "switch": {
+          "automatic_https": {
+            "disable": true
+          },
+          "client_ip_headers": [
+            "X-Forwarded-For"
+          ],
+          "listen": [
+            ":8080"
+          ],
+          "routes": [
+            {
+              "@id": "dockflow-docs-production-docs-root",
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "load_balancing": {
+                    "selection_policy": {
+                      "policy": "round_robin"
+                    },
+                    "try_duration": "2s"
+                  },
+                  "upstreams": [
+                    {
+                      "dial": "docs-production-docs-7-1:3000"
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "docs.example.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "static_response",
+                  "status_code": 404
+                }
+              ]
+            }
+          ],
+          "trusted_proxies": {
+            "ranges": [
+              "127.0.0.0/8",
+              "::1/128",
+              "10.0.0.0/8",
+              "172.16.0.0/12",
+              "192.168.0.0/16",
+              "fd00::/8"
+            ],
+            "source": "static"
+          }
+        }
+      }
+    }
+  }
+}

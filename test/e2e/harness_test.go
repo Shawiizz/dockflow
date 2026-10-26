@@ -49,6 +49,7 @@ var (
 	caddyImage    = env("DOCKFLOW_E2E_CADDY_IMAGE", "mirror.gcr.io/library/caddy:2")
 	alpineImage   = env("DOCKFLOW_E2E_ALPINE_IMAGE", "mirror.gcr.io/library/alpine:3")
 	registryImage = env("DOCKFLOW_E2E_REGISTRY_IMAGE", "mirror.gcr.io/library/registry:3")
+	nginxImage    = env("DOCKFLOW_E2E_NGINX_IMAGE", "mirror.gcr.io/library/nginx:alpine")
 )
 
 func TestMain(m *testing.M) {
@@ -115,7 +116,7 @@ func setup() (int, error) {
 	}
 
 	// the server has no network: it gets its images from here
-	for _, img := range []string{whoamiImage, caddyImage, alpineImage, registryImage} {
+	for _, img := range []string{whoamiImage, caddyImage, alpineImage, registryImage, nginxImage} {
 		if _, err := sh("docker", "image", "inspect", img); err != nil {
 			if _, err := sh("docker", "pull", img); err != nil {
 				return 1, err
@@ -177,12 +178,18 @@ func setup() (int, error) {
 	connString = base64.StdEncoding.EncodeToString(cs)
 
 	// the switch, as a user would install it
-	dir := filepath.Join(workDir, "init")
-	writeProject(nil, dir, "init", "services: {}\n")
-	if r := dockflow(nil, dir, "server", "init", "--switch-image", caddyImage, "--registry-image", registryImage); r.code != 0 {
+	if r := serverInit(); r.code != 0 {
 		return 1, fmt.Errorf("server init: exit %d: %s", r.code, r.out)
 	}
 	return 0, nil
+}
+
+// serverInit runs `dockflow server init` with the images the server has, and extra options.
+func serverInit(extra ...string) result {
+	dir := filepath.Join(workDir, "init")
+	writeProject(nil, dir, "init", "services: {}\n")
+	args := append([]string{"server", "init", "--switch-image", caddyImage, "--registry-image", registryImage}, extra...)
+	return dockflow(nil, dir, args...)
 }
 
 func teardown() {

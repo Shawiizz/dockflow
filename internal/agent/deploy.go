@@ -610,13 +610,9 @@ func (r *runner) applyRoutes(ctx context.Context, routes []proxy.Route) error {
 	if err != nil {
 		return err
 	}
-	edge := proxy.EdgeBuiltin
-	if srv != nil && srv.Edge != "" {
-		edge = srv.Edge
-	}
 	table[r.stack] = routes
 	// the switch keeps serving if the agent dies here: the files follow what it serves
-	if err := r.Switch.Apply(context.WithoutCancel(ctx), proxy.Config{Edge: edge, Routes: state.AllRoutes(table)}); err != nil {
+	if err := r.Switch.Apply(context.WithoutCancel(ctx), switchConfig(srv, state.AllRoutes(table))); err != nil {
 		return err
 	}
 	if err := r.Store.SetSwitchRoutes(r.stack, routes); err != nil {
