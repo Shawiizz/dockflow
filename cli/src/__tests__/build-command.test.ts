@@ -12,6 +12,8 @@ import * as validation from '../utils/validation';
 
 describe('runBuild', () => {
   it('has nothing to build for a project that deploys files only', async () => {
+    // a flat project whose config file exists, independent of the repository's own files
+    const layout = spyOn(config_, 'getLayout').mockReturnValue({ type: 'flat', configPath: import.meta.path, root: '.' } as never);
     const load = spyOn(config_, 'loadConfig').mockReturnValue({ project_name: 'docs', no_services: true } as never);
     const info = spyOn(output, 'printInfo').mockImplementation(() => {});
     const targets = spyOn(Build, 'getBuildTargets');
@@ -21,6 +23,7 @@ describe('runBuild', () => {
       expect(info).toHaveBeenCalledWith('This project deploys files only (no_services): there is nothing to build.');
       expect(targets).not.toHaveBeenCalled();
     } finally {
+      layout.mockRestore();
       load.mockRestore();
       info.mockRestore();
       targets.mockRestore();
