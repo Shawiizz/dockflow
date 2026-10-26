@@ -609,7 +609,8 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 	if svc.Replicas < 0 {
 		return nil, nil, errs.Config("%s: replicas cannot be negative", at)
 	}
-	if len(svc.Routes) > 0 && (spec.Healthcheck == nil || spec.Healthcheck.Disable) {
+	// an internal HTTP check gates the switch on its own
+	if len(svc.Routes) > 0 && (spec.Healthcheck == nil || spec.Healthcheck.Disable) && svc.HTTPCheck == nil {
 		warnings = append(warnings, fmt.Sprintf("%s: routed without a healthcheck: it counts as healthy after %s running", at, svc.HealthGrace.D()))
 	}
 	return svc, warnings, nil

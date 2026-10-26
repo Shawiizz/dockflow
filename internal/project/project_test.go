@@ -89,3 +89,14 @@ func contains(list []string, s string) bool {
 	}
 	return false
 }
+
+// A routed service is warned about only when nothing but the grace gates its switch.
+func TestRoutedWithoutHealthcheckWarning(t *testing.T) {
+	l, err := load(t, "routed", "production")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(l.Warnings) != 1 || !strings.Contains(l.Warnings[0], "unchecked") {
+		t.Fatalf("only the service without a check must be warned about: %q", l.Warnings)
+	}
+}

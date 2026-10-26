@@ -1,0 +1,16 @@
+services:
+  checked:
+    image: nginx:alpine
+    x-dockflow:
+      routes:
+        - domains: [checked.example.com]
+          port: 80
+      health:
+        http:
+          path: /
+  unchecked:
+    image: nginx:alpine
+    x-dockflow:
+      routes:
+        - domains: [unchecked.example.com]
+          port: 80
