@@ -397,7 +397,9 @@ func (a *app) configCmd() *cobra.Command {
 			if !a.json {
 				// YAML for people, as the files it comes from; through JSON for the field names
 				var v any
-				json.Unmarshal(b, &v)
+				if err := json.Unmarshal(b, &v); err != nil {
+					return errs.Internal("encode the configuration: %v", err)
+				}
 				var buf bytes.Buffer
 				enc := yaml.NewEncoder(&buf)
 				enc.SetIndent(2)
