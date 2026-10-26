@@ -7,6 +7,8 @@ on:
     paths:
       - 'docs/**'
       - 'cli/ui/**'
+      - 'cli/src/api/types.ts'
+      - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
   # Every stable release (publish-cli.yml): the docs pin it in their install and CI examples,
   # reading npm's latest when they build (docs/cli-version.mjs)
@@ -48,11 +50,12 @@ jobs:
           echo "::error::npm does not serve $VERSION as latest"
           exit 1
 
+      # Dockflow v2 deploys the site: pinned, installed from its signed release
+      - name: Install Dockflow
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/v4.0.0-alpha.1/install.sh | sh -s -- --version v4.0.0-alpha.1
+
       - name: Deploy docs
         env:
-          CLI_VERSION: ${{ inputs.version || 'latest' }}
           # the docs server's connection string alone, not every secret of the repository
           PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
-        run: |
-          [[ "$CLI_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+|latest)$ ]] || { echo "::error::not a release version: $CLI_VERSION"; exit 1; }
-          npx "@dockflow-tools/cli@$CLI_VERSION" deploy production "main-$(git rev-parse HEAD)"
+        run: dockflow -C docs deploy production --version "main-$(git rev-parse --short HEAD)" --wait-lock 10m

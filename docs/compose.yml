@@ -1,0 +1,20 @@
+services:
+  docs:
+    build:
+      # the landing page embeds the WebUI from cli/ui: the context is the repository
+      context: ..
+      dockerfile: docs/Dockerfile
+    environment:
+      ENV: ${DOCKFLOW_ENV}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+      start_interval: 2s
+    x-dockflow:
+      # the host's nginx terminates TLS and proxies the domain to the switch
+      routes:
+        - domains: ["${DOCS_DOMAIN}"]
+          port: 3000

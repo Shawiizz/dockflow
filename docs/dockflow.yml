@@ -1,0 +1,13 @@
+version: 1
+app: dockflow-site
+
+# checked after the switch, through the host's nginx
+health:
+  endpoints:
+    - name: docs
+      url: https://${DOCS_DOMAIN}/
+
+environments:
+  production:
+    vars:
+      DOCS_DOMAIN: dockflow.shawiizz.dev
