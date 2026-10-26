@@ -39,11 +39,21 @@ type RolloutExt struct {
 	Drain    string `json:"drain"`
 }
 
+// HTTPExt is x-dockflow.health.http: an internal check, before the switch.
+type HTTPExt struct {
+	Path     string `json:"path"`
+	Port     int    `json:"port"`
+	Status   string `json:"status"` // 200, or a range 200-399
+	Timeout  string `json:"timeout"`
+	Retries  *int   `json:"retries"`
+	Interval string `json:"interval"`
+}
+
 // HealthExt is x-dockflow.health.
 type HealthExt struct {
-	Grace        string           `json:"grace"`
-	RestartAfter string           `json:"restart_after"`
-	HTTP         *json.RawMessage `json:"http"`
+	Grace        string   `json:"grace"`
+	RestartAfter string   `json:"restart_after"`
+	HTTP         *HTTPExt `json:"http"`
 }
 
 func readExtension(s types.ServiceConfig) (Extension, error) {
@@ -68,8 +78,6 @@ func readExtension(s types.ServiceConfig) (Extension, error) {
 		return x, notYetExt(s.Name, "run", "M2")
 	case x.Backup != nil:
 		return x, notYetExt(s.Name, "backup", "M4")
-	case x.Health != nil && x.Health.HTTP != nil:
-		return x, notYetExt(s.Name, "health.http", "M2")
 	case x.Health != nil && x.Health.RestartAfter != "":
 		return x, notYetExt(s.Name, "health.restart_after", "M3")
 	}

@@ -24,6 +24,7 @@ const (
 	ServiceFailed    = "service.failed"
 	SwitchChanged    = "switch.changed"
 	DrainStarted     = "drain.started"
+	HealthCheck      = "health.check"
 	RoutesApplied    = "routes.applied"
 	RollbackStarted  = "rollback.started"
 	RollbackFinished = "rollback.finished"

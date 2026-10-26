@@ -62,6 +62,7 @@ func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
 		return failed(err)
 	}
 	defer r.unlock(l)
+	defer r.leaveNetworks(ctx)
 
 	if err := r.recover(ctx); err != nil {
 		return failed(err)
@@ -132,6 +133,9 @@ func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
 
 	x := newExecution(o)
 	runErr := r.execute(ctx, p, &desired, o, seq, x)
+	if runErr == nil {
+		runErr = r.checkPolicy(r.publicChecks(ctx))
+	}
 	if runErr == nil {
 		runErr = r.drain(ctx, x)
 	}
@@ -498,7 +502,7 @@ func (r *runner) startNew(ctx context.Context, s *domain.Service, seq int, st *s
 	r.ev.Info(events.ServiceHealthy, fmt.Sprintf("%s: %d/%d healthy", s.Name, s.Replicas, s.Replicas), map[string]any{
 		"service": s.Name, "healthy": s.Replicas, "desired": s.Replicas,
 	})
-	return nil
+	return r.checkPolicy(r.checkContainers(ctx, s, st.newNames))
 }
 
 func (r *runner) containerState(svc, name string, seq int, st string, extra map[string]any) {
@@ -757,7 +761,8 @@ func (r *runner) warn(code, msg string) {
 }
 
 // fail handles a run that failed after the release was created: it rolls back, or leaves the
-// environment in place and degraded (ADR-0008).
+// environment in place and degraded (ADR-0008). Only a failed HTTP check may be left in place: a
+// failure of the rollout itself always rolls back.
 func (r *runner) fail(ctx context.Context, rel *domain.Release, env *domain.EnvRecord, x *execution, runErr error) events.RunFinishedData {
 	cancelled := ctx.Err() != nil || errs.ExitCode(runErr) == errs.ExitInterrupted
 	if cancelled {
@@ -771,7 +776,7 @@ func (r *runner) fail(ctx context.Context, rel *domain.Release, env *domain.EnvR
 		rel.Error.Code = "run.cancelled"
 	}
 
-	leaveInPlace := !cancelled && (r.req.NoRollback || r.req.OnFailure == "fail")
+	leaveInPlace := !cancelled && (r.req.NoRollback || r.req.OnFailure == "fail") && errs.CodeOf(runErr) == checkFailed
 	var undoErr error
 	if !leaveInPlace {
 		r.ev.Warn(events.RollbackStarted, "rolling back to the previous containers", map[string]any{"reason": rel.Error.Message, "target_seq": env.Current})

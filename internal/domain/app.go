@@ -67,6 +67,9 @@ type Service struct {
 	Drain Duration `json:"drain"`
 	// HealthGrace is how long a container without a healthcheck must run to count as healthy.
 	HealthGrace Duration `json:"health_grace"`
+	// HTTPCheck is checked on every new container, from inside the app's network, before the
+	// switch.
+	HTTPCheck *HTTPCheck `json:"http_check,omitempty"`
 	// ContainerName is Compose's container_name, which forces stop-first and one replica.
 	ContainerName string `json:"container_name,omitempty"`
 }
@@ -83,6 +86,29 @@ func (s *Service) Hash() string {
 	b, _ := json.Marshal(hashed{s.Spec, s.Replicas, s.Name, s.ContainerName})
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])[:16]
+}
+
+// HTTPCheck is an HTTP request that must answer with a status in [StatusMin, StatusMax].
+type HTTPCheck struct {
+	Path      string   `json:"path"`
+	Port      int      `json:"port"`
+	StatusMin int      `json:"status_min"`
+	StatusMax int      `json:"status_max"`
+	Timeout   Duration `json:"timeout"`
+	Retries   int      `json:"retries"`
+	Interval  Duration `json:"interval"`
+}
+
+// Endpoint is a public check, made after the switch on a full URL (health.endpoints).
+type Endpoint struct {
+	Name           string   `json:"name"`
+	URL            string   `json:"url"`
+	Method         string   `json:"method"`
+	ExpectedStatus int      `json:"expected_status"`
+	Timeout        Duration `json:"timeout"`
+	Retries        int      `json:"retries"`
+	RetryDelay     Duration `json:"retry_delay"`
+	ValidateCerts  bool     `json:"validate_certs"`
 }
 
 // Dependency is one depends_on entry.

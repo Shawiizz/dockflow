@@ -67,7 +67,7 @@ func (l *Launcher) Run(ctx context.Context, req agent.Request, interrupts <-chan
 		},
 		Logging: &domain.Logging{Driver: "json-file", Options: map[string]string{"max-size": "20m"}},
 	}
-	name := "dockflow-run-" + req.Run
+	name := agent.RunContainerPrefix + req.Run
 	id, err := l.Engine.Create(ctx, name, spec, labels)
 	if err != nil {
 		return nil, err

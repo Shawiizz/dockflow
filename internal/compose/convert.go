@@ -94,6 +94,57 @@ func Convert(p *types.Project, app, env string) (*Result, error) {
 	return r, nil
 }
 
+// httpCheck reads x-dockflow.health.http. Its port defaults to the first route's.
+func httpCheck(at string, h *HTTPExt, routes []RouteExt) (*domain.HTTPCheck, error) {
+	at += ": x-dockflow.health.http"
+	c := &domain.HTTPCheck{Path: h.Path, Port: h.Port, StatusMin: 200, StatusMax: 399, Retries: 10,
+		Timeout: domain.Duration(5 * time.Second), Interval: domain.Duration(3 * time.Second)}
+	if c.Path == "" {
+		c.Path = "/"
+	}
+	if !strings.HasPrefix(c.Path, "/") {
+		return nil, errs.Config("%s.path must start with /", at)
+	}
+	if c.Port == 0 && len(routes) > 0 {
+		c.Port = routes[0].Port
+	}
+	if c.Port < 1 || c.Port > 65535 {
+		return nil, errs.Config("%s.port is required for a service without routes", at)
+	}
+	if h.Status != "" {
+		lo, hi, isRange := strings.Cut(h.Status, "-")
+		var err1, err2 error
+		c.StatusMin, err1 = strconv.Atoi(strings.TrimSpace(lo))
+		c.StatusMax = c.StatusMin
+		if isRange {
+			c.StatusMax, err2 = strconv.Atoi(strings.TrimSpace(hi))
+		}
+		if err1 != nil || err2 != nil || c.StatusMin < 100 || c.StatusMax > 599 || c.StatusMin > c.StatusMax {
+			return nil, errs.Config("%s.status %q is not a status or a range like 200-399", at, h.Status)
+		}
+	}
+	for key, v := range map[string]struct {
+		s   string
+		dst *domain.Duration
+	}{"timeout": {h.Timeout, &c.Timeout}, "interval": {h.Interval, &c.Interval}} {
+		if v.s == "" {
+			continue
+		}
+		d, err := time.ParseDuration(v.s)
+		if err != nil || d <= 0 {
+			return nil, errs.Config("%s.%s %q is not a duration", at, key, v.s)
+		}
+		*v.dst = domain.Duration(d)
+	}
+	if h.Retries != nil {
+		if *h.Retries < 1 {
+			return nil, errs.Config("%s.retries must be at least 1", at)
+		}
+		c.Retries = *h.Retries
+	}
+	return c, nil
+}
+
 // convertBuild maps the Compose build keys to a bake target (ADR-0009).
 func convertBuild(s types.ServiceConfig) (*image.Build, []string, error) {
 	at := "service " + s.Name + ": build"
@@ -450,6 +501,13 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 			return nil, nil, errs.Config("%s: x-dockflow.health.grace: %v", at, err)
 		}
 		svc.HealthGrace = domain.Duration(d)
+	}
+	if x.Health != nil && x.Health.HTTP != nil {
+		c, err := httpCheck(at, x.Health.HTTP, x.Routes)
+		if err != nil {
+			return nil, nil, err
+		}
+		svc.HTTPCheck = c
 	}
 
 	// strategy (ADR-0010)

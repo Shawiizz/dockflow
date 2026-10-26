@@ -85,17 +85,17 @@ releases:
 
 on_failure: rollback                # rollback (default), fail or ignore (ADR-0008)
 
-health:                             # public checks, after routes switch (ADR-0010)
-  startup_delay: 15s
+health:                             # public checks, run by the agent after the switch (ADR-0010)
+  startup_delay: 15s                # default 0
   endpoints:
     - name: site
       url: https://${DOMAIN}/
       method: GET                   # default GET
       expected_status: 200          # default 200
-      timeout: 30s
-      retries: 3
-      retry_delay: 5s
-      validate_certs: true
+      timeout: 30s                  # default 30s
+      retries: 3                    # default 3
+      retry_delay: 5s               # default 5s
+      validate_certs: true          # default true
 
 firewall:                           # ADR-0014
   public_ports:
@@ -205,10 +205,10 @@ services:
         grace: 10s                   # without a HEALTHCHECK: running this long counts as healthy
         restart_after: 2m            # the watchdog restarts the container after this long unhealthy
         http:                        # internal check, before the switch
-          path: /healthz
-          port: 3000
-          status: 200-399
-          timeout: 5s
+          path: /healthz             # default /
+          port: 3000                 # default: the first route's port
+          status: 200-399            # default 200-399; or one status
+          timeout: 5s                # defaults: 5s, 10 retries, 3s apart
           retries: 10
           interval: 3s
       stateful: false                # true for databases (ADR-0010)

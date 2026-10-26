@@ -41,6 +41,9 @@ type Request struct {
 	Keep      int             `json:"keep,omitempty"`
 	OnFailure string          `json:"on_failure,omitempty"`
 	Timeout   domain.Duration `json:"timeout,omitempty"`
+	// Endpoints are the public checks, run StartupDelay after the switch.
+	Endpoints    []domain.Endpoint `json:"endpoints,omitempty"`
+	StartupDelay domain.Duration   `json:"startup_delay,omitempty"`
 	// Fingerprint, when set, is the plan the deploy must apply: it fails if the plan changed.
 	Fingerprint string `json:"fingerprint,omitempty"`
 	// Force runs despite a manual lock.

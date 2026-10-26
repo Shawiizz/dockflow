@@ -34,6 +34,8 @@ type runner struct {
 	app   *state.App
 	stack string
 	start time.Time
+	// joined are the app networks the agent's container joined for internal checks.
+	joined map[string]bool
 }
 
 // Run executes one request. It emits run.started first and run.finished last, and returns the

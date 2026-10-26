@@ -5,6 +5,9 @@ package config
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -36,6 +39,7 @@ type Settings struct {
 
 	Registry *Registry      `yaml:"registry"`
 	Build    *BuildSettings `yaml:"build"`
+	Health   *Health        `yaml:"health"`
 
 	// Keys of the specification that arrive in later milestones. They are refused with a clear
 	// message instead of being ignored.
@@ -43,7 +47,6 @@ type Settings struct {
 	Uploads   *yaml.Node `yaml:"uploads"`
 	Hooks     *yaml.Node `yaml:"hooks"`
 	Notify    *yaml.Node `yaml:"notify"`
-	Health    *yaml.Node `yaml:"health"`
 	Firewall  *yaml.Node `yaml:"firewall"`
 	Routes    *yaml.Node `yaml:"routes"`
 	Plugins   *yaml.Node `yaml:"plugins"`
@@ -56,6 +59,24 @@ type Registry struct {
 	Username       string   `yaml:"username"`
 	Password       string   `yaml:"password"`
 	AdditionalTags []string `yaml:"additional_tags"`
+}
+
+// Health is the health block: public checks, after the switch (ADR-0010).
+type Health struct {
+	StartupDelay string     `yaml:"startup_delay"`
+	Endpoints    []Endpoint `yaml:"endpoints"`
+}
+
+// Endpoint is one public check.
+type Endpoint struct {
+	Name           string `yaml:"name"`
+	URL            string `yaml:"url"`
+	Method         string `yaml:"method"`
+	ExpectedStatus int    `yaml:"expected_status"`
+	Timeout        string `yaml:"timeout"`
+	Retries        *int   `yaml:"retries"`
+	RetryDelay     string `yaml:"retry_delay"`
+	ValidateCerts  *bool  `yaml:"validate_certs"`
 }
 
 // BuildSettings is the build block.
@@ -117,12 +138,15 @@ type Resolved struct {
 	// Registry is nil for the server-local registry.
 	Registry *Registry
 	Build    BuildSettings
+	// StartupDelay is waited after the switch, before the public checks.
+	StartupDelay time.Duration
+	Endpoints    []domain.Endpoint
 }
 
 // laterKeys are spec keys not available yet, with the milestone that brings them.
 var laterKeys = map[string]string{
 	"templates": "M2", "uploads": "M2", "hooks": "M2",
-	"notify": "M2", "health": "M2", "firewall": "M3", "routes": "M3", "plugins": "M3",
+	"notify": "M2", "firewall": "M3", "routes": "M3", "plugins": "M3",
 	"backups": "M4", "secrets_file": "M3",
 }
 
@@ -275,6 +299,11 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 		if s.Build != nil {
 			res.Build = *s.Build
 		}
+		if s.Health != nil {
+			if err := res.readHealth(s.Health); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if err := res.validateImages(env); err != nil {
 		return nil, err
@@ -301,6 +330,62 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 		}
 	}
 	return res, nil
+}
+
+func (res *Resolved) readHealth(h *Health) error {
+	res.StartupDelay, res.Endpoints = 0, nil
+	if h.StartupDelay != "" {
+		d, err := time.ParseDuration(h.StartupDelay)
+		if err != nil || d < 0 {
+			return errs.Config("health.startup_delay %q is not a duration", h.StartupDelay)
+		}
+		res.StartupDelay = d
+	}
+	durations := func(at, s string, def time.Duration) (domain.Duration, error) {
+		if s == "" {
+			return domain.Duration(def), nil
+		}
+		d, err := time.ParseDuration(s)
+		if err != nil || d <= 0 {
+			return 0, errs.Config("%s %q is not a duration", at, s)
+		}
+		return domain.Duration(d), nil
+	}
+	for i, e := range h.Endpoints {
+		at := fmt.Sprintf("health.endpoints[%d]", i)
+		u, err := url.Parse(e.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return errs.Config("%s.url %q is not an http or https URL", at, e.URL)
+		}
+		ep := domain.Endpoint{Name: e.Name, URL: e.URL, Method: strings.ToUpper(e.Method), ExpectedStatus: e.ExpectedStatus,
+			Retries: 3, ValidateCerts: true}
+		if ep.Name == "" {
+			ep.Name = u.Host + u.Path
+		}
+		if ep.Method == "" {
+			ep.Method = http.MethodGet
+		}
+		if ep.ExpectedStatus == 0 {
+			ep.ExpectedStatus = http.StatusOK
+		}
+		if e.Retries != nil {
+			if *e.Retries < 1 {
+				return errs.Config("%s.retries must be at least 1", at)
+			}
+			ep.Retries = *e.Retries
+		}
+		if e.ValidateCerts != nil {
+			ep.ValidateCerts = *e.ValidateCerts
+		}
+		if ep.Timeout, err = durations(at+".timeout", e.Timeout, 30*time.Second); err != nil {
+			return err
+		}
+		if ep.RetryDelay, err = durations(at+".retry_delay", e.RetryDelay, 5*time.Second); err != nil {
+			return err
+		}
+		res.Endpoints = append(res.Endpoints, ep)
+	}
+	return nil
 }
 
 func (res *Resolved) validateImages(env string) error {
