@@ -31,6 +31,8 @@ type Container struct {
 	// HealthLog is the output of the last health check, from Inspect.
 	HealthLog     string
 	FailingStreak int
+	// IPs are the container's addresses per network, from Inspect.
+	IPs map[string]string
 }
 
 // Filter selects containers by label; an empty value matches any value of the label.

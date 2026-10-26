@@ -183,6 +183,7 @@ type PruneReport struct {
 	Volumes    []string `json:"volumes"`
 	Networks   []string `json:"networks"`
 	Reclaimed  int64    `json:"reclaimed_bytes"`
+	Registry   bool     `json:"registry_collected"`
 }
 
 // prune removes unused Docker objects of the server, never one Dockflow still needs: managed
@@ -239,6 +240,12 @@ func (r *runner) prune(ctx context.Context) events.RunFinishedData {
 			return failed(err)
 		}
 		rep.Networks = append(rep.Networks, names...)
+	}
+	if p.Registry {
+		if err := r.collectRegistry(ctx); err != nil {
+			return failed(err)
+		}
+		rep.Registry = true
 	}
 	r.result(rep)
 	return events.RunFinishedData{Outcome: events.OutcomeSuccess}

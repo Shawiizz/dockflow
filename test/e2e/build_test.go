@@ -150,3 +150,27 @@ environments:
 		t.Fatalf("the project's Dockerfile was modified:\n%s", b)
 	}
 }
+
+// Images of releases that leave retention leave the server's registry too.
+func TestRegistryRetention(t *testing.T) {
+	app := "journey13"
+	dir := filepath.Join(workDir, app)
+	for _, v := range []string{"a", "b", "c"} {
+		builtApp(t, dir, app, v)
+		cfg := fmt.Sprintf("version: 1\napp: %s\nreleases:\n  keep: 2\nenvironments:\n  production:\n    deploy:\n      timeout: 60s\n", app)
+		os.WriteFile(filepath.Join(dir, "dockflow.yml"), []byte(cfg), 0o644)
+		mustSucceed(t, dockflow(t, dir, "deploy", "--version", v), "deploy "+v)
+	}
+	tags, err := inServer("docker exec dockflow-registry wget -qO- http://127.0.0.1:5000/v2/" + app + "/web/tags/list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(tags, `"b"`) || !strings.Contains(tags, `"c"`) || strings.Contains(tags, `"a"`) {
+		t.Fatalf("the registry must keep the images of releases b and c only: %s", tags)
+	}
+	r := dockflow(t, dir, "prune", "production", "--registry")
+	mustSucceed(t, r, "prune --registry")
+	if !strings.Contains(r.out, `"registry_collected": true`) {
+		t.Fatalf("prune --registry:\n%s", r.out)
+	}
+}

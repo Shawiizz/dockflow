@@ -18,6 +18,8 @@ type PruneRequest struct {
 	AllImages bool `json:"all_images"`
 	Volumes   bool `json:"volumes"`
 	Networks  bool `json:"networks"`
+	// Registry runs the server-local registry's garbage collection.
+	Registry bool `json:"registry"`
 }
 
 // Operations.

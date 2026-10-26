@@ -150,6 +150,14 @@ func (e *Engine) Inspect(ctx context.Context, id string) (engine.Container, erro
 			}
 		}
 	}
+	if ns := i.NetworkSettings; ns != nil {
+		c.IPs = map[string]string{}
+		for name, ep := range ns.Networks {
+			if ep != nil && ep.IPAddress.IsValid() {
+				c.IPs[name] = ep.IPAddress.String()
+			}
+		}
+	}
 	fillFromLabels(&c)
 	return c, nil
 }

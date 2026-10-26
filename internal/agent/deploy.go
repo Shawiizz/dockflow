@@ -774,16 +774,19 @@ func (r *runner) pruneReleases(ctx context.Context) {
 			used[s.Spec.Image] = true
 		}
 	}
+	var gone []string
 	for _, rel := range deleted {
 		for _, s := range rel.Desired.Services {
 			if img := s.Spec.Image; !used[img] {
 				used[img] = true // once
+				gone = append(gone, img)
 				if err := r.Engine.RemoveImage(ctx, img); err != nil {
 					r.warn("cleanup.failed", fmt.Sprintf("cannot remove image %s: %v", img, err))
 				}
 			}
 		}
 	}
+	r.forgetImages(ctx, gone)
 }
 
 // joinNetworks connects the switch to the networks it reaches routes through.

@@ -136,11 +136,11 @@ func (a *app) pruneCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "prune [<env>]",
 		Short: "Remove unused Docker objects from the server, never what Dockflow keeps",
-		Long:  "Without a kind, removes stopped containers, untagged images and networks that Dockflow does not manage. Images of the releases in retention and app volumes are always kept; --volumes removes unused anonymous volumes only.",
+		Long:  "Without a kind, removes stopped containers, untagged images and networks that Dockflow does not manage, and runs the registry's garbage collection. Images of the releases in retention and app volumes are always kept; --volumes removes unused anonymous volumes only.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !p.Containers && !p.Images && !p.Volumes && !p.Networks {
-				p.Containers, p.Images, p.Networks = true, true, true
+			if !p.Containers && !p.Images && !p.Volumes && !p.Networks && !p.Registry {
+				p.Containers, p.Images, p.Networks, p.Registry = true, true, true, true
 			}
 			if p.AllImages {
 				p.Images = true
@@ -164,6 +164,7 @@ func (a *app) pruneCmd() *cobra.Command {
 	f.BoolVarP(&p.AllImages, "all", "a", false, "every unused image, not only untagged ones")
 	f.BoolVar(&p.Volumes, "volumes", false, "unused anonymous volumes")
 	f.BoolVar(&p.Networks, "networks", false, "unused networks")
+	f.BoolVar(&p.Registry, "registry", false, "the layers of the server's registry that no kept release uses; run it outside deploys")
 	return cmd
 }
 
