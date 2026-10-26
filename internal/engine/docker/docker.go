@@ -625,6 +625,13 @@ func (e *Engine) PushImage(ctx context.Context, ref string, auth *engine.Registr
 	return nil
 }
 
+func (e *Engine) TagImage(ctx context.Context, ref, name string) error {
+	if _, err := e.c.ImageTag(ctx, client.ImageTagOptions{Source: ref, Target: name}); err != nil {
+		return apiErr("tag image "+ref, err)
+	}
+	return nil
+}
+
 func (e *Engine) InspectImage(ctx context.Context, ref string) (engine.Image, error) {
 	r, err := e.c.ImageInspect(ctx, ref)
 	if err != nil {

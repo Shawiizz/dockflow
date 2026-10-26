@@ -177,7 +177,8 @@ func TestRegistryRetention(t *testing.T) {
 }
 
 // build.builder: remote builds with the server's Docker: nothing is pushed, the service runs the
-// image by ID, and an unchanged build changes nothing.
+// image by ID, and an unchanged build changes nothing. Every build has the same version, as from
+// one commit: a rebuild must not take the image of an older release away.
 func TestRemoteBuild(t *testing.T) {
 	app := "journey16"
 	host := app + ".test"
@@ -189,7 +190,7 @@ func TestRemoteBuild(t *testing.T) {
 	builtApp(t, dir, app, "remote")
 	config()
 
-	r := dockflow(t, dir, "deploy")
+	r := dockflow(t, dir, "deploy", "--version", "same")
 	mustSucceed(t, r, "deploy a remote build")
 	if !r.has("build.finished") || len(pushes(r)) != 0 {
 		t.Fatalf("a remote build must build and push nothing:\n%s", r.out)
@@ -203,7 +204,7 @@ func TestRemoteBuild(t *testing.T) {
 		t.Fatalf("the image must be in the server's daemon: %q", images)
 	}
 
-	again := dockflow(t, dir, "deploy")
+	again := dockflow(t, dir, "deploy", "--version", "same")
 	mustSucceed(t, again, "deploy the same code")
 	if !again.has("plan.empty") {
 		t.Fatalf("an unchanged remote build must change nothing:\n%s", again.out)
@@ -211,7 +212,7 @@ func TestRemoteBuild(t *testing.T) {
 
 	builtApp(t, dir, app, "remote-two")
 	config()
-	mustSucceed(t, dockflow(t, dir, "deploy"), "deploy a new remote build")
+	mustSucceed(t, dockflow(t, dir, "deploy", "--version", "same"), "deploy a new remote build")
 	if got := served(t, host); got != "remote-two" {
 		t.Fatalf("served %q, want remote-two", got)
 	}

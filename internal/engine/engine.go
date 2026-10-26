@@ -99,6 +99,8 @@ type Engine interface {
 	HasImage(ctx context.Context, ref string) (bool, error)
 	// InspectImage returns the image ref names.
 	InspectImage(ctx context.Context, ref string) (Image, error)
+	// TagImage gives the image ref names a further name.
+	TagImage(ctx context.Context, ref, name string) error
 	// PushImage pushes the image ref names to its registry (images built on the server).
 	PushImage(ctx context.Context, ref string, auth *RegistryAuth) error
 	RemoveImage(ctx context.Context, ref string) error

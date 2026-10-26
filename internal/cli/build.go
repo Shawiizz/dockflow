@@ -22,6 +22,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/image/buildx"
 	"github.com/Shawiizz/dockflow/internal/image/oci"
 	"github.com/Shawiizz/dockflow/internal/image/podman"
+	"github.com/Shawiizz/dockflow/internal/launcher"
 	"github.com/Shawiizz/dockflow/internal/project"
 	"github.com/Shawiizz/dockflow/internal/render"
 )
@@ -212,9 +213,11 @@ func (s *session) buildRemote(ctx context.Context, ws *render.Workspace, dir str
 		return err
 	}
 	defer sock.Close()
+	// the run's own name, until the image is named after its content
+	build := "build-" + launcher.NewRunID(timeNow())
 	bx := &buildx.Builder{
 		Env:  []string{"DOCKER_HOST=unix://" + sock.Path, "DOCKER_CONTEXT=", "BUILDX_BUILDER="},
-		Load: func(service string) []string { return remoteNames(l, service) },
+		Load: func(service string) []string { return remoteNames(l, service, build) },
 	}
 	id := func(b image.Built) (string, error) {
 		img, err := s.engine.InspectImage(ctx, b.Image)
@@ -230,9 +233,19 @@ func (s *session) buildRemote(ctx context.Context, ws *render.Workspace, dir str
 			return err
 		}
 		ref := img.ID
-		if l.Config.Registry != nil {
+		if l.Config.Registry == nil {
+			// named after its content: a later build under the same version must not take the
+			// name of an image a release still runs, or the daemon would drop it
+			name := localImage(l, b.Service) + ":" + strings.TrimPrefix(img.ID, "sha256:")[:12]
+			if err := s.engine.TagImage(ctx, b.Image, name); err != nil {
+				return err
+			}
+			if err := s.engine.RemoveImage(ctx, b.Image); err != nil {
+				return err
+			}
+		} else {
 			d := destination(l, b.Service)
-			for _, name := range remoteNames(l, b.Service) {
+			for _, name := range remoteNames(l, b.Service, build) {
 				if err := s.engine.PushImage(ctx, name, registryAuth(l)); err != nil {
 					return err
 				}
@@ -254,11 +267,17 @@ func (s *session) buildRemote(ctx context.Context, ws *render.Workspace, dir str
 	return nil
 }
 
-// remoteNames are the names of an image built on the server: those of its external registry, or
-// a local name the server never pulls (services run it by image ID).
-func remoteNames(l *project.Loaded, service string) []string {
+// localImage is the repository of a service's images built on the server: services run them
+// by image ID.
+func localImage(l *project.Loaded, service string) string {
+	return "localhost/" + l.Config.App + "/" + service
+}
+
+// remoteNames are the names an image built on the server is loaded under: those of its external
+// registry, or a local name with the build's own tag, which the server never pulls.
+func remoteNames(l *project.Loaded, service, build string) []string {
 	if l.Config.Registry == nil {
-		return []string{"localhost/" + l.Config.App + "/" + service + ":" + imageTag(l.Version)}
+		return []string{localImage(l, service) + ":" + build}
 	}
 	d := destination(l, service)
 	names := make([]string, 0, len(d.Tags))
