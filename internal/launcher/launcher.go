@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"io"
 	"os"
-	"runtime"
 	"sort"
 	"strings"
 
@@ -212,22 +211,36 @@ func (l *Launcher) prune(ctx context.Context) {
 
 // ensureImage imports the agent image when the server does not have it (ADR-0004).
 func (l *Launcher) ensureImage(ctx context.Context) (string, error) {
-	path, err := AgentBinary(l.Info.Arch)
-	if err != nil {
-		return "", err
-	}
-	bin, err := os.ReadFile(path)
-	if err != nil {
-		return "", errs.Internal("cannot read the agent binary %s: %v", path, err)
+	binary := func() ([]byte, error) {
+		path, err := l.agentBinary(ctx, l.Info.Arch)
+		if err != nil {
+			return nil, err
+		}
+		bin, err := os.ReadFile(path)
+		if err != nil {
+			return nil, errs.Internal("cannot read the agent binary %s: %v", path, err)
+		}
+		return bin, nil
 	}
 	ref := "dockflow/agent:" + l.Version
+	var bin []byte
+	var err error
 	if l.Version == "dev" || l.Version == "" {
+		// named after its content: development builds share a version
+		if bin, err = binary(); err != nil {
+			return "", err
+		}
 		sum := sha256.Sum256(bin)
 		ref = "dockflow/agent:dev-" + hex.EncodeToString(sum[:])[:12]
 	}
 	ok, err := l.Engine.HasImage(ctx, ref)
 	if err != nil || ok {
 		return ref, err
+	}
+	if bin == nil {
+		if bin, err = binary(); err != nil {
+			return "", err
+		}
 	}
 	l.Events.Info(events.Log, "installing the agent image "+ref, map[string]any{"line": "import " + ref})
 	var buf bytes.Buffer
@@ -245,17 +258,4 @@ func (l *Launcher) ensureImage(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return ref, nil
-}
-
-// AgentBinary returns the path of the Linux binary to run as the agent on a server of the given
-// architecture: DOCKFLOW_AGENT_BINARY, or this binary when it matches.
-func AgentBinary(arch string) (string, error) {
-	if p := os.Getenv("DOCKFLOW_AGENT_BINARY"); p != "" {
-		return p, nil
-	}
-	if runtime.GOOS == "linux" && runtime.GOARCH == arch {
-		return os.Executable()
-	}
-	return "", errs.Newf("agent.no_binary", errs.ExitConnect, "this dockflow binary is for %s/%s; the server runs linux/%s", runtime.GOOS, runtime.GOARCH, arch).
-		WithHint("set DOCKFLOW_AGENT_BINARY to the path of the dockflow binary for linux/%s", arch)
 }

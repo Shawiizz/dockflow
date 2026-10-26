@@ -5,6 +5,8 @@ on:
     branches: [v2]
   pull_request:
     branches: [v2]
+  # the release workflow runs the whole CI on the tagged commit first
+  workflow_call:
 
 permissions:
   contents: read

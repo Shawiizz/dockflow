@@ -1,0 +1,42 @@
+name: v2 release
+
+# A tag v<semver> on the v2 branch publishes a release (ADR-0020), once the whole CI has passed
+# on the tagged commit.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/v2.yml
+
+  release:
+    needs: [ci]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # keyless signing: the certificate binds the signature to this workflow and tag
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build
+        run: make snapshot VERSION="$GITHUB_REF_NAME"
+      - uses: sigstore/cosign-installer@v3
+      - name: sign the checksums
+        run: cosign sign-blob --yes --bundle dist/SHA256SUMS.sigstore.json dist/SHA256SUMS
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=""
+          case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
+          # never marked latest: which release the repository's page leads to is the owner's call
+          gh release create "$GITHUB_REF_NAME" dist/* install.sh $flags --latest=false \
+            --title "Dockflow $GITHUB_REF_NAME" \
+            --notes "Install: \`curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/v2/install.sh | sh -s -- --version $GITHUB_REF_NAME\`. The binaries are listed in SHA256SUMS, signed with Sigstore (SHA256SUMS.sigstore.json)."

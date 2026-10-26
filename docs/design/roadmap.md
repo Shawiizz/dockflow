@@ -45,6 +45,8 @@ Also answered in M1:
 
 ## M2: Shipping real apps — shawiizz.dev and Dockflow's docs
 
+**Status: implemented (2026-10-26); the exit criterion waits on the two production migrations.** The items below are covered by e2e journeys (`test/e2e/`), run in CI on Docker 27 and on the latest Docker (Podman builds where Podman is installed), except CI detection, covered by unit tests, and pushes to an external registry, which no test exercises yet. Also delivered: the release workflow, the install script and the download of the agent binary, checked against the release's checksums ([ADR-0020](adr/0020-releasing-dockflow.md)); the CLI's check of the signature waits for v1.0.
+
 - **The `external` edge**, moved here from M3: both projects of this milestone sit behind the host's nginx, which keeps ports 80 and 443.
 - **Images:** `build`; builds with buildx bake or Podman; the server-local registry and the push through an SSH tunnel; external registries and additional tags; remote builds.
 - **Jobs and checks:** `depends_on` conditions and jobs; internal and public health checks; `on_failure`.

@@ -6,14 +6,15 @@ This branch is a rewrite from scratch. It shares no code, no configuration forma
 
 ## Status
 
-Milestone M1 (walking skeleton) is done: a Compose app that uses public images deploys to one server, with zero downtime, a plan, releases and rollbacks. Not for production use yet: building images, secrets files, hooks, uploads and server provisioning come in the next milestones ([roadmap](docs/design/roadmap.md)).
+Milestones M1 (walking skeleton) and M2 (shipping real apps) are implemented: a Compose app deploys to one server with zero downtime, a plan, releases and rollbacks; its images are built (buildx bake, Podman, or on the server) and sent through an SSH tunnel to a registry on the server; jobs, health checks, hooks, templates, uploads and the day-2 commands work, from a laptop or any CI. Not for general production use yet: secrets files, server provisioning and backups come in the next milestones ([roadmap](docs/design/roadmap.md)).
 
 ## Try it
 
-You need a Linux server with Docker 27 or later, reachable over SSH by a user that may use Docker, with ports 80 and 443 free.
+You need a Linux server with Docker 27 or later, reachable over SSH by a user that may use Docker, with ports 80 and 443 free (or another web server in front: see the `external` edge in the [configuration](docs/design/spec/config-v1.md)).
 
 ```sh
-make build                              # a static ./dockflow binary
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/v2/install.sh | sh   # from a release
+make build                                                                          # or from source: ./dockflow
 ```
 
 `dockflow.yml`, next to your `compose.yml`:

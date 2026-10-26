@@ -1,0 +1,134 @@
+package launcher
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+
+	"github.com/Shawiizz/dockflow/internal/errs"
+	"github.com/Shawiizz/dockflow/internal/events"
+)
+
+// ReleasesURL is where the binaries of a release are downloaded from, under <version>/.
+// DOCKFLOW_RELEASES_URL overrides it (a mirror).
+const ReleasesURL = "https://github.com/Shawiizz/dockflow/releases/download"
+
+// maxBinary bounds a downloaded binary.
+const maxBinary = 256 << 20
+
+// agentBinary returns the path of the Linux binary to run as the agent on a server of the given
+// architecture (ADR-0020): DOCKFLOW_AGENT_BINARY, this binary when it matches, or the binary of
+// this version downloaded from its release, checked against the release's SHA256SUMS and cached.
+func (l *Launcher) agentBinary(ctx context.Context, arch string) (string, error) {
+	if p := os.Getenv("DOCKFLOW_AGENT_BINARY"); p != "" {
+		return p, nil
+	}
+	if runtime.GOOS == "linux" && runtime.GOARCH == arch {
+		return os.Executable()
+	}
+	if l.Version == "" || l.Version == "dev" || strings.HasPrefix(l.Version, "snapshot") {
+		return "", errs.Newf("agent.no_binary", errs.ExitConnect, "this dockflow binary is for %s/%s; the server runs linux/%s, and a development build has no release to download it from", runtime.GOOS, runtime.GOARCH, arch).
+			WithHint("set DOCKFLOW_AGENT_BINARY to the path of the dockflow binary for linux/%s", arch)
+	}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return "", errs.Internal("no cache directory: %v", err)
+	}
+	dir := filepath.Join(cache, "dockflow", l.Version)
+	name := "dockflow-linux-" + arch
+	path := filepath.Join(dir, name)
+	if _, err := os.Stat(path); err == nil {
+		// written only once its checksum matched
+		return path, nil
+	}
+	base := ReleasesURL
+	if u := os.Getenv("DOCKFLOW_RELEASES_URL"); u != "" {
+		base = strings.TrimSuffix(u, "/")
+	}
+	base += "/" + l.Version + "/"
+	l.Events.Info(events.Log, fmt.Sprintf("downloading the agent binary for linux/%s", arch), map[string]any{"line": "download " + base + name})
+	if err := Download(ctx, http.DefaultClient, base, name, path); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// Download fetches base+name to path, after checking it against base+SHA256SUMS.
+func Download(ctx context.Context, client *http.Client, base, name, path string) error {
+	failed := func(format string, a ...any) error {
+		return errs.Newf("agent.download_failed", errs.ExitConnect, format, a...).
+			WithHint("check that this machine can reach %s, or set DOCKFLOW_AGENT_BINARY to the dockflow binary for the server", base)
+	}
+	var sums bytes.Buffer
+	if err := fetch(ctx, client, base+"SHA256SUMS", 1<<20, &sums); err != nil {
+		return failed("cannot download the checksums of the release: %v", err)
+	}
+	want := ""
+	sc := bufio.NewScanner(&sums)
+	for sc.Scan() {
+		f := strings.Fields(sc.Text())
+		if len(f) == 2 && strings.TrimPrefix(f[1], "*") == name {
+			want = f[0]
+		}
+	}
+	if want == "" {
+		return failed("the release lists no %s", name)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return errs.Internal("cache directory: %v", err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), name+".*")
+	if err != nil {
+		return errs.Internal("cache directory: %v", err)
+	}
+	defer os.Remove(tmp.Name())
+	h := sha256.New()
+	err = fetch(ctx, client, base+name, maxBinary, io.MultiWriter(tmp, h))
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return failed("cannot download %s: %v", name, err)
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != want {
+		return errs.Newf("agent.checksum_mismatch", errs.ExitConnect, "the downloaded %s does not match the release's checksum (%s, want %s)", name, got, want).
+			WithHint("nothing was sent to the server; try again, and report it if it persists")
+	}
+	if err := os.Chmod(tmp.Name(), 0o755); err != nil {
+		return errs.Internal("cache: %v", err)
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return errs.Internal("cache: %v", err)
+	}
+	return nil
+}
+
+// fetch GETs url into w, refusing more than limit bytes.
+func fetch(ctx context.Context, client *http.Client, url string, limit int64, w io.Writer) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%s: %s", url, resp.Status)
+	}
+	n, err := io.Copy(w, io.LimitReader(resp.Body, limit+1))
+	if err == nil && n > limit {
+		err = fmt.Errorf("%s is larger than %d bytes", url, limit)
+	}
+	return err
+}
