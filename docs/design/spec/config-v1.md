@@ -269,7 +269,7 @@ Every Compose key falls in one of three groups.
 | `health_checks.endpoints` with a public URL | `health.endpoints` |
 | `hooks.pre-deploy` running `docker exec` | `hooks.before_deploy` with `exec` |
 | Secrets in CI | Unchanged; per-server prefixes (`PRODUCTION_MANAGER_X`) become `PRODUCTION_X` |
-| `build.dockerfile` relative to the Compose file's folder (a 1.x quirk every real project relies on: `context: ../..` with `dockerfile: Dockerfile.app` in `.dockflow/docker/`) | Relative to the build context, as Compose defines it: `dockerfile: .dockflow/docker/Dockerfile.app`. `dockflow validate` names the file it looked for and the one that exists, when the old layout is detected |
+| `build.dockerfile` relative to the Compose file's folder (a 1.x quirk every real project relies on: `context: ../..` with `dockerfile: Dockerfile.app` in `.dockflow/docker/`) | Relative to the build context, as Compose defines it: `dockerfile: .dockflow/docker/Dockerfile.app`. |
 | `deploy` failing on a held lock in CI, worked around with a concurrency group | `deploy --wait-lock` |
 
 ## A complete example

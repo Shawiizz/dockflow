@@ -4,7 +4,7 @@ Guidance for Claude Code (and any other agent) working on this branch.
 
 ## What this branch is
 
-Dockflow v2, a rewrite from scratch in Go. It shares nothing with Dockflow 1.x (the `main` branch): no code, no configuration format, no server state, no compatibility. Never port code from `main` and never add anything to read 1.x files or state.
+Dockflow v2, a rewrite from scratch in Go. It shares nothing with Dockflow 1.x (the `main` branch): no code, no configuration format, no server state, no compatibility. Never port code from `main`, and never add anything that reads, detects or reports 1.x files, formats, layouts or state, not even in an error message or a hint.
 
 ## Read before changing anything
 

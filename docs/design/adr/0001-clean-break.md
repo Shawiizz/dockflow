@@ -18,6 +18,7 @@ Dockflow v2 is a new project on an orphan branch, `v2`:
 - It does not read or clean anything under `/var/lib/dockflow`, and does not know 1.x stacks, networks, Traefik or the 1.x port filter.
 - Command names, options and exit codes are chosen fresh, with no aliases.
 - There is no `migrate` command. Moving a project or a server is done by hand.
+- The tool never detects, reads or reports a 1.x format, file or layout, not even to suggest a fix. Migration notes exist only in the user documentation.
 
 ## Consequences
 
