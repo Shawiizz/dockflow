@@ -46,9 +46,11 @@ This guide deploys a small web app, an nginx container behind a route with HTTPS
    <TabItem label="On the server">
 
    ```sh
-   curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh
+   curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sudo sh
    sudo dockflow server init
    ```
+
+   Installed with `sudo sh`, the CLI goes to `/usr/local/bin`, where `sudo` finds it. `sudo` does not search `~/.local/bin`, where a user install goes: there, run `sudo ~/.local/bin/dockflow server init`.
 
    Without an argument, outside a project, `server init` prepares the server it runs on. It reads the public address, the SSH port (from `sshd_config`) and the host key there, so there is nothing to type. Give `--host` when the CI reaches the server at a domain name or at an address the server does not see (behind NAT), and `--port` for a port `sshd_config` does not show. The deploy key is generated in memory, printed, and never written to disk.
 

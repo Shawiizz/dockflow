@@ -40,8 +40,13 @@ func (a *app) provisionHere(ctx context.Context, f provisionFlags, init func(*ag
 			WithHint("from this machine, prepare the server with: dockflow server init root@<host>")
 	}
 	if os.Geteuid() != 0 {
+		// sudo searches its own PATH, without ~/.local/bin: name this binary
+		self, err := os.Executable()
+		if err != nil {
+			self = "dockflow"
+		}
 		return errs.Usage("server init without an argument prepares this server, and must run as root").
-			WithHint("run it with sudo: sudo dockflow server init")
+			WithHint("run it with sudo: sudo %s server init", self)
 	}
 	host, err := publicHost(f.host)
 	if err != nil {
