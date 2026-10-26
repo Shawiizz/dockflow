@@ -1,6 +1,7 @@
 version: 1
 app: shop
-plugins:
-  - use: nginx
+routes:
+  - domains: [shop.example.com]
+    redirect: https://example.com/
 environments:
   production: {}

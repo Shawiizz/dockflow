@@ -178,11 +178,18 @@ func (s *session) prepareUploads() error {
 	s.manifests, s.blobs = map[string]upload.Manifest{}, map[string]string{}
 	for _, e := range l.Config.Uploads {
 		src := ws.Path(filepath.Join(l.Config.Dir, e.Src))
+		if e.Bundle != nil {
+			dir, err := ws.Bundle(e.Bundle)
+			if err != nil {
+				return err
+			}
+			src = filepath.Join(dir, e.Src)
+		}
 		m, paths, err := upload.Scan(src, ignore.New(e.Exclude))
 		if err != nil {
 			return errs.Config("uploads: cannot read %s", e.Src).WithCause(err)
 		}
-		u := domain.Upload{Dest: e.Dest, Mirror: e.Mirror, Mode: e.Mode, Owner: e.Owner, Manifest: m.Digest()}
+		u := domain.Upload{Dest: e.Dest, Mirror: e.Mirror, Mode: e.Mode, Owner: e.Owner, Manifest: m.Digest(), Plugin: e.Plugin}
 		if key, ok := strings.CutPrefix(e.Dest, "volume:"); ok {
 			for _, v := range l.App.Volumes {
 				if v.Key == key {

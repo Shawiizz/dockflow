@@ -83,6 +83,9 @@ func Plan(desired domain.App, actual domain.Actual, restart ...string) (*domain.
 		if actual.Uploads[u.Dest] == "" {
 			reason = "new upload"
 		}
+		if u.Plugin != "" {
+			reason += ", plugin " + u.Plugin
+		}
 		add(domain.ActionUpload, u.Dest, reason, "")
 	}
 

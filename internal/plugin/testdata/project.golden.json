@@ -1,0 +1,62 @@
+{
+  "uploads": [
+    {
+      "Src": "files",
+      "Dest": "/srv/hello",
+      "Mode": "640",
+      "Plugin": "hello"
+    },
+    {
+      "Src": "files",
+      "Dest": "/srv/loud",
+      "Mode": "640",
+      "Plugin": "loud"
+    }
+  ],
+  "files": [
+    "hello/files/hello.txt -rw-r--r--",
+    "hello/files/static.txt -rw-r--r--",
+    "loud/files/hello.txt -rw-r--r--",
+    "loud/files/static.txt -rw-r--r--"
+  ],
+  "hooks": [
+    {
+      "phase": "before_deploy",
+      "name": "hello: echo before",
+      "kind": "local",
+      "command": "echo before",
+      "timeout": "5m0s",
+      "fatal": true,
+      "plugin": "hello"
+    },
+    {
+      "phase": "after_deploy",
+      "name": "hello: announce",
+      "kind": "host",
+      "command": "cat /srv/hello/hello.txt",
+      "timeout": "5m0s",
+      "fatal": false,
+      "plugin": "hello",
+      "if_changed": "/srv/hello"
+    },
+    {
+      "phase": "before_deploy",
+      "name": "loud: echo before",
+      "kind": "local",
+      "command": "echo before",
+      "timeout": "5m0s",
+      "fatal": true,
+      "plugin": "loud"
+    },
+    {
+      "phase": "after_deploy",
+      "name": "loud: announce",
+      "kind": "host",
+      "command": "cat /srv/loud/hello.txt",
+      "timeout": "5m0s",
+      "fatal": true,
+      "plugin": "loud",
+      "if_changed": "/srv/loud"
+    }
+  ]
+}

@@ -59,6 +59,8 @@ type Workspace struct {
 	root    string
 	// copied are the directories copied, as absolute paths in the project.
 	copied []string
+	// bundles holds the plugins' files, written out by Bundle.
+	bundles string
 }
 
 // Prepare renders every template, then copies each directory of dirs that holds a rendered file
@@ -149,6 +151,9 @@ func (w *Workspace) Path(path string) string {
 func (w *Workspace) Close() {
 	if w.root != "" {
 		os.RemoveAll(w.root)
+	}
+	if w.bundles != "" {
+		os.RemoveAll(w.bundles)
 	}
 }
 

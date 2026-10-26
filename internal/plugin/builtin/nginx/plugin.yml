@@ -1,0 +1,46 @@
+name: nginx
+description: A vhost of the host's nginx, in front of the switch; nginx is checked and reloaded when the vhost changed
+inputs:
+  - name: domain
+    type: list
+    required: true
+    description: the domains the vhost serves
+  - name: upstream
+    default: 127.0.0.1:8080
+    description: where nginx sends requests, the switch's --switch-listen
+  - name: port
+    description: with the none edge, a port published on the server, instead of upstream
+  - name: tls
+    type: boolean
+    default: false
+    description: listen on 443 with the certificate in certificate_dir, and redirect 80 to it
+  - name: certificate_dir
+    description: the directory of fullchain.pem and privkey.pem (default /etc/letsencrypt/live/<first domain>)
+  - name: cloudflare
+    type: boolean
+    default: false
+    description: behind Cloudflare, take the client's address and scheme from Cloudflare's headers
+  - name: max_body_size
+    default: 25m
+    description: nginx's client_max_body_size
+  - name: dir
+    default: /etc/nginx/sites-enabled
+    description: the directory nginx includes vhosts from
+  - name: name
+    description: the vhost's file name (default <app>-<env>.conf, with the id when it is not nginx)
+  - name: template
+    type: file
+    description: the project's own vhost, a Jinja template that sees these inputs
+templates:
+  - src: "{{ template or 'vhost.conf' }}"
+    dest: vhost.conf
+uploads:
+  - src: vhost.conf
+    dest: "{{ dir }}/{% if name %}{{ name }}{% elif id == 'nginx' %}{{ DOCKFLOW_STACK }}.conf{% else %}{{ DOCKFLOW_STACK }}-{{ id }}.conf{% endif %}"
+    mode: "644"
+hooks:
+  after_deploy:
+    - name: check and reload nginx
+      host: sudo nginx -t && sudo systemctl reload nginx
+      fatal: true
+      if_changed: "{{ dir }}/{% if name %}{{ name }}{% elif id == 'nginx' %}{{ DOCKFLOW_STACK }}.conf{% else %}{{ DOCKFLOW_STACK }}-{{ id }}.conf{% endif %}"

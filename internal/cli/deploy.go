@@ -214,6 +214,16 @@ func (a *app) deployCmd() *cobra.Command {
 			if res.Detached || res.ReleaseSeq == 0 {
 				return nil
 			}
+			if res.Plan != nil {
+				hk.Changed = func(dest string) bool {
+					for _, a := range res.Plan.Actions {
+						if a.Kind == domain.ActionUpload && a.Target == dest {
+							return true
+						}
+					}
+					return false
+				}
+			}
 			if herr := hk.Run(ctx, domain.HookAfterDeploy, hookList); herr != nil {
 				// the release is committed: a fatal after_deploy hook restores the previous one
 				a.emitter.Warn(events.RollbackStarted, herr.Error()+": rolling back", map[string]any{"reason": herr.Error()})

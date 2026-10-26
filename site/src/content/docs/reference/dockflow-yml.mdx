@@ -34,13 +34,14 @@ The format is strict. An unknown key is an error (exit code 3, see [exit codes](
 | `hooks` | map | none | Commands run around the build and the deploy. See [`hooks`](#hooks). |
 | `notify` | list | none | Webhooks sent when a run finishes. See [`notify`](#notify). |
 | `firewall` | map | none | The published ports open to the internet. See [`firewall`](#firewall). |
+| `plugins` | list | none | Plugins expanded into uploads, templates and hooks. See [`plugins`](#plugins). |
 | `environments` | map | required, at least one | The environments, by name. See [`environments`](#environments). |
 
 ### Keys an environment can override
 
 These top-level keys can also be set inside an environment, where they **replace** the top-level value for that environment (blocks are not merged key by key):
 
-`templates`, `registry`, `build`, `releases`, `on_failure`, `health`, `uploads`, `hooks`, `notify`, `firewall`.
+`templates`, `registry`, `build`, `releases`, `on_failure`, `health`, `uploads`, `hooks`, `notify`, `firewall`, `plugins`.
 
 `version`, `app`, `compose` and `environments` cannot be set inside an environment. An environment has its own `compose` key, which replaces the top-level list.
 
@@ -184,6 +185,25 @@ An entry of `public_ports` is a port number, or a map:
 
 The filter is one per server: a port an app lists is open for that port, whichever container publishes it. It follows each app environment's current release, so a rollback restores the ports of the release it returns to.
 
+## `plugins`
+
+Plugins to expand into this environment's uploads, templates and hooks. See the [plugins guide](/guides/plugins/).
+
+```yaml
+plugins:
+  - use: nginx
+    with: { domain: "${DOMAIN}", cloudflare: true }
+  - use: ./deploy/plugins/rclone
+    id: archives
+    with: { remote: "ovhs3:archives" }
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `use` | string | required | A built-in plugin, `nginx` or `systemd`, or the path of a directory of the project that holds a `plugin.yml`. |
+| `id` | string | the plugin's name | Names the use: in hook names, the plan, and the plugin's own paths. Matches `^[a-z][a-z0-9_-]{0,31}$`; two uses of one plugin need different ids. |
+| `with` | map | none | The plugin's inputs. An unknown input, or a required one missing, is an error. Values are interpolated like the rest of the file. |
+
 ## `environments`
 
 A map from environment name to its settings. At least one environment is required. An environment can be empty (`production: {}`) when its server comes from the `<ENV>_CONNECTION` secret.
@@ -225,7 +245,6 @@ These keys are part of the format, but this version refuses them with "not avail
 | Key | Where | Arrives with |
 |---|---|---|
 | `routes` (routes that target no service) | top level or environment | <Badge text="Coming in M3" variant="caution" /> |
-| `plugins` | top level or environment | <Badge text="Coming in M3" variant="caution" /> |
 | `backups` | top level or environment | <Badge text="Coming in M4" variant="caution" /> |
 
 See the [roadmap](/project/roadmap/).

@@ -1,0 +1,5 @@
+[Unit]
+Description=rclone mount for {{ DOCKFLOW_STACK }}
+
+[Service]
+ExecStart=/usr/bin/rclone mount archives: /mnt/archives

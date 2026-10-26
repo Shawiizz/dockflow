@@ -54,7 +54,7 @@ Take a blank server to a hardened production host, and cover the needs of larger
 
 - **Provisioning:** the rest of `server init`: interactive questions, SSH hardening, fail2ban, security updates, time synchronisation, `from=` restrictions on the deploy key, and `--nginx`. Plus `server cloud-init`, `server check`, `server status`, `server edge` and `server upgrade`.
 - **Edges and routes:** the `cloudflare` edge; route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks.
-- **Plugins:** project plugins and the built-in `nginx` and `systemd` plugins, with `plugins list`.
+- **Plugins** <Badge text="Done" variant="success" />: project plugins and the built-in `nginx` and `systemd` plugins, with `plugins list`. `server init --nginx`, which installs nginx and the plugins' sudo rules, arrives with provisioning.
 - **Firewall** <Badge text="Done" variant="success" />: the published-port filter, with `firewall.public_ports` and per-port source ranges. Cloudflare's ranges, refreshed automatically, arrive with the `cloudflare` edge.
 - **Secrets** <Badge text="Done" variant="success" />: Compose `secrets:` and `configs:` delivered as files on a tmpfs, build secrets, encrypted secrets files with SOPS, and the `secrets` commands.
 - **Self-healing:** the watchdog, which restarts a container that stays unhealthy for too long (`x-dockflow.health.restart_after`).

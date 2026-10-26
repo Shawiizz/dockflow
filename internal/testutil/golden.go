@@ -19,8 +19,17 @@ func Golden(t *testing.T, name string, v any) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got = append(got, '\n')
-	path := filepath.Join("testdata", name+".golden.json")
+	compare(t, filepath.Join("testdata", name+".golden.json"), append(got, '\n'))
+}
+
+// GoldenText compares text with testdata/<file>, as Golden does.
+func GoldenText(t *testing.T, file, text string) {
+	t.Helper()
+	compare(t, filepath.Join("testdata", file), []byte(text))
+}
+
+func compare(t *testing.T, path string, got []byte) {
+	t.Helper()
 	if *update {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)

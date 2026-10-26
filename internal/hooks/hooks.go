@@ -57,6 +57,9 @@ type Runner struct {
 	// Render returns a script listed under templates:, rendered now so it sees what earlier
 	// hooks wrote, and the mode of its template; ok is false for a script that is no template.
 	Render func(script string) (content []byte, mode os.FileMode, ok bool, err error)
+	// Changed tells whether the deploy changed an upload's destination, for the hooks that run
+	// only then (if_changed); nil runs them.
+	Changed func(dest string) bool
 }
 
 // Failed is the error of a fatal hook.
@@ -74,6 +77,10 @@ func Failed(h domain.Hook, detail string) *errs.Error {
 func (r *Runner) Run(ctx context.Context, phase string, hooks []domain.Hook) error {
 	for _, h := range hooks {
 		if h.Phase != phase || h.Kind == domain.HookExec {
+			continue
+		}
+		if h.IfChanged != "" && r.Changed != nil && !r.Changed(h.IfChanged) {
+			r.Events.Debug(events.Log, fmt.Sprintf("hook %s skipped: %s did not change", h.Name, h.IfChanged), nil)
 			continue
 		}
 		code, err := r.one(ctx, h)

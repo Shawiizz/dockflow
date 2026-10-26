@@ -41,7 +41,9 @@ func workspace(l *project.Loaded) (*render.Workspace, error) {
 		dirs = append(dirs, b.Context)
 	}
 	for _, u := range l.Config.Uploads {
-		dirs = append(dirs, filepath.Join(l.Config.Dir, u.Src))
+		if u.Bundle == nil {
+			dirs = append(dirs, filepath.Join(l.Config.Dir, u.Src))
+		}
 	}
 	return render.Prepare(l.Config.Dir, l.Config.Templates, l.Values, dirs)
 }

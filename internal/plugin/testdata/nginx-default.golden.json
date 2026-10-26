@@ -1,0 +1,25 @@
+{
+  "uploads": [
+    {
+      "Src": "vhost.conf",
+      "Dest": "/etc/nginx/sites-enabled/shop-production.conf",
+      "Mode": "644",
+      "Plugin": "nginx"
+    }
+  ],
+  "files": [
+    "nginx/vhost.conf -rw-r--r--"
+  ],
+  "hooks": [
+    {
+      "phase": "after_deploy",
+      "name": "nginx: check and reload nginx",
+      "kind": "host",
+      "command": "sudo nginx -t \u0026\u0026 sudo systemctl reload nginx",
+      "timeout": "5m0s",
+      "fatal": true,
+      "plugin": "nginx",
+      "if_changed": "/etc/nginx/sites-enabled/shop-production.conf"
+    }
+  ]
+}

@@ -53,6 +53,16 @@ plugins:
 
 **Later.** Third-party plugins fetched from a registry or a git URL are not in v1.
 
+## Implementation (M3)
+
+- **Inputs.** Besides `string` and `file`, inputs can be `boolean` and `list`, so a template can write `{% if cloudflare %}` and loop over domains. A `file` input's file is copied into the plugin, at `inputs/<input>/<name>`, and its value is that path.
+- **Rendering.** Every string of `templates`, `uploads` and `hooks` in `plugin.yml` is rendered with Jinja (the inputs, `id`, the built-in variables and `vars`, never the secrets); template files also see the secrets, as the project's do. The plugin's files are held in memory and written to the run's temporary workspace when an upload reads them.
+- **When the vhost changed.** `if_changed`, a key of `plugin.yml`'s `after_deploy` hooks only, names one of the plugin's uploads: the hook runs only when the deploy's plan changed it. `nginx` and `systemd` use it, so a deploy that changes nothing reloads nothing.
+- **Order.** The plugins' uploads and hooks come before the project's own. Hooks have no `script` in a plugin: its files are not the project's.
+- **`nginx`.** Inputs `domain` (a list), `upstream` (the switch, `127.0.0.1:8080`), `port` (the `none` edge), `tls` and `certificate_dir` (certbot's), `cloudflare`, `max_body_size`, `dir`, `name` and `template`. Cloudflare's ranges are written into the vhost from the list the binary carries.
+- **`systemd`.** Inputs `unit` (a file) and `name`; when the unit changed: `daemon-reload`, `enable` and `restart`, a non-fatal hook, since a rollback would put the previous unit back without restarting it.
+- **Not yet.** `server init --nginx` arrives with the rest of provisioning; until then the sudo rules are written by hand.
+
 ## Consequences
 
 - The host's nginx stays a first-class option, in front of the switch with the `external` edge ([ADR-0011](0011-switch-and-edge.md)). The switch handles zero-downtime transitions, so the `nginx` plugin writes a static vhost, reloaded only when domains change.

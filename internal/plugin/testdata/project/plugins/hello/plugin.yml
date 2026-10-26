@@ -1,0 +1,23 @@
+description: Says hello
+inputs:
+  - name: greeting
+    required: true
+  - name: loud
+    type: boolean
+  - name: names
+    type: list
+    default: [world]
+templates:
+  - files/hello.txt
+uploads:
+  - src: files
+    dest: "/srv/{{ id }}"
+    mode: "640"
+hooks:
+  before_deploy:
+    - run: echo before
+  after_deploy:
+    - name: announce
+      host: cat /srv/{{ id }}/hello.txt
+      if_changed: "/srv/{{ id }}"
+      fatal: "{{ loud }}"

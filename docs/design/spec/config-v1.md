@@ -180,6 +180,36 @@ environments:                       # required; at least one
 
 Every top-level key except `version`, `app`, `compose` and `environments` can also be set inside an environment, where it replaces the top-level value for that environment.
 
+## `plugin.yml`
+
+A plugin ([ADR-0017](../adr/0017-plugins.md)) is a directory with a `plugin.yml`; `use:` names a built-in plugin (`nginx`, `systemd`) or a directory of the project (a path, with a `/`). Unknown keys are refused.
+
+```yaml
+name: rclone                        # default: the directory's name; the default id of a use
+description: An rclone mount
+inputs:
+  - name: remote                    # ^[a-z][a-z0-9_]*$; id is reserved
+    description: the rclone remote
+    type: string                    # string (default), boolean, list, or file
+    required: true
+  - name: mount
+    default: /mnt/archives
+templates:                          # files of the plugin, rendered with Jinja
+  - rclone.service                  # in place; or { src, dest }
+uploads:                            # as in dockflow.yml; src is a path of the plugin
+  - src: rclone.service
+    dest: "/etc/systemd/system/rclone-{{ id }}.service"
+hooks:                              # as in dockflow.yml, without script
+  after_deploy:
+    - host: sudo systemctl restart rclone-{{ id }}
+      if_changed: "/etc/systemd/system/rclone-{{ id }}.service"   # after_deploy only: runs when
+                                    # the deploy changed that upload of the plugin
+```
+
+- **Values.** A `string` input takes a scalar (empty when not given), a `boolean` `true` or `false` (also as a string; `false` when not given), a `list` a list of scalars or one scalar (empty when not given). A `file` input names a file of the project, copied into the plugin at `inputs/<input>/<file name>`, which is the input's value.
+- **Rendering.** The string values of `templates`, `uploads` and `hooks` are Jinja templates rendered with the inputs, `id`, the built-in variables and `vars`; a value that renders to `true` is a boolean again. Template files also see the secrets. Undefined variables are errors.
+- **Expansion.** At load time, in the order of `plugins:`, before the project's own: uploads keep their plugin (`plugin` in the release record's uploads, and in the plan), hooks are named `<id>: <name>`.
+
 ## `x-dockflow` on a service
 
 ```yaml

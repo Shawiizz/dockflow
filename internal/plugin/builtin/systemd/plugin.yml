@@ -1,0 +1,21 @@
+name: systemd
+description: A systemd unit of the host, enabled, and restarted when it changed
+inputs:
+  - name: unit
+    type: file
+    required: true
+    description: the unit file, a Jinja template that sees these inputs
+  - name: name
+    description: the unit's name (default the file's name)
+templates:
+  - src: "{{ unit }}"
+    dest: unit
+uploads:
+  - src: unit
+    dest: "/etc/systemd/system/{{ name or unit.split('/')[-1] }}"
+    mode: "644"
+hooks:
+  after_deploy:
+    - name: enable and restart the unit
+      host: sudo systemctl daemon-reload && sudo systemctl enable {{ name or unit.split('/')[-1] }} && sudo systemctl restart {{ name or unit.split('/')[-1] }}
+      if_changed: "/etc/systemd/system/{{ name or unit.split('/')[-1] }}"

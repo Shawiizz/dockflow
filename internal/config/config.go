@@ -50,12 +50,20 @@ type Settings struct {
 	Uploads   []UploadEntry   `yaml:"uploads"`
 	Notify    []NotifyEntry   `yaml:"notify"`
 	Firewall  *Firewall       `yaml:"firewall"`
+	Plugins   []PluginUse     `yaml:"plugins"`
 
 	// Keys of the specification that arrive in later milestones. They are refused with a clear
 	// message instead of being ignored.
 	Routes  *yaml.Node `yaml:"routes"`
-	Plugins *yaml.Node `yaml:"plugins"`
 	Backups *yaml.Node `yaml:"backups"`
+}
+
+// PluginUse is one entry of plugins (ADR-0017): a built-in plugin's name, or the path of a
+// directory of the project that holds a plugin.yml.
+type PluginUse struct {
+	Use  string         `yaml:"use" json:"use"`
+	ID   string         `yaml:"id" json:"id,omitempty"`
+	With map[string]any `yaml:"with" json:"with,omitempty"`
 }
 
 // Firewall is the firewall block (ADR-0014).
@@ -128,6 +136,9 @@ type UploadEntry struct {
 	Exclude []string `yaml:"exclude"`
 	Mode    string   `yaml:"mode"`
 	Owner   string   `yaml:"owner"`
+	// Plugin and Bundle are set on an upload a plugin adds: src is a path of the bundle.
+	Plugin string         `yaml:"-"`
+	Bundle *render.Bundle `yaml:"-"`
 }
 
 // Hooks is the hooks block, per phase (ADR-0022).
@@ -236,11 +247,13 @@ type Resolved struct {
 	Notify       []notify.Webhook
 	// PublicPorts are firewall.public_ports.
 	PublicPorts []domain.PublicPort
+	// Plugins are expanded into Uploads and Hooks once the variables are known.
+	Plugins []PluginUse
 }
 
 // laterKeys are spec keys not available yet, with the milestone that brings them.
 var laterKeys = map[string]string{
-	"routes": "M3", "plugins": "M3",
+	"routes":  "M3",
 	"backups": "M4",
 }
 
@@ -412,7 +425,7 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 			}
 		}
 		if s.Hooks != nil {
-			h, err := hooks(s.Hooks)
+			h, err := ParseHooks(s.Hooks)
 			if err != nil {
 				return nil, err
 			}
@@ -446,10 +459,13 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 			res.Notify = w
 		}
 		if s.Uploads != nil {
-			if err := checkUploads(s.Uploads); err != nil {
+			if err := CheckUploads(s.Uploads); err != nil {
 				return nil, err
 			}
 			res.Uploads = s.Uploads
+		}
+		if s.Plugins != nil {
+			res.Plugins = s.Plugins
 		}
 		if s.Templates != nil {
 			t, err := templates(r.Dir, s.Templates)
@@ -512,10 +528,14 @@ func webhooks(entries []NotifyEntry) ([]notify.Webhook, error) {
 	return out, nil
 }
 
-func checkUploads(entries []UploadEntry) error {
+// CheckUploads validates uploads, and that no two have the same destination.
+func CheckUploads(entries []UploadEntry) error {
 	dests := map[string]bool{}
 	for i, u := range entries {
 		at := fmt.Sprintf("uploads[%d]", i)
+		if u.Plugin != "" {
+			at = "plugin " + u.Plugin + ": " + at
+		}
 		clean := filepath.Clean(u.Src)
 		if u.Src == "" || filepath.IsAbs(u.Src) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 			return errs.Config("%s.src %q must be a path inside the project", at, u.Src)
@@ -545,7 +565,8 @@ func checkUploads(entries []UploadEntry) error {
 	return nil
 }
 
-func hooks(h *Hooks) ([]domain.Hook, error) {
+// ParseHooks validates the hooks block, and returns its hooks in phase order.
+func ParseHooks(h *Hooks) ([]domain.Hook, error) {
 	var out []domain.Hook
 	phases := []struct {
 		name    string
@@ -905,6 +926,28 @@ func (in interpolation) skip(p []string) bool {
 		hook = p[2:]
 	}
 	return len(hook) == 3 && hook[0] == "hooks" && (hook[2] == "run" || hook[2] == "host" || hook[2] == "exec")
+}
+
+// PluginUses returns the use of each plugin entry, at the top level and in every environment,
+// once each, as written.
+func (r *Raw) PluginUses() []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(uses []PluginUse) {
+		for _, u := range uses {
+			if u.Use != "" && !seen[u.Use] {
+				seen[u.Use] = true
+				out = append(out, u.Use)
+			}
+		}
+	}
+	add(r.file.Plugins)
+	for _, name := range r.EnvNames() {
+		if e := r.file.Environments[name]; e != nil {
+			add(e.Plugins)
+		}
+	}
+	return out
 }
 
 // overridden are the top-level keys env sets itself.

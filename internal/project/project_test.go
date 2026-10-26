@@ -60,8 +60,8 @@ func TestMissingVariableIsAnError(t *testing.T) {
 func TestLaterKeyIsRefused(t *testing.T) {
 	_, err := load(t, "later-key", "production")
 	e, ok := errs.As(err)
-	if !ok || !strings.Contains(e.Message, "`plugins`") || !strings.Contains(e.Hint, "M3") {
-		t.Fatalf("want plugins refused until M3, got %v", err)
+	if !ok || !strings.Contains(e.Message, "`routes`") || !strings.Contains(e.Hint, "M3") {
+		t.Fatalf("want routes refused until M3, got %v", err)
 	}
 }
 

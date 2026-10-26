@@ -395,6 +395,16 @@ Hold an environment's lock by hand, for a maintenance window. `acquire` sets a m
 | `--force` | `false` | Take over (`acquire`) or release (`release`) someone else's manual lock. |
 | `-m, --message string` | none | Why the environment is locked. |
 
+## plugins
+
+### plugins list
+
+```sh
+dockflow plugins list [--json]
+```
+
+The built-in plugins, and the plugins of the project that `dockflow.yml` uses, each with its source, description and inputs: type, whether it is required, its default. It needs no server. See [plugins](/guides/plugins/).
+
 ## secrets
 
 ### secrets list
@@ -573,4 +583,4 @@ Help about any command, the same as `dockflow <command> --help`.
 
 ## Not available yet
 
-These commands are part of the design but not of this version: `init` and `plugins list` <Badge text="Coming in M3" variant="caution" />, `backup` <Badge text="Coming in M4" variant="caution" />, `ui` and `mcp` <Badge text="Coming in M5" variant="caution" />. See the [roadmap](/project/roadmap/).
+These commands are part of the design but not of this version: `init` <Badge text="Coming in M3" variant="caution" />, `backup` <Badge text="Coming in M4" variant="caution" />, `ui` and `mcp` <Badge text="Coming in M5" variant="caution" />. See the [roadmap](/project/roadmap/).

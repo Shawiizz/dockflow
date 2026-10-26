@@ -18,6 +18,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/image"
+	"github.com/Shawiizz/dockflow/internal/plugin"
 	"github.com/Shawiizz/dockflow/internal/secrets"
 	"github.com/Shawiizz/dockflow/internal/sopsfile"
 )
@@ -239,6 +240,25 @@ func Load(ctx context.Context, o Options) (*Loaded, error) {
 	}
 	for k, v := range builtins {
 		all[k] = v
+	}
+	if len(cfg.Plugins) > 0 {
+		public := map[string]string{}
+		for k, v := range vars {
+			public[k] = v
+		}
+		for k, v := range builtins {
+			public[k] = v
+		}
+		e, err := plugin.Expand(o.Dir, cfg.Plugins, plugin.Values{Public: public, All: all})
+		if err != nil {
+			return nil, err
+		}
+		// the plugins' first: a vhost is reloaded before the project's own after_deploy hooks
+		cfg.Uploads = append(e.Uploads, cfg.Uploads...)
+		cfg.Hooks = append(e.Hooks, cfg.Hooks...)
+		if err := config.CheckUploads(cfg.Uploads); err != nil {
+			return nil, err
+		}
 	}
 	stack := domain.Stack(cfg.App, env)
 	proj, err := compose.Load(ctx, o.Dir, stack, cfg.Compose, cfg.Profiles, compose.Variables{Lookup: lookup, All: all})

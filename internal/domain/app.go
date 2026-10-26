@@ -82,6 +82,8 @@ type Upload struct {
 	Owner  string `json:"owner,omitempty"` // uid or uid:gid
 	// Manifest is the digest of the manifest of the files.
 	Manifest string `json:"manifest"`
+	// Plugin is the id of the plugin that added the upload (ADR-0017).
+	Plugin string `json:"plugin,omitempty"`
 }
 
 // Service returns the service with the given name.

@@ -394,6 +394,22 @@ func (a *app) configCmd() *cobra.Command {
 				"secrets":  l.Secrets.Describe(), "services": l.App.Services, "networks": l.App.Networks, "volumes": l.App.Volumes,
 				"files": l.App.Files,
 			}
+			// plugins expanded: their uploads and hooks are listed with the project's own
+			if len(l.Config.Uploads) > 0 {
+				type upload struct {
+					Src    string `json:"src"`
+					Dest   string `json:"dest"`
+					Plugin string `json:"plugin,omitempty"`
+				}
+				var ups []upload
+				for _, u := range l.Config.Uploads {
+					ups = append(ups, upload{u.Src, u.Dest, u.Plugin})
+				}
+				doc["uploads"] = ups
+			}
+			if len(l.Config.Hooks) > 0 {
+				doc["hooks"] = l.Config.Hooks
+			}
 			b, _ := json.MarshalIndent(doc, "", "  ")
 			if !a.json {
 				// YAML for people, as the files it comes from; through JSON for the field names

@@ -33,4 +33,8 @@ type Hook struct {
 	Fatal   bool     `json:"fatal"`
 	// Env is the hook's environment, filled when it runs: built-ins, vars and its secrets.
 	Env []string `json:"env,omitempty"`
+	// Plugin is the id of the plugin that added the hook (ADR-0017).
+	Plugin string `json:"plugin,omitempty"`
+	// IfChanged is the destination of an upload: the hook runs only when the deploy changed it.
+	IfChanged string `json:"if_changed,omitempty"`
 }

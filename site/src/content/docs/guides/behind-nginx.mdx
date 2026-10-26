@@ -5,7 +5,7 @@ sidebar:
   order: 3
 ---
 
-import { Aside, Badge, Steps } from '@astrojs/starlight/components';
+import { Aside, Steps } from '@astrojs/starlight/components';
 
 By default, Dockflow's switch listens on ports 80 and 443 and obtains certificates itself. If your server already runs nginx, Apache, HAProxy or another proxy on those ports, use the **external edge**: the switch listens on one local address, and your proxy sends every routed domain to it. Your proxy keeps TLS; Dockflow keeps zero-downtime deploys.
 
@@ -167,9 +167,18 @@ A 502 from nginx usually means the switch is not listening where `proxy_pass` po
 
 ## Versioning the vhost in your repository
 
-A built-in `nginx` plugin that writes this vhost and reloads nginx when its domains change is planned. <Badge text="Coming in M3" variant="caution" />
+The built-in [`nginx` plugin](/guides/plugins/#the-nginx-plugin) writes this vhost from your domains, and checks and reloads nginx when it changed:
 
-Today, you can keep the vhost in your repository and ship it with each deploy, with an [upload](/guides/uploads/) and a `host` [hook](/guides/hooks/):
+```yaml
+# dockflow.yml
+plugins:
+  - use: nginx
+    with:
+      domain: [shop.example.com, www.shop.example.com]
+      tls: true
+```
+
+It takes your own vhost too, as a template: `template: deploy/nginx/shop.conf`. Without the plugin, the same is an [upload](/guides/uploads/) and a `host` [hook](/guides/hooks/):
 
 ```yaml
 # dockflow.yml

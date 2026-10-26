@@ -1,0 +1,26 @@
+{
+  "uploads": [
+    {
+      "Src": "unit",
+      "Dest": "/etc/systemd/system/rclone.service",
+      "Mode": "644",
+      "Plugin": "systemd"
+    }
+  ],
+  "files": [
+    "systemd/inputs/unit/rclone.service -rw-r--r--",
+    "systemd/unit -rw-r--r--"
+  ],
+  "hooks": [
+    {
+      "phase": "after_deploy",
+      "name": "systemd: enable and restart the unit",
+      "kind": "host",
+      "command": "sudo systemctl daemon-reload \u0026\u0026 sudo systemctl enable rclone.service \u0026\u0026 sudo systemctl restart rclone.service",
+      "timeout": "5m0s",
+      "fatal": false,
+      "plugin": "systemd",
+      "if_changed": "/etc/systemd/system/rclone.service"
+    }
+  ]
+}
