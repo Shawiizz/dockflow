@@ -29,6 +29,11 @@ Dockflow keeps no database and no service of its own besides the switch and the 
 
 /run/dockflow/secrets/<stack>/        on a tmpfs, 0700
 └── <name>-<hash12>                   Compose secrets, by content and permissions
+
+/etc/dockflow/
+├── filter.rules                      the port filter's IPv4 rules, for iptables-restore
+└── filter6.rules                     its IPv6 rules
+/etc/systemd/system/dockflow-filter.service   loads them at boot, before Docker
 ```
 
 `<stack>` is `<app>-<env>`, for example `shop-production`. `<seq>` is the release number, written with 6 digits in file names (`000042.json.gz`).
@@ -51,11 +56,14 @@ Written by `dockflow server init`:
   "switch_listen": "127.0.0.1:8080",
   "trusted_proxies": ["10.0.0.0/8"],
   "registry_image": "registry:3@sha256:…",
-  "dockflow_version": "4.0.0-alpha.5"
+  "dockflow_version": "4.0.0-alpha.5",
+  "filter": true,
+  "ssh_port": 22,
+  "filter_rules": "9f2c…"
 }
 ```
 
-`switch_listen` and `trusted_proxies` are present with the `external` edge only, and `switch_image` or `registry_image` are absent when the server runs no switch (`--edge none`) or no registry (`--no-registry`).
+`switch_listen` and `trusted_proxies` are present with the `external` edge only, and `switch_image` or `registry_image` are absent when the server runs no switch (`--edge none`) or no registry (`--no-registry`). `filter` is absent with `--no-port-filter`; `filter_rules` is the digest of the [port filter](/project/security/#the-port-filter)'s rules last applied, so a deploy that changes no port leaves the filter alone.
 
 ### Locks
 
@@ -165,7 +173,7 @@ Use `docker compose -p` to look, not to change. A container started or recreated
 | `127.0.0.1:8080/tcp`, or the address given to `--switch-listen` | The switch | The `external` edge, behind your own proxy |
 | `127.0.0.1:5959/tcp` | The registry | Unless `--no-registry`. Loopback only: the CLI reaches it through the SSH connection |
 | SSH (`22` by default) | `sshd` | Always: every command connects over SSH |
-| The ports your services publish | Your containers | As declared in Compose `ports:` |
+| The ports your services publish | Your containers | As declared in Compose `ports:`. From outside, only those listed under `firewall.public_ports`, unless the server runs without the [port filter](/project/security/#the-port-filter) |
 
 The switch's admin API listens on no port at all, only on a unix socket.
 
@@ -215,6 +223,16 @@ The switch's admin API listens on no port at all, only on a unix socket.
 
    ```sh
    sudo rm -rf /var/lib/dockflow
+   ```
+
+7. Remove the port filter, unless the server was prepared with `--no-port-filter`:
+
+   ```sh
+   sudo systemctl disable --now dockflow-filter
+   sudo rm -f /etc/systemd/system/dockflow-filter.service
+   sudo rm -rf /etc/dockflow
+   sudo iptables -D DOCKER-USER -j DOCKFLOW-FILTER && sudo iptables -F DOCKFLOW-FILTER && sudo iptables -X DOCKFLOW-FILTER
+   sudo ip6tables -D DOCKER-USER -j DOCKFLOW-FILTER && sudo ip6tables -F DOCKFLOW-FILTER && sudo ip6tables -X DOCKFLOW-FILTER
    ```
 
 </Steps>

@@ -26,7 +26,7 @@ var fingerprintIn = regexp.MustCompile(`SHA256:[A-Za-z0-9+/=]+`)
 type provisionFlags struct {
 	key, passwordFile, hostKey, name string
 	user, deployKey                  string
-	skipDocker                       bool
+	skipDocker, noFilter             bool
 	// on the server itself: the address and SSH port the connection string gives
 	host string
 	port int
@@ -62,7 +62,7 @@ func (a *app) provisionServer(ctx context.Context, target string, f provisionFla
 		return err
 	}
 	a.emitter.Masker().Add(admin.PrivateKey, admin.Password, key.PrivatePEM)
-	script, err := provision.Script(provision.Options{User: f.user, AuthorizedKey: key.Authorized, InstallDocker: !f.skipDocker})
+	script, err := provision.Script(provision.Options{User: f.user, AuthorizedKey: key.Authorized, InstallDocker: !f.skipDocker, PortFilter: !f.noFilter})
 	if err != nil {
 		return err
 	}
@@ -159,6 +159,7 @@ func (a *app) finishProvisioning(ctx context.Context, connect *connection.Target
 		Op: agent.OpServerInit, Run: s.run, Server: public.Name, Author: author(), DockflowVersion: version.Version,
 	}
 	init(&req)
+	req.SSHPort = public.Port
 	if _, err := s.runAgent(ctx, req); err != nil {
 		return err
 	}

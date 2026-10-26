@@ -465,6 +465,7 @@ Running it again applies the new options, and the switch keeps every app's route
 | `--no-registry` | `false` | No server-local registry: every built image goes to `registry.url`. |
 | `--registry-image string` | `registry:3`, pinned by digest | The image of the server-local registry. |
 | `--switch-image string` | `caddy:2`, pinned by digest | The Caddy image of the switch. |
+| `--no-port-filter` | `false` | No [port filter](/project/security/#the-port-filter): every port Docker publishes on a public address is open. Without it, a new run turns the filter back on. |
 | `--switch-listen string` | `127.0.0.1:8080` | With `--edge external`: the address the switch listens on. |
 | `--trusted-proxy strings` | private ranges | With `--edge external`: CIDRs whose `X-Forwarded-For` is trusted. |
 | `-k, --key string` | `ssh-agent`, `~/.ssh` | With `<admin>@<host>`: the administrator's private key. |
@@ -481,7 +482,7 @@ Running it again applies the new options, and the switch keeps every app's route
 dockflow server init root@203.0.113.10 --edge external
 ```
 
-SSH hardening, fail2ban, unattended updates, the published-port filter, `server cloud-init`, `server check`, `server status`, `server edge`, `server upgrade`, `server network` and `server plugin` are <Badge text="Coming in M3" variant="caution" />, as is the `cloudflare` edge.
+SSH hardening, fail2ban, unattended updates, `server cloud-init`, `server check`, `server status`, `server edge`, `server upgrade`, `server network` and `server plugin` are <Badge text="Coming in M3" variant="caution" />, as is the `cloudflare` edge.
 
 ### server connection
 

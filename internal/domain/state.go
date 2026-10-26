@@ -16,6 +16,8 @@ type Actual struct {
 	Uploads map[string]string `json:"uploads,omitempty"`
 	// Files are the paths of the secret and config files that exist.
 	Files map[string]bool `json:"files,omitempty"`
+	// PublicPorts are the current release's firewall.public_ports.
+	PublicPorts []PublicPort `json:"public_ports,omitempty"`
 }
 
 // ActualService is a service as it runs.

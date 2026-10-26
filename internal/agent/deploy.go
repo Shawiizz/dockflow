@@ -432,6 +432,8 @@ func actionMessage(a domain.Action) string {
 		return "running job " + a.Target
 	case domain.ActionUpload:
 		return "uploading to " + a.Target
+	case domain.ActionPorts:
+		return "public ports changed: the port filter follows once the release is live"
 	case domain.ActionCreateSecret:
 		return "writing the secret " + filepath.Base(a.Target)
 	case domain.ActionCreateConfig:
@@ -851,6 +853,9 @@ func (r *runner) pruneReleases(ctx context.Context) {
 	}
 	r.pruneUploads(kept)
 	r.pruneFiles(kept)
+	if err := r.syncFilter(ctx); err != nil {
+		r.warn("filter.failed", err.Error())
+	}
 	used := map[string]bool{}
 	for _, rel := range kept {
 		for _, s := range rel.Desired.Services {

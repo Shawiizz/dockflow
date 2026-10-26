@@ -66,9 +66,21 @@ If you would rather not keep the key in a secret, describe the server under `ser
 | The registry | `127.0.0.1:5959` only | Never reachable from outside, so it needs no authentication. The CLI pushes images to it through the SSH connection. |
 | Agents | Nothing | One container per run, started through the Docker API, gone when the run ends. |
 
-Your own services listen where their Compose `ports:` say. Docker's published ports bypass host firewalls such as ufw and firewalld, so `5432:5432` is open to the internet. Publish internal ports on loopback, `127.0.0.1:5432:5432`, or not at all: services of one app reach each other by name on their Compose networks.
+Your own services listen where their Compose `ports:` say. Docker's published ports bypass host firewalls such as ufw and firewalld: without the port filter below, `5432:5432` is open to the internet. Publish internal ports on loopback, `127.0.0.1:5432:5432`, or not at all: services of one app reach each other by name on their Compose networks.
 
-A filter that drops published ports you did not declare public is planned. <Badge text="Coming in M3" variant="caution" />
+## The port filter
+
+`server init` installs a filter that drops new connections from outside to the ports Docker publishes, except:
+
+- the ports apps list under [`firewall.public_ports`](/reference/dockflow-yml/#firewall), open to everyone or to their `from` ranges;
+- 80 and 443 for the switch, with the `builtin` edge, or the port of `--switch-listen` with the `external` edge when it is not on loopback;
+- SSH.
+
+It catches a `5432:5432` written out of habit: the port stays published, but only the server itself and its containers reach it. The plan warns about each port published on every interface that no app lists.
+
+The filter is an iptables chain, `DOCKFLOW-FILTER`, that Docker's `DOCKER-USER` chain jumps to. It matches the port a connection was sent to, before Docker translated it, and leaves alone the traffic of Docker's bridges, loopback, and the ports the host itself listens on (your own nginx or sshd). A deploy, a rollback or a `destroy` that changes the ports applies the new rules, through a short helper container on the host's network, and writes them to `/etc/dockflow/filter.rules` and `filter6.rules`. The `dockflow-filter` systemd unit loads them again at boot, before Docker.
+
+To go without it, run `server init --no-port-filter`; running `server init` again without the option turns it back on. The filter applies to every container of the server, Dockflow's or not: publish ports you need open and that no app lists on loopback, or opt out.
 
 ## Secrets
 
@@ -156,8 +168,7 @@ The administrator's account is used for this run only, and its credentials are n
 
 - restrict the deploy key to source addresses (`from=`);
 - harden SSH (no password authentication, root by key only) and install fail2ban;
-- enable unattended security updates, time synchronisation and Docker log rotation;
-- install the published-port filter.
+- enable unattended security updates, time synchronisation and Docker log rotation.
 
 Until then, apply these yourself on a new server.
 
@@ -165,6 +176,6 @@ Until then, apply these yourself on a new server.
 
 - One deploy user and one key per environment, stored only as `<ENV>_CONNECTION` in CI and in a gitignored `.env.dockflow`.
 - Host keys pinned, checked on the server before you trust them.
-- Internal ports published on `127.0.0.1`, or not published.
+- Internal ports published on `127.0.0.1`, or not published; public ones listed under `firewall.public_ports`.
 - cosign installed where you run the installer.
 - A secret on every webhook, verified by the receiver.

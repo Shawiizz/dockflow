@@ -27,6 +27,11 @@ All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/000
 │       ├── blobs/<sha256>          the uploaded files, and those uploads overwrote, by content
 │       └── manifests/<digest>.json the manifests of uploads, and of what they replaced
 └── runs/                           nothing: run logs live in the agent containers
+
+/etc/dockflow/
+├── filter.rules                    the port filter's IPv4 rules, iptables-restore input (ADR-0014)
+└── filter6.rules                   its IPv6 rules
+/etc/systemd/system/dockflow-filter.service   loads them at boot, before docker.service
 ```
 
 `<stack>` is `<app>-<env>`. `<seq>` is written with 6 digits.
@@ -62,6 +67,8 @@ Dockflow's own labels:
 A service with `container_name` keeps that name and uses the `stop-first` strategy.
 
 **Secrets** used through Compose `secrets:` are files on a tmpfs, `/run/dockflow/secrets/<stack>/<name>-<hash12>`, in a `0700` directory, with the `uid`, `gid` and `mode` the service asks for (`0:0`, `0444` by default), mounted read-only at `/run/secrets/<name>` or the reference's `target` ([ADR-0012](../adr/0012-secrets-sops.md)). `<hash12>` is the start of the sha256 of the uid, gid, mode and content: a new value is a new file. The agent refuses to write a secret when `/run/dockflow` is not a tmpfs (`secret.not_tmpfs`). **Configs** are the same files, under the app's state directory. The agent mounts `/run/dockflow` from the host.
+
+**The port filter** ([ADR-0014](../adr/0014-networking-port-filter.md)) is recorded in `server.json`: `filter` (true unless `server init --no-port-filter`), `ssh_port` (the port it always lets in, from the connection string) and `filter_rules` (the hex sha256 of the rules last applied). A release records the app's `firewall.public_ports` in `desired.public_ports`; the filter lets in those of each app environment's current release.
 
 ## Lock
 

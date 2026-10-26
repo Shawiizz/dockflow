@@ -58,6 +58,11 @@ func Plan(desired domain.App, actual domain.Actual, restart ...string) (*domain.
 		add(domain.ActionCreateVolume, v.Name, "does not exist", "")
 	}
 
+	// the port filter follows the release, once it is committed (ADR-0014)
+	if !reflect.DeepEqual(normalPorts(desired.PublicPorts), normalPorts(actual.PublicPorts)) {
+		add(domain.ActionPorts, "firewall.public_ports", "public ports changed", "")
+	}
+
 	// content-addressed: a file that exists has the right content
 	for _, f := range desired.Files {
 		if actual.Files[f.Path] {
@@ -296,6 +301,14 @@ func dedupe(in []string) []string {
 		}
 	}
 	return out
+}
+
+// normalPorts makes a list of public ports comparable: nil and empty alike.
+func normalPorts(p []domain.PublicPort) []domain.PublicPort {
+	if len(p) == 0 {
+		return nil
+	}
+	return p
 }
 
 // Fingerprint identifies the inputs a plan was computed from: a saved plan applies only to the

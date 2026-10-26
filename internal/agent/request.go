@@ -108,6 +108,10 @@ type Request struct {
 	// Lock describes a manual lock (lock.acquire).
 	Lock *domain.LockInfo `json:"lock,omitempty"`
 
+	// NoPortFilter leaves the published-port filter out, and SSHPort is the port it lets SSH
+	// in on (server.init).
+	NoPortFilter bool `json:"no_port_filter,omitempty"`
+	SSHPort      int  `json:"ssh_port,omitempty"`
 	// Edge and SwitchImage configure the server (server.init).
 	Edge           string   `json:"edge,omitempty"`
 	SwitchImage    string   `json:"switch_image,omitempty"`

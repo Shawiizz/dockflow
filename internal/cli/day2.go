@@ -420,7 +420,7 @@ func (a *app) serverCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "server", Short: "Manage servers"}
 	var edge, switchImage, registryImage, switchListen string
 	var trusted []string
-	var noRegistry bool
+	var noRegistry, noFilter bool
 	var pf provisionFlags
 	initCmd := &cobra.Command{
 		Use:   "init [<env> | <admin>@<host>[:port]]",
@@ -437,7 +437,9 @@ func (a *app) serverCmd() *cobra.Command {
 			init := func(req *agent.Request) {
 				req.Edge, req.SwitchImage, req.SwitchListen, req.TrustedProxies = edge, switchImage, switchListen, trusted
 				req.Registry, req.RegistryImage = !noRegistry, registryImage
+				req.NoPortFilter = noFilter
 			}
+			pf.noFilter = noFilter
 			if len(args) == 0 && !inProject(a.dir) {
 				return a.provisionHere(cmd.Context(), pf, init)
 			}
@@ -460,6 +462,8 @@ func (a *app) serverCmd() *cobra.Command {
 			req.TrustedProxies = trusted
 			req.Registry = !noRegistry
 			req.RegistryImage = registryImage
+			req.NoPortFilter = noFilter
+			req.SSHPort = s.target.Server.Port
 			_, err = s.runAgent(cmd.Context(), req)
 			if err == nil && !a.json {
 				fmt.Fprintf(a.stdout, "✓ %s is ready (edge: %s)\n", s.target.Server.Name, edgeName(edge))
@@ -473,6 +477,7 @@ func (a *app) serverCmd() *cobra.Command {
 	initCmd.Flags().StringVar(&switchImage, "switch-image", "", "the Caddy image of the switch (default caddy:2, pinned by digest)")
 	initCmd.Flags().BoolVar(&noRegistry, "no-registry", false, "no server-local registry: every built image goes to registry.url")
 	initCmd.Flags().StringVar(&registryImage, "registry-image", "", "the image of the server-local registry (default registry:3, pinned by digest)")
+	initCmd.Flags().BoolVar(&noFilter, "no-port-filter", false, "no published-port filter: every port Docker publishes on a public address is open")
 	f := initCmd.Flags()
 	f.StringVarP(&pf.key, "key", "k", "", "with <admin>@<host>: the administrator's private key (default: ssh-agent, ~/.ssh)")
 	f.StringVar(&pf.passwordFile, "password-file", "", "with <admin>@<host>: a file holding the administrator's password")

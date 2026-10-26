@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -48,13 +49,40 @@ type Settings struct {
 	Hooks     *Hooks          `yaml:"hooks"`
 	Uploads   []UploadEntry   `yaml:"uploads"`
 	Notify    []NotifyEntry   `yaml:"notify"`
+	Firewall  *Firewall       `yaml:"firewall"`
 
 	// Keys of the specification that arrive in later milestones. They are refused with a clear
 	// message instead of being ignored.
-	Firewall *yaml.Node `yaml:"firewall"`
-	Routes   *yaml.Node `yaml:"routes"`
-	Plugins  *yaml.Node `yaml:"plugins"`
-	Backups  *yaml.Node `yaml:"backups"`
+	Routes  *yaml.Node `yaml:"routes"`
+	Plugins *yaml.Node `yaml:"plugins"`
+	Backups *yaml.Node `yaml:"backups"`
+}
+
+// Firewall is the firewall block (ADR-0014).
+type Firewall struct {
+	PublicPorts []PortEntry `yaml:"public_ports"`
+}
+
+// PortEntry is a public port: a number (tcp and udp, from anywhere), or a map.
+type PortEntry struct {
+	domain.PublicPort
+}
+
+// UnmarshalYAML reads 25565 or { port: 4326, protocol: tcp, from: [203.0.113.0/24] }.
+func (p *PortEntry) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		return n.Decode(&p.Port)
+	}
+	var m struct {
+		Port     int      `yaml:"port"`
+		Protocol string   `yaml:"protocol"`
+		From     []string `yaml:"from"`
+	}
+	if err := n.Decode(&m); err != nil {
+		return err
+	}
+	p.PublicPort = domain.PublicPort{Port: m.Port, Protocol: m.Protocol, From: m.From}
+	return nil
 }
 
 // Registry is an external registry (ADR-0009). Without it, images go to the server's own.
@@ -206,11 +234,13 @@ type Resolved struct {
 	Hooks        []domain.Hook
 	Uploads      []UploadEntry
 	Notify       []notify.Webhook
+	// PublicPorts are firewall.public_ports.
+	PublicPorts []domain.PublicPort
 }
 
 // laterKeys are spec keys not available yet, with the milestone that brings them.
 var laterKeys = map[string]string{
-	"firewall": "M3", "routes": "M3", "plugins": "M3",
+	"routes": "M3", "plugins": "M3",
 	"backups": "M4",
 }
 
@@ -387,6 +417,26 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 				return nil, err
 			}
 			res.Hooks = h
+		}
+		if s.Firewall != nil {
+			res.PublicPorts = nil
+			for i, e := range s.Firewall.PublicPorts {
+				pp := e.PublicPort
+				switch {
+				case pp.Port < 1 || pp.Port > 65535:
+					return nil, errs.Config("firewall.public_ports[%d]: %d is not a port", i, pp.Port)
+				case pp.Protocol != "" && pp.Protocol != "tcp" && pp.Protocol != "udp":
+					return nil, errs.Config("firewall.public_ports[%d]: protocol must be tcp or udp, not %q", i, pp.Protocol)
+				}
+				for _, f := range pp.From {
+					if _, err := netip.ParsePrefix(f); err != nil {
+						if _, err := netip.ParseAddr(f); err != nil {
+							return nil, errs.Config("firewall.public_ports[%d]: from %q is not an address or a CIDR", i, f)
+						}
+					}
+				}
+				res.PublicPorts = append(res.PublicPorts, pp)
+			}
 		}
 		if s.Notify != nil {
 			w, err := webhooks(s.Notify)

@@ -65,7 +65,7 @@ func (a *app) provisionHere(ctx context.Context, f provisionFlags, init func(*ag
 		return err
 	}
 	a.emitter.Masker().Add(key.PrivatePEM)
-	script, err := provision.Script(provision.Options{User: f.user, AuthorizedKey: key.Authorized, InstallDocker: !f.skipDocker})
+	script, err := provision.Script(provision.Options{User: f.user, AuthorizedKey: key.Authorized, InstallDocker: !f.skipDocker, PortFilter: !f.noFilter})
 	if err != nil {
 		return err
 	}

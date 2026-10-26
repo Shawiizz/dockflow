@@ -111,7 +111,7 @@ worker    shop/worker         1         start-first
 | `depends_on` | Honoured with its conditions (`service_started`, `service_healthy`, `service_completed_successfully`): it orders the services, and a service that another one waits for with `service_completed_successfully` becomes a [job](#run). A cycle is an error. |
 | `healthcheck` | Every key (`test`, `interval`, `timeout`, `retries`, `start_period`, `start_interval`, `disable`). It gates every rollout strategy. |
 | `container_name` | Honoured. Forces `stop-first` and a single container. |
-| `ports` | Honoured, host IP included (`127.0.0.1:5432:5432`). A service that publishes a fixed host port uses `stop-first`, since two containers cannot hold the same port. |
+| `ports` | Honoured, host IP included (`127.0.0.1:5432:5432`). Reachable from outside only when listed under [`firewall.public_ports`](/reference/dockflow-yml/#firewall). A service that publishes a fixed host port uses `stop-first`, since two containers cannot hold the same port. |
 | `expose` | Honoured. |
 | `networks` | Bridge networks, with `aliases`, `ipv4_address` and `ipv6_address`. The service name is always an alias, as in Compose. Top-level networks keep their `driver`, `internal` and `labels`; `external: true` uses an existing network of the server. |
 | `network_mode` | `host`, `none` and `bridge`. A service on the host network uses `stop-first` and cannot be routed. `service:…` and `container:…` are refused: Dockflow replaces containers at each release, and a container that joined another's network would lose it at the other's next deploy. Put both on a network instead. |

@@ -31,6 +31,16 @@ type App struct {
 	Uploads  []Upload  `json:"uploads,omitempty"`
 	// Files are the Compose secrets and configs, by content; their values are never here.
 	Files []File `json:"files,omitempty"`
+	// PublicPorts are the published ports the port filter lets in from outside (ADR-0014).
+	PublicPorts []PublicPort `json:"public_ports,omitempty"`
+}
+
+// PublicPort is a port of firewall.public_ports: open to everyone, or to the From CIDRs.
+type PublicPort struct {
+	Port int `json:"port"`
+	// Protocol is tcp or udp; empty means both.
+	Protocol string   `json:"protocol,omitempty"`
+	From     []string `json:"from,omitempty"`
 }
 
 // File is a Compose secret or config written on the server (ADR-0012): named after the hash of

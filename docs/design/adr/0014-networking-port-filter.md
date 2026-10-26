@@ -39,6 +39,13 @@ The filter is kept as a safety net, with 1.x's mechanism (a `DOCKER-USER` chain,
 - **Backend:** iptables (including iptables-nft) in v1.
 - **Opting out:** `server init --no-port-filter` leaves the filter out.
 
+## Implementation (M3)
+
+- **Rules.** The chain `DOCKFLOW-FILTER` returns for traffic from `docker0` and `br-+`, for `RELATED,ESTABLISHED`, and for each allowed port matched with `--ctorigdstport` (and `-s` for each `from` range of the family), then drops `--ctstate NEW` connections with `--ctstate DNAT`: only connections Docker translated to a published port are affected, never the host's own services. `iptables-restore --noflush` declares only that chain, so the jump from `DOCKER-USER` and Docker's own rules stay; the jump is added once, first.
+- **Helper.** `dockflow filter apply`, in the agent image, on the host's network with `NET_ADMIN`, `NET_RAW` and `SYS_CHROOT`, with the host's `/` mounted: it chroots into the host and runs the host's `iptables`, so the backend (legacy or nft) is the host's. IPv6 failures are warnings.
+- **When.** After `server init`, and after a deploy, rollback or destroy, when the digest of the rules differs from `server.json`'s `filter_rules`. `server init --no-port-filter` on a server that had the filter empties the chain.
+- **Not yet:** the Cloudflare ranges and the `INPUT` rules for the host's nginx arrive with the `cloudflare` edge.
+
 ## Consequences
 
 - Binding to `127.0.0.1` is the normal way to keep a port private, as with Compose on a laptop.

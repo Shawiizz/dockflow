@@ -33,13 +33,14 @@ The format is strict. An unknown key is an error (exit code 3, see [exit codes](
 | `uploads` | list | none | Files and directories copied to the server. See [`uploads`](#uploads). |
 | `hooks` | map | none | Commands run around the build and the deploy. See [`hooks`](#hooks). |
 | `notify` | list | none | Webhooks sent when a run finishes. See [`notify`](#notify). |
+| `firewall` | map | none | The published ports open to the internet. See [`firewall`](#firewall). |
 | `environments` | map | required, at least one | The environments, by name. See [`environments`](#environments). |
 
 ### Keys an environment can override
 
 These top-level keys can also be set inside an environment, where they **replace** the top-level value for that environment (blocks are not merged key by key):
 
-`templates`, `registry`, `build`, `releases`, `on_failure`, `health`, `uploads`, `hooks`, `notify`.
+`templates`, `registry`, `build`, `releases`, `on_failure`, `health`, `uploads`, `hooks`, `notify`, `firewall`.
 
 `version`, `app`, `compose` and `environments` cannot be set inside an environment. An environment has its own `compose` key, which replaces the top-level list.
 
@@ -162,6 +163,27 @@ Webhooks sent when a run finishes. See the [notifications guide](/guides/notific
 | `headers` | map of strings | none | Extra request headers. |
 | `timeout` | duration | `10s` | Time allowed for the request. |
 
+## `firewall`
+
+The ports your services publish that the [port filter](/project/security/#the-port-filter) lets in from outside. A port published on every interface (`5432:5432`) and not listed here is dropped; the plan warns about it.
+
+```yaml
+firewall:
+  public_ports:
+    - 25565                                            # tcp and udp, from anywhere
+    - { port: 4326, protocol: tcp, from: [203.0.113.0/24] }
+```
+
+An entry of `public_ports` is a port number, or a map:
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `port` | integer | required | The published (host) port, 1 to 65535. |
+| `protocol` | string | both | `tcp` or `udp`. |
+| `from` | list of strings | anywhere | Addresses or CIDRs, IPv4 or IPv6, the port is open to. |
+
+The filter is one per server: a port an app lists is open for that port, whichever container publishes it. It follows each app environment's current release, so a rollback restores the ports of the release it returns to.
+
 ## `environments`
 
 A map from environment name to its settings. At least one environment is required. An environment can be empty (`production: {}`) when its server comes from the `<ENV>_CONNECTION` secret.
@@ -202,7 +224,6 @@ These keys are part of the format, but this version refuses them with "not avail
 
 | Key | Where | Arrives with |
 |---|---|---|
-| `firewall` | top level or environment | <Badge text="Coming in M3" variant="caution" /> |
 | `routes` (routes that target no service) | top level or environment | <Badge text="Coming in M3" variant="caution" /> |
 | `plugins` | top level or environment | <Badge text="Coming in M3" variant="caution" /> |
 | `backups` | top level or environment | <Badge text="Coming in M4" variant="caution" /> |

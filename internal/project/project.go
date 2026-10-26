@@ -5,6 +5,7 @@ package project
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,6 +94,32 @@ type Loaded struct {
 	// ones are in FileSecrets too, to mask.
 	FileContents map[string]string
 	FileSecrets  []string
+}
+
+// unlistedPorts warns about ports published on every interface that firewall.public_ports does
+// not list: the port filter drops them from outside (ADR-0014).
+func unlistedPorts(a *domain.App) []string {
+	listed := map[string]bool{}
+	for _, p := range a.PublicPorts {
+		for _, proto := range []string{"tcp", "udp"} {
+			if p.Protocol == "" || p.Protocol == proto {
+				listed[fmt.Sprintf("%d/%s", p.Port, proto)] = true
+			}
+		}
+	}
+	var out []string
+	for _, s := range a.Services {
+		for _, p := range s.Spec.Ports {
+			if p.HostPort == "" || (p.HostIP != "" && p.HostIP != "0.0.0.0" && p.HostIP != "::") {
+				continue
+			}
+			if !listed[p.HostPort+"/"+p.Protocol] {
+				out = append(out, fmt.Sprintf("service %s: port %s/%s is published on every interface, but firewall.public_ports does not list it: the port filter drops it from outside. Write 127.0.0.1:%s:%d to keep it on the server, or list it",
+					s.Name, p.HostPort, p.Protocol, p.HostPort, p.ContainerPort))
+			}
+		}
+	}
+	return out
 }
 
 // ReadSecretsFile decrypts an environment's SOPS file, in memory, with the age keys sops would
@@ -222,6 +249,8 @@ func Load(ctx context.Context, o Options) (*Loaded, error) {
 	if err != nil {
 		return nil, err
 	}
+	res.App.PublicPorts = cfg.PublicPorts
+	res.Warnings = append(res.Warnings, unlistedPorts(&res.App)...)
 	files := []string{config.FileName}
 	for _, f := range proj.ComposeFiles {
 		if rel, err := filepath.Rel(o.Dir, f); err == nil {

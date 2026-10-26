@@ -44,6 +44,9 @@ type Options struct {
 	// InstallDocker installs Docker from Docker's own repository when it is missing (Debian and
 	// Ubuntu); otherwise a server without Docker is refused.
 	InstallDocker bool
+	// PortFilter installs the systemd unit that loads the published-port filter at boot, before
+	// Docker (ADR-0014). The agent writes and applies the rules themselves.
+	PortFilter bool
 }
 
 // Script returns the provisioning script, to run as root with sh.
@@ -54,12 +57,15 @@ func Script(o Options) (string, error) {
 	if strings.ContainsAny(o.AuthorizedKey, "\n\r") || o.AuthorizedKey == "" {
 		return "", errs.Internal("the deploy key is not one authorized_keys line")
 	}
-	install := "0"
+	install, portFilter := "0", "0"
 	if o.InstallDocker {
 		install = "1"
 	}
+	if o.PortFilter {
+		portFilter = "1"
+	}
 	s := &shell.Script{}
-	s.Set("DF_USER", o.User).Set("DF_KEY", o.AuthorizedKey).Set("DF_INSTALL_DOCKER", install)
+	s.Set("DF_USER", o.User).Set("DF_KEY", o.AuthorizedKey).Set("DF_INSTALL_DOCKER", install).Set("DF_PORT_FILTER", portFilter)
 	s.Body(body)
 	return s.String(), nil
 }
@@ -128,6 +134,34 @@ fi
 chmod 700 "$home/.ssh"
 chmod 600 "$home/.ssh/authorized_keys"
 chown -R "$DF_USER:$(id -g "$DF_USER")" "$home/.ssh"
+
+if [ "$DF_PORT_FILTER" = 1 ] && command -v systemctl >/dev/null 2>&1 && [ -d /etc/systemd/system ]; then
+	# the rules the agent last applied, loaded again at boot before Docker publishes anything
+	unit=/etc/systemd/system/dockflow-filter.service
+	cat >"$unit.tmp" <<'UNIT'
+[Unit]
+Description=Dockflow published-port filter
+Before=docker.service
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for f in 4 6; do t=iptables; r=/etc/dockflow/filter.rules; [ $f = 6 ] && t=ip6tables && r=/etc/dockflow/filter6.rules; [ -f $r ] && command -v $t >/dev/null || continue; $t -w -n -L DOCKER-USER >/dev/null 2>&1 || $t -w -N DOCKER-USER; $t -w -n -L DOCKFLOW-FILTER >/dev/null 2>&1 || $t -w -N DOCKFLOW-FILTER; $t-restore -w --noflush <$r; $t -w -C DOCKER-USER -j DOCKFLOW-FILTER 2>/dev/null || $t -w -I DOCKER-USER -j DOCKFLOW-FILTER; done'
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+	if ! cmp -s "$unit.tmp" "$unit"; then
+		say "installing the port filter's boot unit"
+		mv "$unit.tmp" "$unit"
+		systemctl daemon-reload
+		systemctl enable dockflow-filter.service >/dev/null 2>&1 || true
+	else
+		rm -f "$unit.tmp"
+	fi
+fi
 
 printf 'docker: %s\n' "$version"
 `

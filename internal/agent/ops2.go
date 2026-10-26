@@ -164,6 +164,9 @@ func (r *runner) destroy(ctx context.Context) events.RunFinishedData {
 	if err := r.app.Delete(); err != nil {
 		return failed(err)
 	}
+	if err := r.syncFilter(ctx); err != nil {
+		r.warn("filter.failed", err.Error())
+	}
 	r.result(map[string]any{"destroyed": r.stack, "containers": removed, "volumes": r.req.Volumes})
 	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
 }

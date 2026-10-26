@@ -70,7 +70,7 @@ No event carries a secret value. Text fields (`msg`, `line`, `error.message`) ar
 | `job.finished` | `service`, `exit_code` |
 | `health.check` | `service`, `url`, `attempt`, `status?`, `ok` |
 | `routes.applied` | `domains` |
-| `filter.applied` | `ports` (M3, with the port filter) |
+| `filter.applied` | `ports`: what the filter lets in, each `{port, protocol?, from?, why}`; `why` is `SSH`, `the switch` or the stack that lists it |
 | `hook.started` | `phase`, `name`, `kind` (`local`, `host`, `exec`), `target` |
 | `hook.log` | `name`, `target`, `line` |
 | `hook.finished` | `name`, `target`, `exit_code`, `fatal` |

@@ -63,8 +63,8 @@ Exit criteria: **shawiizz.dev and Dockflow's docs site deploy with v2 in product
 - **Provisioning:** the full `server init` (interactive, hardening, `--nginx`), `server cloud-init`, `check`, `connection`, `status`, `edge`, `upgrade`.
 - **Edges:** `cloudflare` (`none` shipped with M2); route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks, (domain, path) uniqueness.
 - **Plugins:** the project's own and the built-in `nginx` and `systemd`, plus `plugins list`.
-- **Security:** the published-port filter with `public_ports` and `from`, and the Cloudflare ranges timer.
-- **Secrets:** Compose `secrets:` and `configs:`, the SOPS file and the `secrets` commands.
+- **Security:** the published-port filter with `public_ports` and `from` (done), and the Cloudflare ranges timer.
+- **Secrets:** Compose `secrets:` and `configs:`, the SOPS file and the `secrets` commands (done).
 - **Self-healing:** the watchdog.
 - **Shared servers:** shared networks and volume plugins.
 - **`init`** with CI workflows.

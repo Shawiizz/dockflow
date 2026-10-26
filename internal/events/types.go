@@ -35,6 +35,7 @@ const (
 	HookFinished     = "hook.finished"
 	JobFinished      = "job.finished"
 	RoutesApplied    = "routes.applied"
+	FilterApplied    = "filter.applied"
 	RollbackStarted  = "rollback.started"
 	RollbackFinished = "rollback.finished"
 	CancelRequested  = "cancel.requested"

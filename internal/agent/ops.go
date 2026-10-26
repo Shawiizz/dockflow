@@ -222,7 +222,15 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 	if err != nil {
 		return failed(err)
 	}
-	srv := state.Server{Name: r.req.Server, Edge: edge, DockflowVersion: r.req.DockflowVersion, SwitchListen: listen, TrustedProxies: trusted}
+	srv := state.Server{Name: r.req.Server, Edge: edge, DockflowVersion: r.req.DockflowVersion, SwitchListen: listen, TrustedProxies: trusted,
+		Filter: !r.req.NoPortFilter, SSHPort: r.req.SSHPort}
+	previous, err := r.Store.Server()
+	if err != nil {
+		return failed(err)
+	}
+	if previous != nil && srv.SSHPort == 0 {
+		srv.SSHPort = previous.SSHPort
+	}
 
 	// the registry first: it needs no network, and the switch's ports are the likelier failure
 	if r.req.Registry {
@@ -279,6 +287,20 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 		if err := r.Switch.Apply(ctx, cfg); err != nil {
 			return failed(err)
 		}
+	}
+	switch {
+	case srv.Filter:
+		if err := r.syncFilter(ctx); err != nil {
+			return failed(err)
+		}
+	case previous != nil && previous.Filter:
+		// --no-port-filter on a server that had it: an empty chain lets everything in
+		if err := r.clearFilter(ctx); err != nil {
+			return failed(err)
+		}
+	}
+	if s, err := r.Store.Server(); err == nil && s != nil {
+		srv = *s
 	}
 	r.result(srv)
 	return events.RunFinishedData{Outcome: events.OutcomeSuccess}

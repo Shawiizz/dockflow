@@ -115,6 +115,11 @@ type Server struct {
 	TrustedProxies  []string `json:"trusted_proxies,omitempty"`
 	RegistryImage   string   `json:"registry_image,omitempty"`
 	DockflowVersion string   `json:"dockflow_version"`
+	// Filter tells whether the published-port filter is on (ADR-0014); SSHPort is let in, and
+	// FilterRules is the digest of the rules last applied.
+	Filter      bool   `json:"filter,omitempty"`
+	SSHPort     int    `json:"ssh_port,omitempty"`
+	FilterRules string `json:"filter_rules,omitempty"`
 }
 
 // Server reads server.json; nil when the server was never initialised.
