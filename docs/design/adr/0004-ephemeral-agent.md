@@ -1,7 +1,7 @@
 # ADR-0004: Deploys run in an ephemeral agent container on the server
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (single server)
+- Date: 2026-10-25, revised 2026-10-26 (single server; read commands that need the state files run a read-only agent)
 
 ## Context
 
@@ -18,9 +18,9 @@ A permanent agent on the server would fix this, but it is a service to secure, u
 The CLI computes the plan, then hands it to an **agent** that runs on the server for the duration of the run and exits.
 
 1. The CLI connects to the server over SSH and reaches its Docker socket through SSH stream forwarding ([ADR-0005](0005-engine-api.md)).
-2. If the server does not have the image `dockflow/agent:<version>`, the CLI creates it with the Engine API's image import. It sends a tar holding the Linux binary of its own version for the server's architecture, with the entrypoint set to that binary. No registry is involved. How the CLI obtains that binary is in [ADR-0020](0020-releasing-dockflow.md).
+2. If the server does not have the image `dockflow/agent:<version>` (`dockflow/agent:dev-<sha256 of the binary, 12 characters>` for development builds), the CLI creates it with the Engine API's image import. It sends a tar holding the Linux binary of its own version for the server's architecture, with the entrypoint set to that binary. No registry is involved. How the CLI obtains that binary is in [ADR-0020](0020-releasing-dockflow.md).
 3. The CLI creates a container `dockflow-run-<run-id>` from that image. The container:
-   - mounts the Docker socket and `/var/lib/dockflow`, where the state lives ([ADR-0007](0007-state-on-the-server.md));
+   - mounts the Docker socket, `/var/lib/dockflow`, where the state lives ([ADR-0007](0007-state-on-the-server.md)), and the volume holding the switch's admin socket ([ADR-0011](0011-switch-and-edge.md));
    - is labelled `dockflow.kind=run`.
 4. The CLI attaches to the container's stdin and writes one input document: the plan, the secret values it needs and the files to upload. It then closes stdin, so secrets never appear in the container's configuration, environment or logs.
 5. The agent applies the plan through the local socket and writes [events](../spec/events-v1.md) to stdout, one JSON object per line. The CLI renders them.
@@ -31,7 +31,7 @@ The CLI computes the plan, then hands it to an **agent** that runs on the server
    - the agent is never killed by the CLI.
 8. Finished run containers are kept for `dockflow attach` and inspection. The next run removes all but the 10 most recent.
 
-Read-only commands (`status`, `releases`, `logs`, `ps`) do not start an agent: the CLI calls the server's Docker API directly. Interactive commands (`exec`, `ssh`) use the API or SSH directly.
+Read commands that need the state files (`status`, `releases`, `version <env>`, `lock status`) run an agent too, because `/var/lib/dockflow` is readable by root only. That agent takes no lock and changes nothing, and its result arrives as a `result` event. Commands that need only Docker (`logs`, `ps`) call the server's Docker API directly. Interactive commands (`exec`, `ssh`) use the API or SSH directly.
 
 ## Consequences
 
@@ -49,4 +49,4 @@ Read-only commands (`status`, `releases`, `logs`, `ps`) do not start an agent: t
 
 ## Open questions
 
-- Whether the input document goes through stdin attach or through a file in `/var/lib/dockflow` readable by root only. Stdin is preferred; M1 confirms it holds up for large uploads on a slow connection.
+- Whether the input document goes through stdin attach or through a file in `/var/lib/dockflow` readable by root only. M1 uses stdin for the run document. Uploads (M2) confirm whether it holds up for large payloads on a slow connection.

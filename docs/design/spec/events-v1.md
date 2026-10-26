@@ -81,6 +81,7 @@ No event carries a secret value. Text fields (`msg`, `line`, `error.message`) ar
 | `rollback.finished` | `ok` |
 | `cancel.requested` | `by` (`signal`, `cancel`) |
 | `log` | `line` (anything else worth showing) |
+| `result` | The document a read operation returns (`status`, `releases`, `lock`), as its data. The CLI prints it, alone, with `--json` |
 | `run.finished` | `outcome`, `exit_code`, `release_seq?`, `duration_ms`, `error?` |
 
 `outcome` is one of: `success`, `noop`, `rolled_back`, `failed`, `cancelled`, `lock_lost`, `hook_failed`. `exit_code` is the [CLI's exit code](cli-v1.md#exit-codes) for that outcome.

@@ -1,0 +1,25 @@
+{
+  "app": "shop",
+  "env": "production",
+  "fingerprint": "sha256:e4bfaba603059e3b15a7d50e3146537fc9ac91a82d2ee7b7c171cc831bd0afee",
+  "actions": [
+    {
+      "id": "01-service.update-web",
+      "kind": "service.update",
+      "target": "web",
+      "reason": "1 of 2 containers running",
+      "strategy": "switch"
+    },
+    {
+      "id": "02-service.remove-db",
+      "kind": "service.remove",
+      "target": "db",
+      "reason": "no longer in the Compose files"
+    }
+  ],
+  "summary": {
+    "create": 0,
+    "update": 1,
+    "remove": 1
+  }
+}

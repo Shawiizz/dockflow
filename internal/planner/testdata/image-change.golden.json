@@ -1,0 +1,22 @@
+{
+  "app": "shop",
+  "env": "production",
+  "fingerprint": "sha256:771e40fff1d1be9049bd3ce3180716ffea582e3d42fe864c72ddf685e4e1ff60",
+  "actions": [
+    {
+      "id": "01-service.update-web",
+      "kind": "service.update",
+      "target": "web",
+      "reason": "image whoami@sha256:bbbb → whoami@sha256:cccc",
+      "strategy": "switch"
+    }
+  ],
+  "unchanged": [
+    "db"
+  ],
+  "summary": {
+    "create": 0,
+    "update": 1,
+    "remove": 0
+  }
+}

@@ -1,0 +1,395 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"strings"
+	"text/tabwriter"
+
+	"github.com/spf13/cobra"
+
+	"github.com/Shawiizz/dockflow/internal/agent"
+	"github.com/Shawiizz/dockflow/internal/domain"
+	"github.com/Shawiizz/dockflow/internal/errs"
+	"github.com/Shawiizz/dockflow/internal/events"
+	"github.com/Shawiizz/dockflow/internal/launcher"
+	"github.com/Shawiizz/dockflow/internal/project"
+	"github.com/Shawiizz/dockflow/internal/version"
+)
+
+// quiet keeps a read command's output to its document: only warnings and errors are shown,
+// and nothing but the document with --json.
+func (a *app) quiet() {
+	var sink events.Sink = events.SinkFunc(func(e events.Event) {
+		if e.Level == events.Warn || e.Level == events.Error {
+			if e.Type != events.RunFinished {
+				a.human.Emit(e)
+			}
+		}
+	})
+	if a.json {
+		sink = events.SinkFunc(func(events.Event) {})
+	}
+	a.emitter = events.NewEmitter(launcher.NewRunID(timeNow()), sink, a.emitter.Masker())
+}
+
+// read runs a read-only agent operation and decodes its result into v.
+func (a *app) read(cmd *cobra.Command, env, op string, v any, tweak func(*agent.Request)) (*session, error) {
+	a.quiet()
+	s, err := a.connect(cmd.Context(), env, "")
+	if err != nil {
+		return nil, err
+	}
+	req := s.request(op)
+	if tweak != nil {
+		tweak(&req)
+	}
+	res, err := s.runAgent(cmd.Context(), req)
+	if err != nil {
+		s.Close()
+		return nil, err
+	}
+	if len(res.Results) == 0 {
+		s.Close()
+		return nil, errs.Internal("the agent returned no result")
+	}
+	if err := json.Unmarshal(res.Results[len(res.Results)-1], v); err != nil {
+		s.Close()
+		return nil, errs.Internal("cannot read the agent's result: %v", err)
+	}
+	return s, nil
+}
+
+func (a *app) statusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status [<env>]",
+		Short: "Current release, services and containers; without <env>, every environment",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			envs := args
+			if len(envs) == 0 {
+				raw, _, err := project.Read(a.dir, "")
+				if raw == nil {
+					return err
+				}
+				envs = raw.EnvNames()
+			}
+			var all []agent.Status
+			for _, env := range envs {
+				var st agent.Status
+				s, err := a.read(cmd, env, agent.OpStatus, &st, nil)
+				if err != nil {
+					return err
+				}
+				s.Close()
+				all = append(all, st)
+			}
+			var doc any = all
+			if len(args) == 1 {
+				doc = all[0]
+			}
+			a.printResult(doc, func(w io.Writer) {
+				for i, st := range all {
+					if i > 0 {
+						fmt.Fprintln(w)
+					}
+					renderStatus(w, st)
+				}
+			})
+			return nil
+		},
+	}
+}
+
+func (a *app) listCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "list", Short: "List environments and services"}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "envs",
+		Short: "The environments of dockflow.yml",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			raw, _, err := project.Read(a.dir, "")
+			if raw == nil {
+				return err
+			}
+			type envDoc struct {
+				Name      string `json:"name"`
+				TagSuffix string `json:"tag_suffix"`
+			}
+			var list []envDoc
+			for _, e := range raw.EnvNames() {
+				list = append(list, envDoc{Name: e, TagSuffix: raw.TagSuffix(e)})
+			}
+			a.printResult(list, func(w io.Writer) {
+				tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+				fmt.Fprintln(tw, "ENVIRONMENT\tCI TAGS")
+				for _, e := range list {
+					tags := "x.y.z"
+					if e.TagSuffix != "" {
+						tags = "x.y.z-" + e.TagSuffix
+					}
+					fmt.Fprintf(tw, "%s\t%s\n", e.Name, tags)
+				}
+				tw.Flush()
+			})
+			return nil
+		},
+	}, &cobra.Command{
+		Use:   "services [<env>]",
+		Short: "The services of an environment, as Dockflow will deploy them",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			l, err := a.load(cmd.Context(), envArg(args), "")
+			if err != nil {
+				return err
+			}
+			a.printResult(l.App.Services, func(w io.Writer) {
+				tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+				fmt.Fprintln(tw, "SERVICE\tIMAGE\tREPLICAS\tSTRATEGY\tROUTES")
+				for _, s := range l.App.Services {
+					fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n", s.Name, s.Spec.Image, s.Replicas, s.Strategy, strings.Join(routeList(s.Routes), " "))
+				}
+				tw.Flush()
+			})
+			return nil
+		},
+	})
+	return cmd
+}
+
+func routeList(rs []domain.Route) []string {
+	var out []string
+	for _, r := range rs {
+		for _, d := range r.Domains {
+			out = append(out, d+r.Path)
+		}
+	}
+	return out
+}
+
+func renderStatus(w io.Writer, st agent.Status) {
+	fmt.Fprintf(w, "%s %s\n", st.App, st.Env)
+	if st.Current == nil {
+		fmt.Fprintln(w, "  never deployed")
+	} else {
+		c := st.Current
+		fmt.Fprintf(w, "  release %d, version %s, deployed %s by %s\n", c.Seq, c.Version, c.FinishedAt, c.CreatedBy.User)
+	}
+	if st.State != nil && st.State.Degraded {
+		fmt.Fprintln(w, "  DEGRADED: the last deploy failed and was not rolled back")
+	}
+	if st.Lock != nil {
+		fmt.Fprintf(w, "  locked by %s since %s: %s\n", st.Lock.By, st.Lock.Since.Format("2006-01-02 15:04"), st.Lock.Message)
+	}
+	if len(st.Services) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "SERVICE\tRUNNING\tRELEASE\tSTRATEGY\tROUTES")
+	for _, svc := range st.Services {
+		fmt.Fprintf(tw, "%s\t%d/%d\t%d\t%s\t%s\n", svc.Name, svc.Running, svc.Desired, svc.Release, svc.Strategy, strings.Join(svc.Domains, " "))
+	}
+	tw.Flush()
+}
+
+type releasesResult struct {
+	State    *domain.EnvRecord      `json:"state"`
+	Releases []agent.ReleaseSummary `json:"releases"`
+}
+
+func (a *app) releasesCmd() *cobra.Command {
+	var n int
+	cmd := &cobra.Command{
+		Use:   "releases [<env>]",
+		Short: "Release history",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var r releasesResult
+			s, err := a.read(cmd, envArg(args), agent.OpReleases, &r, nil)
+			if err != nil {
+				return err
+			}
+			defer s.Close()
+			if n > 0 && len(r.Releases) > n {
+				r.Releases = r.Releases[:n]
+			}
+			a.printResult(r, func(w io.Writer) {
+				tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+				fmt.Fprintln(tw, "SEQ\tVERSION\tSTATUS\tCREATED\tBY\t")
+				for _, rel := range r.Releases {
+					mark := ""
+					if r.State != nil && rel.Seq == r.State.Current {
+						mark = "← current"
+					}
+					status := rel.Status
+					if rel.RollbackOf > 0 {
+						status += fmt.Sprintf(" (rollback to %d)", rel.RollbackOf)
+					}
+					fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\n", rel.Seq, rel.Version, status, rel.CreatedAt, rel.CreatedBy.User, mark)
+				}
+				tw.Flush()
+			})
+			return nil
+		},
+	}
+	cmd.Flags().IntVarP(&n, "count", "n", 0, "show the n most recent releases")
+	return cmd
+}
+
+func (a *app) versionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version [<env>]",
+		Short: "The deployed version; without <env>, the CLI's",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				a.printResult(map[string]string{"version": version.Version}, func(w io.Writer) {
+					fmt.Fprintf(w, "dockflow %s\n", version.Version)
+				})
+				return nil
+			}
+			var st agent.Status
+			s, err := a.read(cmd, args[0], agent.OpStatus, &st, nil)
+			if err != nil {
+				return err
+			}
+			defer s.Close()
+			if st.Current == nil {
+				return errs.Newf("env.never_deployed", errs.ExitPlan, "%s was never deployed", st.Env)
+			}
+			a.printResult(map[string]any{"version": st.Current.Version, "release": st.Current.Seq}, func(w io.Writer) {
+				fmt.Fprintln(w, st.Current.Version)
+			})
+			return nil
+		},
+	}
+}
+
+func (a *app) lockCmd() *cobra.Command {
+	var message string
+	var force bool
+	cmd := &cobra.Command{
+		Use:       "lock status|acquire|release [<env>]",
+		Short:     "Hold an environment's lock by hand, for a maintenance window",
+		Args:      cobra.RangeArgs(1, 2),
+		ValidArgs: []string{"status", "acquire", "release"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			op := map[string]string{"status": agent.OpLockStatus, "acquire": agent.OpLockAcquire, "release": agent.OpLockRelease}[args[0]]
+			if op == "" {
+				return errs.Usage("lock takes status, acquire or release, not %q", args[0])
+			}
+			var v map[string]any
+			s, err := a.read(cmd, envArg(args[1:]), op, &v, func(r *agent.Request) {
+				r.Force = force
+				r.Lock = &domain.LockInfo{Message: message}
+			})
+			if err != nil {
+				return err
+			}
+			defer s.Close()
+			a.printResult(v, func(w io.Writer) {
+				switch args[0] {
+				case "acquire":
+					fmt.Fprintf(w, "%s is locked: deploys are refused until `dockflow lock release`\n", s.loaded.Config.Env)
+				case "release":
+					fmt.Fprintf(w, "%s is unlocked\n", s.loaded.Config.Env)
+				default:
+					if m, ok := v["manual"].(map[string]any); ok && m != nil {
+						fmt.Fprintf(w, "locked by %v since %v: %v\n", m["by"], m["since"], m["message"])
+					} else {
+						fmt.Fprintln(w, "not locked")
+					}
+				}
+			})
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&message, "message", "m", "", "why the environment is locked")
+	cmd.Flags().BoolVar(&force, "force", false, "take over someone else's manual lock")
+	return cmd
+}
+
+func (a *app) validateCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "validate [<env>]",
+		Short: "Check everything that can be checked without a server",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			l, err := a.load(cmd.Context(), envArg(args), "")
+			if err != nil {
+				return err
+			}
+			a.printResult(map[string]any{"valid": true, "env": l.Config.Env, "warnings": l.Warnings}, func(w io.Writer) {
+				for _, warn := range l.Warnings {
+					fmt.Fprintf(w, "! %s\n", warn)
+				}
+				fmt.Fprintf(w, "%s: valid, %d services\n", l.Config.Env, len(l.App.Services))
+			})
+			return nil
+		},
+	}
+}
+
+func (a *app) configCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "config", Short: "The resolved configuration"}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "show [<env>]",
+		Short: "The resolved configuration and services, secrets masked",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			l, err := a.load(cmd.Context(), envArg(args), "")
+			if err != nil {
+				return err
+			}
+			doc := map[string]any{
+				"app": l.Config.App, "env": l.Config.Env, "version": l.Version,
+				"settings": map[string]any{"releases": map[string]int{"keep": l.Config.Keep}, "on_failure": l.Config.OnFailure},
+				"secrets":  l.Secrets.Describe(), "services": l.App.Services, "networks": l.App.Networks, "volumes": l.App.Volumes,
+			}
+			b, _ := json.MarshalIndent(doc, "", "  ")
+			fmt.Fprintln(a.stdout, a.mask(string(b)))
+			return nil
+		},
+	})
+	return cmd
+}
+
+func (a *app) serverCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "server", Short: "Manage servers"}
+	var edge, switchImage string
+	initCmd := &cobra.Command{
+		Use:   "init [<env>]",
+		Short: "Install the switch on an environment's server",
+		Long:  "Installs or updates the switch on the server of an environment, reached as for a deploy. Provisioning a bare server comes in a later version.",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			s, err := a.connect(cmd.Context(), envArg(args), "")
+			if err != nil {
+				return err
+			}
+			defer s.Close()
+			req := s.request(agent.OpServerInit)
+			req.Stack = ""
+			req.Edge = edge
+			req.SwitchImage = switchImage
+			_, err = s.runAgent(cmd.Context(), req)
+			if err == nil && !a.json {
+				fmt.Fprintf(a.stdout, "✓ %s is ready (edge: %s)\n", s.target.Server.Name, edgeName(edge))
+			}
+			return err
+		},
+	}
+	initCmd.Flags().StringVar(&edge, "edge", "builtin", "how traffic reaches the switch: builtin or none")
+	initCmd.Flags().StringVar(&switchImage, "switch-image", "", "the Caddy image of the switch (default caddy:2, pinned by digest)")
+	cmd.AddCommand(initCmd)
+	return cmd
+}
+
+func edgeName(e string) string {
+	if e == "" {
+		return "builtin"
+	}
+	return e
+}

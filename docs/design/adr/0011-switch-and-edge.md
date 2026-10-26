@@ -1,7 +1,7 @@
 # ADR-0011: The switch and the edge: a Dockflow-managed Caddy in front of every app, any proxy in front of it
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (single server: the switch handles zero-downtime transitions; any front proxy, nginx included, points at it once)
+- Date: 2026-10-25, revised 2026-10-26 (single server: the switch handles zero-downtime transitions; any front proxy, nginx included, points at it once; the admin API on a unix socket)
 
 ## Context
 
@@ -27,7 +27,8 @@ The project owner asked how proxies should be handled. There are three options:
 - It is installed by `server init` and upgraded by `dockflow server upgrade`.
 - It runs on bridge networks. The agent connects it live (`docker network connect`, no restart) to the network of each app that has routes.
 - Upstreams are the current release's container names, which Docker's DNS resolves inside those networks, so a container restarted by Docker keeps working.
-- Its admin API listens only on the internal `dockflow-system` network, which the agent joins.
+- Its admin API listens only on a unix socket, in the volume `dockflow-switch-admin`, which only agents mount. Containers of apps share networks with the switch, so an admin API on a network would be reachable by them.
+- Caddy saves each configuration it loads and resumes it when it restarts, so the switch serves the same routes after a reboot, without an agent.
 
 **During a deploy** (`switch` strategy):
 1. The new containers become healthy.
@@ -35,7 +36,7 @@ The project owner asked how proxies should be handled. There are three options:
 3. Requests in flight on the old containers finish within the drain time (default 30 s, `x-dockflow.rollout.drain`). WebSocket connections still open after that are closed.
 4. The old containers are stopped.
 
-**Configuration.** It is rebuilt from the routes of the current release of every app on the server ([ADR-0007](0007-state-on-the-server.md)). `dockflow server proxy sync` rebuilds it by hand.
+**Configuration.** It is the union of the routes of every app on the server. Each app's routes are recorded in `switch/routes/<stack>.json` when the agent changes them, under a server-wide lock, so two apps deploying at the same time never undo each other's switch ([state](../spec/state-v1.md)). `dockflow server proxy sync` rebuilds it from the current releases by hand.
 
 ### The edge
 

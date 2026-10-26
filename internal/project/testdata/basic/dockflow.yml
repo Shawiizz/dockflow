@@ -1,0 +1,13 @@
+version: 1
+app: shop
+environments:
+  production:
+    vars:
+      DOMAIN: shop.example.com
+      WEB_REPLICAS: "2"
+    deploy:
+      timeout: 5m
+  staging:
+    vars:
+      DOMAIN: staging.example.com
+      WEB_REPLICAS: "1"

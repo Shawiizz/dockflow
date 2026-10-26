@@ -65,6 +65,6 @@ Swarm also limits Compose, even on one node:
   - the 1.x branch measured its cost.
 - **Two orchestrators selectable by configuration.** Rejected for the same reason the `k8s-rewrite` branch stopped: too much to maintain without bugs.
 
-## Open questions
+## Minimum Docker version
 
-- The minimum Docker Engine version. Target: Docker 27 and later. Decided in M1.
+Decided in M1: **Docker Engine 27 or later**, on Linux. The CLI checks it when it connects (`server.docker_too_old`, exit code 4). The Engine API version is negotiated; the features Dockflow relies on (several networks at container creation, health status in container lists) need API 1.44 or later. CI runs the e2e suite on Docker 27 and on the latest release.

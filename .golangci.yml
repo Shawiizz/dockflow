@@ -1,0 +1,38 @@
+version: "2"
+
+linters:
+  default: standard
+  settings:
+    errcheck:
+      # best-effort cleanup and output: a failure there changes nothing a caller could act on
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fscanln
+        - io.Copy
+        - (*text/tabwriter.Writer).Flush
+        - (*archive/tar.Writer).WriteHeader
+        - (*archive/tar.Writer).Write
+        - (*archive/tar.Writer).Close
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+        - (io.WriteCloser).Close
+        - (net.Conn).Close
+        - (*golang.org/x/crypto/ssh.Client).Close
+        - (golang.org/x/crypto/ssh.Conn).Close
+        - (*github.com/moby/moby/client.Client).Close
+        - (*github.com/Shawiizz/dockflow/internal/engine/docker.Engine).Close
+        - (*github.com/Shawiizz/dockflow/internal/state.Lock).Release
+        - (*golang.org/x/crypto/ssh.Session).Close
+        - (*os.File).Close
+        - (*compress/gzip.Writer).Write
+        - (*compress/gzip.Writer).Close
+        - os.Remove
+        - syscall.Flock
+  exclusions:
+    rules:
+      # the e2e harness and its SSH server only drive tests
+      - path: test/e2e/
+        linters: [errcheck]
+      - path: _test\.go
+        linters: [errcheck]

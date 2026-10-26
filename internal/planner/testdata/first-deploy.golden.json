@@ -1,0 +1,44 @@
+{
+  "app": "shop",
+  "env": "production",
+  "fingerprint": "sha256:59e4f9d60d7b7a35babe40ea1a830d2e4034be25489796721e828b502866d4ef",
+  "actions": [
+    {
+      "id": "01-network.create-shop-production_default",
+      "kind": "network.create",
+      "target": "shop-production_default",
+      "reason": "does not exist"
+    },
+    {
+      "id": "02-volume.create-shop-production_pgdata",
+      "kind": "volume.create",
+      "target": "shop-production_pgdata",
+      "reason": "does not exist"
+    },
+    {
+      "id": "03-service.create-db",
+      "kind": "service.create",
+      "target": "db",
+      "reason": "new service",
+      "strategy": "stop-first"
+    },
+    {
+      "id": "04-service.create-web",
+      "kind": "service.create",
+      "target": "web",
+      "reason": "new service",
+      "strategy": "switch"
+    },
+    {
+      "id": "05-routes.apply-shop-production",
+      "kind": "routes.apply",
+      "target": "shop-production",
+      "reason": "routes changed"
+    }
+  ],
+  "summary": {
+    "create": 2,
+    "update": 0,
+    "remove": 0
+  }
+}

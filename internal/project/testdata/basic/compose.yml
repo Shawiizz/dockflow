@@ -1,0 +1,36 @@
+services:
+  web:
+    image: traefik/whoami:latest
+    environment:
+      DATABASE_URL: postgres://app:${DB_PASSWORD}@db/app
+      ENVIRONMENT: ${DOCKFLOW_ENV}
+    healthcheck:
+      test: ["CMD", "/whoami", "--help"]
+      interval: 5s
+    deploy:
+      replicas: ${WEB_REPLICAS}
+    depends_on:
+      db:
+        condition: service_healthy
+    x-dockflow:
+      routes:
+        - domains: ["${DOMAIN}"]
+          port: 80
+  worker:
+    image: busybox:1.37
+    command: ["sh", "-c", "sleep infinity"]
+    depends_on: [db]
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+    x-dockflow:
+      stateful: true
+volumes:
+  pgdata: {}

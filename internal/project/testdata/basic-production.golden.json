@@ -1,0 +1,150 @@
+{
+  "App": {
+    "name": "shop",
+    "env": "production",
+    "stack": "shop-production",
+    "services": [
+      {
+        "name": "db",
+        "strategy": "stop-first",
+        "replicas": 1,
+        "spec": {
+          "image": "postgres:17",
+          "env": [
+            "POSTGRES_PASSWORD=from-ci"
+          ],
+          "ports": [
+            {
+              "host_ip": "127.0.0.1",
+              "host_port": "5432",
+              "container_port": 5432,
+              "protocol": "tcp"
+            }
+          ],
+          "mounts": [
+            {
+              "type": "volume",
+              "source": "shop-production_pgdata",
+              "target": "/var/lib/postgresql/data"
+            }
+          ],
+          "networks": [
+            {
+              "network": "shop-production_default",
+              "aliases": [
+                "db"
+              ]
+            }
+          ],
+          "healthcheck": {
+            "test": [
+              "CMD-SHELL",
+              "pg_isready"
+            ]
+          },
+          "restart": "unless-stopped",
+          "resources": {}
+        },
+        "pull_policy": "missing",
+        "stateful": true,
+        "drain": "30s",
+        "health_grace": "10s"
+      },
+      {
+        "name": "web",
+        "strategy": "switch",
+        "replicas": 2,
+        "spec": {
+          "image": "traefik/whoami:latest",
+          "env": [
+            "DATABASE_URL=postgres://app:from-ci@db/app",
+            "ENVIRONMENT=production"
+          ],
+          "networks": [
+            {
+              "network": "shop-production_default",
+              "aliases": [
+                "web"
+              ]
+            }
+          ],
+          "healthcheck": {
+            "test": [
+              "CMD",
+              "/whoami",
+              "--help"
+            ],
+            "interval": "5s"
+          },
+          "restart": "unless-stopped",
+          "resources": {}
+        },
+        "pull_policy": "missing",
+        "routes": [
+          {
+            "domains": [
+              "shop.example.com"
+            ],
+            "path": "/",
+            "port": 80,
+            "tls": true
+          }
+        ],
+        "depends_on": [
+          {
+            "service": "db",
+            "condition": "service_healthy"
+          }
+        ],
+        "drain": "30s",
+        "health_grace": "10s"
+      },
+      {
+        "name": "worker",
+        "strategy": "start-first",
+        "replicas": 1,
+        "spec": {
+          "image": "busybox:1.37",
+          "command": [
+            "sh",
+            "-c",
+            "sleep infinity"
+          ],
+          "networks": [
+            {
+              "network": "shop-production_default",
+              "aliases": [
+                "worker"
+              ]
+            }
+          ],
+          "restart": "unless-stopped",
+          "resources": {}
+        },
+        "pull_policy": "missing",
+        "depends_on": [
+          {
+            "service": "db",
+            "condition": "service_started"
+          }
+        ],
+        "drain": "30s",
+        "health_grace": "10s"
+      }
+    ],
+    "networks": [
+      {
+        "key": "default",
+        "name": "shop-production_default"
+      }
+    ],
+    "volumes": [
+      {
+        "key": "pgdata",
+        "name": "shop-production_pgdata"
+      }
+    ]
+  },
+  "Warnings": null,
+  "Version": "0123456"
+}

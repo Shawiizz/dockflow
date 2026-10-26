@@ -1,0 +1,860 @@
+package agent
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Shawiizz/dockflow/internal/domain"
+	"github.com/Shawiizz/dockflow/internal/engine"
+	"github.com/Shawiizz/dockflow/internal/errs"
+	"github.com/Shawiizz/dockflow/internal/events"
+	"github.com/Shawiizz/dockflow/internal/planner"
+	"github.com/Shawiizz/dockflow/internal/proxy"
+	"github.com/Shawiizz/dockflow/internal/state"
+)
+
+// plan computes and shows the plan, changing nothing: no lock, no pull.
+func (r *runner) plan(ctx context.Context) events.RunFinishedData {
+	if r.req.Desired == nil {
+		return failed(errs.Usage("plan needs the desired app"))
+	}
+	desired := *r.req.Desired
+	if err := r.resolve(ctx, &desired, false); err != nil {
+		return failed(err)
+	}
+	o, err := observe(ctx, r.Engine, r.app, r.stack)
+	if err != nil {
+		return failed(err)
+	}
+	if err := r.checkSwitch(ctx, &desired); err != nil {
+		return failed(err)
+	}
+	p, err := planner.Plan(desired, o.actual)
+	if err != nil {
+		return failed(err)
+	}
+	r.showPlan(p)
+	if p.Empty() {
+		return events.RunFinishedData{Outcome: events.OutcomeNoop}
+	}
+	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
+}
+
+func (r *runner) showPlan(p *domain.Plan) {
+	if p.Empty() {
+		r.ev.Info(events.PlanEmpty, "nothing to change", nil)
+		return
+	}
+	r.ev.Info(events.PlanComputed, fmt.Sprintf("%d to create, %d to update, %d to remove",
+		p.Summary.Create, p.Summary.Update, p.Summary.Remove), p)
+}
+
+// deploy applies the desired app (deploy) or a recorded release (rollback) under the lock.
+func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
+	l, err := r.lock(ctx)
+	if err != nil {
+		return failed(err)
+	}
+	defer r.unlock(l)
+
+	if err := r.recover(ctx); err != nil {
+		return failed(err)
+	}
+
+	var desired domain.App
+	rollbackOf := 0
+	version, source := r.req.Version, r.req.Source
+	if r.req.Op == OpRollback {
+		target, err := r.rollbackTarget()
+		if err != nil {
+			return failed(err)
+		}
+		desired, rollbackOf, version, source = target.Desired, target.Seq, target.Version, target.Source
+		r.ev.Info(events.Log, fmt.Sprintf("rolling back to release %d (%s)", target.Seq, target.Version), map[string]any{"line": "target release " + strconv.Itoa(target.Seq)})
+	} else {
+		if r.req.Desired == nil {
+			return failed(errs.Usage("deploy needs the desired app"))
+		}
+		desired = *r.req.Desired
+	}
+	if err := r.resolve(ctx, &desired, true); err != nil {
+		return failed(err)
+	}
+	if err := r.checkSwitch(ctx, &desired); err != nil {
+		return failed(err)
+	}
+	o, err := observe(ctx, r.Engine, r.app, r.stack)
+	if err != nil {
+		return failed(err)
+	}
+	p, err := planner.Plan(desired, o.actual)
+	if err != nil {
+		return failed(err)
+	}
+	r.showPlan(p)
+	if r.req.Fingerprint != "" && r.req.Fingerprint != p.Fingerprint {
+		return failed(errs.Plan("plan.stale", "the server changed since the plan was computed").
+			WithHint("compute the plan again"))
+	}
+	if p.Empty() {
+		return events.RunFinishedData{Outcome: events.OutcomeNoop}
+	}
+	if ctx.Err() != nil {
+		return failed(interrupted())
+	}
+
+	// the release record comes first, so a dead agent leaves a trace (state-v1.md)
+	env := o.actual.Env
+	if env == nil {
+		env = &domain.EnvRecord{}
+	}
+	seq := env.LastSeq + 1
+	rel := &domain.Release{
+		App: desired.Name, Env: desired.Env, Server: r.req.Server, Seq: seq, Version: version,
+		Status: domain.StatusApplying, Run: r.req.Run, CreatedAt: r.Now().UTC(), CreatedBy: r.req.Author,
+		Source: source, DockflowVersion: r.req.DockflowVersion, RollbackOf: rollbackOf, Desired: desired,
+		PlanFingerprint: p.Fingerprint,
+	}
+	if err := r.app.WriteRelease(rel); err != nil {
+		return failed(err)
+	}
+	env.LastSeq = seq
+	if err := r.app.WriteEnv(*env); err != nil {
+		return failed(err)
+	}
+	r.ev.Info(events.ReleaseCreated, fmt.Sprintf("release %d (%s)", seq, version), map[string]any{"seq": seq, "version": version})
+
+	x := newExecution(o)
+	runErr := r.execute(ctx, p, &desired, o, seq, x)
+	if runErr == nil {
+		runErr = r.drain(ctx, x)
+	}
+	if runErr == nil {
+		if err := r.commit(ctx, rel, &desired, o, x); err != nil {
+			return failed(err)
+		}
+		return events.RunFinishedData{Outcome: events.OutcomeSuccess, ReleaseSeq: seq}
+	}
+	return r.fail(ctx, rel, env, x, runErr)
+}
+
+func (r *runner) rollbackTarget() (*domain.Release, error) {
+	env, err := r.app.Env()
+	if err != nil {
+		return nil, err
+	}
+	seq := r.req.Target
+	if seq == 0 {
+		if env == nil || env.Previous == 0 {
+			return nil, errs.Plan("rollback.no_previous", "there is no previous release to roll back to").
+				WithHint("list the releases with `dockflow releases`")
+		}
+		seq = env.Previous
+	}
+	if env != nil && seq == env.Current {
+		return nil, errs.Plan("rollback.current", "release %d is the current release", seq)
+	}
+	rel, err := r.app.Release(seq)
+	if err != nil {
+		return nil, err
+	}
+	if rel == nil {
+		return nil, errs.Plan("rollback.unknown_release", "release %d does not exist or is no longer kept", seq).
+			WithHint("list the releases with `dockflow releases`")
+	}
+	if rel.Status != domain.StatusActive && rel.Status != domain.StatusSuperseded {
+		return nil, errs.Plan("rollback.not_deployable", "release %d is %s; only a release that went live can be restored", seq, rel.Status)
+	}
+	return rel, nil
+}
+
+// resolve pins each image to its content. With pull, missing images are pulled according to
+// the service's pull_policy; without, an image missing from the server stays unpinned.
+func (r *runner) resolve(ctx context.Context, a *domain.App, pull bool) error {
+	for i := range a.Services {
+		s := &a.Services[i]
+		ref := s.Spec.Image
+		if strings.HasPrefix(ref, "sha256:") {
+			continue
+		}
+		if strings.Contains(ref, "@sha256:") {
+			if !pull {
+				continue
+			}
+			// a recorded release: pull it back only when it is gone
+			ok, err := r.Engine.HasImage(ctx, ref)
+			if err != nil {
+				return err
+			}
+			if ok {
+				continue
+			}
+		}
+		policy := s.PullPolicy
+		have, err := r.Engine.HasImage(ctx, ref)
+		if err != nil {
+			return err
+		}
+		if !pull {
+			if !have || policy == "always" {
+				continue
+			}
+			policy = "never"
+		} else if (!have && policy != "never") || policy == "always" {
+			r.ev.Info(events.Log, "pulling "+ref, map[string]any{"line": "pull " + ref})
+		}
+		pinned, err := r.Engine.ResolveImage(ctx, ref, policy)
+		if err != nil {
+			return err
+		}
+		s.Spec.Image = pinned
+	}
+	return nil
+}
+
+// checkSwitch refuses routes on a server without a switch.
+func (r *runner) checkSwitch(ctx context.Context, a *domain.App) error {
+	if !a.HasRoutes() {
+		return nil
+	}
+	srv, err := r.Store.Server()
+	if err != nil {
+		return err
+	}
+	if srv != nil && srv.Edge == proxy.EdgeNone {
+		return errs.Plan("plan.routes_without_switch", "this server has no switch (edge: none), and the app declares routes").
+			WithHint("publish ports instead, or run `dockflow server init --edge builtin`")
+	}
+	cs, err := r.Engine.Containers(ctx, engine.Filter{All: true, Labels: map[string]string{domain.LabelKind: domain.KindSwitch}})
+	if err != nil {
+		return err
+	}
+	if srv == nil || r.Switch == nil || len(cs) == 0 {
+		return errs.Plan("plan.no_switch", "the app declares routes, and the server's switch is not installed").
+			WithHint("run `dockflow server init`")
+	}
+	return nil
+}
+
+// execution tracks what a run changed, to commit or undo it.
+type execution struct {
+	steps []*step
+	// serving holds the container names that serve each service now.
+	serving map[string][]string
+	// releaseOf is the release whose containers serve each service.
+	releaseOf map[string]int
+	// routesBefore is what the switch served for the app before the run.
+	routesBefore  []proxy.Route
+	routesTouched bool
+	drain         time.Duration
+}
+
+type step struct {
+	svc        *domain.Service
+	old        []engine.Container
+	created    []string // container IDs
+	newNames   []string
+	stopped    []string // old container IDs the run stopped
+	renamed    map[string]string
+	remove     bool
+	drainOld   bool
+	switchedAt time.Time
+}
+
+func newExecution(o *observed) *execution {
+	x := &execution{serving: map[string][]string{}, releaseOf: map[string]int{}}
+	for name, cs := range o.serving {
+		for _, c := range cs {
+			x.serving[name] = append(x.serving[name], c.Name)
+		}
+		x.releaseOf[name] = o.actual.Services[name].Release
+	}
+	return x
+}
+
+func (r *runner) execute(ctx context.Context, p *domain.Plan, desired *domain.App, o *observed, seq int, x *execution) error {
+	table, err := r.Store.SwitchRoutes()
+	if err != nil {
+		return err
+	}
+	x.routesBefore = table[r.stack]
+	for _, a := range p.Actions {
+		if ctx.Err() != nil {
+			return interrupted()
+		}
+		started := r.Now()
+		r.ev.Info(events.ActionStarted, actionMessage(a), map[string]any{"action": a.ID})
+		err := r.action(ctx, a, desired, o, seq, x)
+		if err != nil {
+			r.ev.Errorf(events.ActionFailed, fmt.Sprintf("%s %s failed: %v", a.Kind, a.Target, err), map[string]any{"action": a.ID, "error": errData(err)})
+			return err
+		}
+		r.ev.Info(events.ActionFinished, fmt.Sprintf("%s %s done", a.Kind, a.Target), map[string]any{"action": a.ID, "duration_ms": r.Now().Sub(started).Milliseconds()})
+	}
+	return nil
+}
+
+func actionMessage(a domain.Action) string {
+	switch a.Kind {
+	case domain.ActionCreateNetwork:
+		return "creating network " + a.Target
+	case domain.ActionCreateVolume:
+		return "creating volume " + a.Target
+	case domain.ActionCreateService:
+		return "starting " + a.Target
+	case domain.ActionUpdateService:
+		return fmt.Sprintf("updating %s (%s)", a.Target, a.Strategy)
+	case domain.ActionRemoveService:
+		return "removing " + a.Target
+	case domain.ActionRoutes:
+		return "applying routes"
+	}
+	return a.Kind + " " + a.Target
+}
+
+func (r *runner) action(ctx context.Context, a domain.Action, desired *domain.App, o *observed, seq int, x *execution) error {
+	switch a.Kind {
+	case domain.ActionCreateNetwork:
+		for _, n := range desired.Networks {
+			if n.Name == a.Target {
+				return r.Engine.CreateNetwork(ctx, n, r.stack)
+			}
+		}
+	case domain.ActionCreateVolume:
+		for _, v := range desired.Volumes {
+			if v.Name == a.Target {
+				return r.Engine.CreateVolume(ctx, v, r.stack)
+			}
+		}
+	case domain.ActionCreateService, domain.ActionUpdateService:
+		s, _ := desired.Service(a.Target)
+		return r.rollout(ctx, s, desired, o, seq, x)
+	case domain.ActionRemoveService:
+		st := &step{svc: &domain.Service{Name: a.Target}, old: o.serving[a.Target], remove: true}
+		x.steps = append(x.steps, st)
+		delete(x.serving, a.Target)
+		if err := r.setRoutes(ctx, desired, x); err != nil {
+			return err
+		}
+		return r.stopOld(ctx, st, nil)
+	case domain.ActionRoutes:
+		return r.setRoutes(ctx, desired, x)
+	}
+	return nil
+}
+
+// rollout moves one service to the new release with its strategy (ADR-0010).
+func (r *runner) rollout(ctx context.Context, s *domain.Service, desired *domain.App, o *observed, seq int, x *execution) error {
+	st := &step{svc: s, old: o.serving[s.Name], renamed: map[string]string{}}
+	x.steps = append(x.steps, st)
+	oldRelease := o.actual.Services[s.Name].Release
+
+	switch s.Strategy {
+	case domain.StrategyStopFirst:
+		if err := r.stopOld(ctx, st, s.Spec.StopGrace); err != nil {
+			return err
+		}
+		if s.ContainerName != "" {
+			// the new container takes the fixed name; the old one keeps a release-scoped name until commit
+			for _, c := range st.old {
+				tmp := domain.ContainerName(r.stack, s.Name, oldRelease, max(number(c), 1))
+				if err := r.Engine.Rename(ctx, c.ID, tmp); err != nil {
+					return err
+				}
+				st.renamed[c.ID] = c.Name
+			}
+		}
+		if err := r.startNew(ctx, s, seq, st); err != nil {
+			return err
+		}
+		r.serve(x, s, seq, st)
+		if len(s.Routes) > 0 {
+			return r.switchTo(ctx, desired, s, oldRelease, seq, x)
+		}
+	case domain.StrategyStartFirst:
+		if err := r.startNew(ctx, s, seq, st); err != nil {
+			return err
+		}
+		r.serve(x, s, seq, st)
+		if len(s.Routes) > 0 {
+			if err := r.switchTo(ctx, desired, s, oldRelease, seq, x); err != nil {
+				return err
+			}
+		}
+		return r.stopOld(ctx, st, s.Spec.StopGrace)
+	default: // switch
+		if err := r.startNew(ctx, s, seq, st); err != nil {
+			return err
+		}
+		r.serve(x, s, seq, st)
+		if len(s.Routes) == 0 {
+			return r.stopOld(ctx, st, s.Spec.StopGrace)
+		}
+		if err := r.switchTo(ctx, desired, s, oldRelease, seq, x); err != nil {
+			return err
+		}
+		if len(st.old) > 0 {
+			st.drainOld = true
+			st.switchedAt = r.Now()
+			x.drain = max(x.drain, s.Drain.D())
+		}
+	}
+	return nil
+}
+
+func (r *runner) serve(x *execution, s *domain.Service, seq int, st *step) {
+	x.serving[s.Name] = st.newNames
+	x.releaseOf[s.Name] = seq
+}
+
+func (r *runner) switchTo(ctx context.Context, desired *domain.App, s *domain.Service, from, to int, x *execution) error {
+	if err := r.setRoutes(ctx, desired, x); err != nil {
+		return err
+	}
+	r.ev.Info(events.SwitchChanged, fmt.Sprintf("%s: traffic now goes to release %d", s.Name, to), map[string]any{
+		"service": s.Name, "from_release": from, "to_release": to, "routes": routeDomains(s.Routes),
+	})
+	return nil
+}
+
+func routeDomains(rs []domain.Route) []string {
+	var out []string
+	for _, r := range rs {
+		for _, d := range r.Domains {
+			out = append(out, d+r.Path)
+		}
+	}
+	return out
+}
+
+func containerLabels(stack string, s *domain.Service, seq, n int) map[string]string {
+	return map[string]string{
+		domain.LabelProject:   stack,
+		domain.LabelService:   s.Name,
+		domain.LabelNumber:    strconv.Itoa(n),
+		domain.LabelOneOff:    "False",
+		domain.LabelSchema:    "1",
+		domain.LabelRelease:   strconv.Itoa(seq),
+		domain.LabelKind:      domain.KindService,
+		domain.LabelHash:      s.Hash(),
+		domain.LabelManagedBy: "true",
+	}
+}
+
+// startNew creates and starts the containers of release seq, and waits until they are healthy.
+func (r *runner) startNew(ctx context.Context, s *domain.Service, seq int, st *step) error {
+	for n := 1; n <= s.Replicas; n++ {
+		name := containerName(r.stack, s, seq, n)
+		id, err := r.Engine.Create(ctx, name, s.Spec, containerLabels(r.stack, s, seq, n))
+		if err != nil {
+			return err
+		}
+		st.created = append(st.created, id)
+		st.newNames = append(st.newNames, name)
+		r.containerState(s.Name, name, seq, "created", nil)
+		if err := r.Engine.Start(ctx, id); err != nil {
+			if strings.Contains(err.Error(), "address already in use") || strings.Contains(err.Error(), "port is already allocated") {
+				r.ev.Errorf(events.ServiceFailed, s.Name+": a published port is in use", map[string]any{"service": s.Name, "reason": "port_in_use"})
+			}
+			return err
+		}
+		r.containerState(s.Name, name, seq, "running", nil)
+	}
+	timeout := healthTimeout(s, r.req.Timeout.D())
+	errc := make([]error, len(st.created))
+	var wg sync.WaitGroup
+	for i, id := range st.created {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errc[i] = r.Engine.WaitHealthy(ctx, id, s.HealthGrace.D(), timeout)
+			if errc[i] == nil {
+				r.containerState(s.Name, st.newNames[i], seq, "healthy", nil)
+			}
+		}()
+	}
+	wg.Wait()
+	for _, err := range errc {
+		if err == nil {
+			continue
+		}
+		if ctx.Err() != nil {
+			return interrupted()
+		}
+		var he *engine.HealthError
+		if errors.As(err, &he) {
+			r.ev.Errorf(events.ServiceFailed, fmt.Sprintf("%s: %s", s.Name, he.Reason), map[string]any{"service": s.Name, "reason": he.Kind})
+			return errs.Newf("health.failed", errs.ExitRolledBack, "service %s did not become healthy: %s", s.Name, he.Reason).
+				WithHint("look at its logs with `dockflow logs %s`", s.Name)
+		}
+		return err
+	}
+	r.ev.Info(events.ServiceHealthy, fmt.Sprintf("%s: %d/%d healthy", s.Name, s.Replicas, s.Replicas), map[string]any{
+		"service": s.Name, "healthy": s.Replicas, "desired": s.Replicas,
+	})
+	return nil
+}
+
+func (r *runner) containerState(svc, name string, seq int, st string, extra map[string]any) {
+	data := map[string]any{"service": svc, "container": name, "release": seq, "state": st}
+	for k, v := range extra {
+		data[k] = v
+	}
+	r.ev.Debug(events.ContainerState, name+" "+st, data)
+}
+
+// stopOld stops the old containers of a step; they are kept until the run commits.
+func (r *runner) stopOld(ctx context.Context, st *step, grace *domain.Duration) error {
+	var g *time.Duration
+	if grace != nil {
+		d := grace.D()
+		g = &d
+	}
+	for _, c := range st.old {
+		if c.State != "running" && c.State != "restarting" {
+			continue
+		}
+		if err := r.Engine.Stop(ctx, c.ID, g); err != nil {
+			return err
+		}
+		st.stopped = append(st.stopped, c.ID)
+		r.containerState(c.Service, c.Name, c.Release, "exited", nil)
+	}
+	return nil
+}
+
+// healthTimeout is how long a container may take to become healthy (ADR-0010).
+func healthTimeout(s *domain.Service, override time.Duration) time.Duration {
+	if override > 0 {
+		return override
+	}
+	h := s.Spec.Healthcheck
+	if h == nil || h.Disable || len(h.Test) == 0 || h.Test[0] == "NONE" {
+		return s.HealthGrace.D() + 60*time.Second
+	}
+	interval, timeout, start, retries := 30*time.Second, 30*time.Second, time.Duration(0), uint64(3)
+	if h.Interval != nil {
+		interval = h.Interval.D()
+	}
+	if h.Timeout != nil {
+		timeout = h.Timeout.D()
+	}
+	if h.StartPeriod != nil {
+		start = h.StartPeriod.D()
+	}
+	if h.Retries != nil {
+		retries = *h.Retries
+	}
+	return max(start+(interval+timeout)*time.Duration(retries+1)+30*time.Second, 60*time.Second)
+}
+
+// routesFor returns the routes of a, served by the given containers.
+func routesFor(stack string, a *domain.App, serving map[string][]string) []proxy.Route {
+	var out []proxy.Route
+	for _, s := range a.Services {
+		for _, rt := range s.Routes {
+			if len(serving[s.Name]) == 0 {
+				continue
+			}
+			path := rt.Path
+			if path == "" {
+				path = "/"
+			}
+			route := proxy.Route{
+				Stack: stack, Service: s.Name, Domains: rt.Domains, Path: path, Port: rt.Port,
+				TLS: rt.TLS, StripPrefix: rt.StripPrefix, Upstreams: append([]string(nil), serving[s.Name]...),
+			}
+			if len(s.Spec.Networks) > 0 {
+				route.Network = s.Spec.Networks[0].Network
+			}
+			out = append(out, route)
+		}
+	}
+	return out
+}
+
+// setRoutes points the switch at the containers that serve the app now.
+func (r *runner) setRoutes(ctx context.Context, desired *domain.App, x *execution) error {
+	x.routesTouched = true
+	return r.applyRoutes(ctx, routesFor(r.stack, desired, x.serving))
+}
+
+// applyRoutes replaces the app's routes in the switch, under the server lock, after joining
+// the switch to the networks of the routed services.
+func (r *runner) applyRoutes(ctx context.Context, routes []proxy.Route) error {
+	l, err := r.Store.LockServer()
+	if err != nil {
+		return err
+	}
+	defer l.Release()
+	table, err := r.Store.SwitchRoutes()
+	if err != nil {
+		return err
+	}
+	if len(routes) == 0 && len(table[r.stack]) == 0 {
+		return nil
+	}
+	if r.Switch == nil {
+		return errs.Plan("plan.no_switch", "the server's switch is not installed").WithHint("run `dockflow server init`")
+	}
+	if err := r.joinNetworks(ctx, routes); err != nil {
+		return err
+	}
+	srv, err := r.Store.Server()
+	if err != nil {
+		return err
+	}
+	edge := proxy.EdgeBuiltin
+	if srv != nil && srv.Edge != "" {
+		edge = srv.Edge
+	}
+	table[r.stack] = routes
+	// the switch keeps serving if the agent dies here: the files follow what it serves
+	if err := r.Switch.Apply(context.WithoutCancel(ctx), proxy.Config{Edge: edge, Routes: state.AllRoutes(table)}); err != nil {
+		return err
+	}
+	if err := r.Store.SetSwitchRoutes(r.stack, routes); err != nil {
+		return err
+	}
+	var domains []string
+	for _, rt := range routes {
+		domains = append(domains, rt.Domains...)
+	}
+	sort.Strings(domains)
+	r.ev.Debug(events.RoutesApplied, "routes applied", map[string]any{"domains": domains})
+	return nil
+}
+
+// drain gives requests in flight on the old containers of switched services time to finish,
+// then stops those containers.
+func (r *runner) drain(ctx context.Context, x *execution) error {
+	var waiting []*step
+	for _, st := range x.steps {
+		if st.drainOld {
+			waiting = append(waiting, st)
+		}
+	}
+	if len(waiting) == 0 {
+		return nil
+	}
+	var until time.Time
+	for _, st := range waiting {
+		end := st.switchedAt.Add(st.svc.Drain.D())
+		if end.After(until) {
+			until = end
+		}
+		r.ev.Info(events.DrainStarted, fmt.Sprintf("%s: draining release %d for %s", st.svc.Name, st.old[0].Release, st.svc.Drain.D()), map[string]any{
+			"service": st.svc.Name, "release": st.old[0].Release, "timeout_ms": st.svc.Drain.D().Milliseconds(),
+		})
+	}
+	if wait := until.Sub(r.Now()); wait > 0 {
+		select {
+		case <-ctx.Done():
+			return interrupted()
+		case <-time.After(wait):
+		}
+	}
+	for _, st := range waiting {
+		if err := r.stopOld(ctx, st, st.svc.Spec.StopGrace); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// commit makes the release current and removes what it replaced.
+func (r *runner) commit(ctx context.Context, rel *domain.Release, desired *domain.App, o *observed, x *execution) error {
+	ctx = context.WithoutCancel(ctx)
+	now := r.Now().UTC()
+	rel.Status = domain.StatusActive
+	rel.FinishedAt = &now
+	rel.Serving = map[string]int{}
+	rel.Hashes = map[string]string{}
+	for _, s := range desired.Services {
+		rel.Serving[s.Name] = x.releaseOf[s.Name]
+		rel.Hashes[s.Name] = s.Hash()
+	}
+	if err := r.app.WriteRelease(rel); err != nil {
+		return err
+	}
+	env, err := r.app.Env()
+	if err != nil {
+		return err
+	}
+	if o.current != nil && o.current.Status == domain.StatusActive {
+		o.current.Status = domain.StatusSuperseded
+		if err := r.app.WriteRelease(o.current); err != nil {
+			return err
+		}
+	}
+	if env.Current > 0 {
+		env.Previous = env.Current
+	}
+	env.Current = rel.Seq
+	env.Degraded = false
+	if err := r.app.WriteEnv(*env); err != nil {
+		return err
+	}
+	for _, st := range x.steps {
+		for _, c := range st.old {
+			if err := r.Engine.Remove(ctx, c.ID); err != nil {
+				r.warn("cleanup.failed", fmt.Sprintf("cannot remove %s: %v", c.Name, err))
+			}
+		}
+	}
+	r.prune(ctx)
+	return nil
+}
+
+// prune applies the retention rule and removes the images no kept release uses.
+func (r *runner) prune(ctx context.Context) {
+	keep := r.req.Keep
+	if keep < 2 {
+		keep = 10
+	}
+	kept, deleted, err := r.app.Prune(keep)
+	if err != nil {
+		r.warn("cleanup.failed", "cannot prune releases: "+err.Error())
+		return
+	}
+	used := map[string]bool{}
+	for _, rel := range kept {
+		for _, s := range rel.Desired.Services {
+			used[s.Spec.Image] = true
+		}
+	}
+	for _, rel := range deleted {
+		for _, s := range rel.Desired.Services {
+			if img := s.Spec.Image; !used[img] {
+				used[img] = true // once
+				if err := r.Engine.RemoveImage(ctx, img); err != nil {
+					r.warn("cleanup.failed", fmt.Sprintf("cannot remove image %s: %v", img, err))
+				}
+			}
+		}
+	}
+}
+
+// joinNetworks connects the switch to the networks it reaches routes through.
+func (r *runner) joinNetworks(ctx context.Context, routes []proxy.Route) error {
+	seen := map[string]bool{}
+	for _, rt := range routes {
+		if rt.Network == "" || seen[rt.Network] {
+			continue
+		}
+		seen[rt.Network] = true
+		if err := r.Engine.Connect(ctx, rt.Network, SwitchContainer, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *runner) warn(code, msg string) {
+	r.ev.Warn(events.Warning, msg, map[string]any{"code": code, "detail": msg})
+}
+
+// fail handles a run that failed after the release was created: it rolls back, or leaves the
+// environment in place and degraded (ADR-0008).
+func (r *runner) fail(ctx context.Context, rel *domain.Release, env *domain.EnvRecord, x *execution, runErr error) events.RunFinishedData {
+	cancelled := ctx.Err() != nil || errs.ExitCode(runErr) == errs.ExitInterrupted
+	if cancelled {
+		r.ev.Warn(events.CancelRequested, "cancelled", map[string]any{"by": "signal"})
+	}
+	ctx = context.WithoutCancel(ctx)
+	now := r.Now().UTC()
+	rel.FinishedAt = &now
+	rel.Error = &domain.ReleaseError{Code: errs.CodeOf(runErr), Message: errData(runErr).Message}
+	if rel.Error.Code == "" {
+		rel.Error.Code = "run.cancelled"
+	}
+
+	leaveInPlace := !cancelled && (r.req.NoRollback || r.req.OnFailure == "fail")
+	var undoErr error
+	if !leaveInPlace {
+		r.ev.Warn(events.RollbackStarted, "rolling back to the previous containers", map[string]any{"reason": rel.Error.Message, "target_seq": env.Current})
+		undoErr = r.undo(ctx, x)
+		r.ev.Info(events.RollbackFinished, "rollback finished", map[string]any{"ok": undoErr == nil})
+	}
+	cur, _ := r.app.Env()
+	if cur == nil {
+		cur = env
+	}
+	res := events.RunFinishedData{ReleaseSeq: rel.Seq, Error: errData(runErr)}
+	switch {
+	case leaveInPlace || undoErr != nil:
+		rel.Status = domain.StatusFailed
+		cur.Degraded = true
+		res.Outcome, res.ExitCode = events.OutcomeFailed, errs.ExitDegraded
+		if undoErr != nil {
+			res.Error = errData(errs.Newf("rollback.failed", errs.ExitDegraded, "%s; the rollback failed too: %v", rel.Error.Message, undoErr).
+				WithHint("the environment is degraded: fix the cause and deploy again"))
+		}
+	case cancelled:
+		rel.Status = domain.StatusRolledBack
+		res.Outcome, res.ExitCode = events.OutcomeCancelled, errs.ExitInterrupted
+	default:
+		rel.Status = domain.StatusRolledBack
+		res.Outcome, res.ExitCode = events.OutcomeRolledBack, errs.ExitRolledBack
+	}
+	if err := r.app.WriteRelease(rel); err != nil {
+		r.warn("state.write_failed", err.Error())
+	}
+	if err := r.app.WriteEnv(*cur); err != nil {
+		r.warn("state.write_failed", err.Error())
+	}
+	return res
+}
+
+// undo restores the containers and routes the run started from. Old containers come back first,
+// then the switch moves back to them, then the new containers go.
+func (r *runner) undo(ctx context.Context, x *execution) error {
+	var errsSeen []string
+	note := func(err error) {
+		if err != nil {
+			errsSeen = append(errsSeen, err.Error())
+		}
+	}
+	var restarted []string
+	for i := len(x.steps) - 1; i >= 0; i-- {
+		st := x.steps[i]
+		if st.svc.Strategy == domain.StrategyStopFirst {
+			// the new containers hold the fixed name or the host ports
+			for _, id := range st.created {
+				note(r.Engine.Remove(ctx, id))
+			}
+			st.created = nil
+			for id, name := range st.renamed {
+				note(r.Engine.Rename(ctx, id, name))
+			}
+		}
+		for _, id := range st.stopped {
+			if err := r.Engine.Start(ctx, id); err != nil {
+				note(err)
+				continue
+			}
+			restarted = append(restarted, id)
+		}
+	}
+	for _, id := range restarted {
+		note(r.Engine.WaitHealthy(ctx, id, 2*time.Second, 2*time.Minute))
+	}
+	if x.routesTouched {
+		note(r.applyRoutes(ctx, x.routesBefore))
+	}
+	for _, st := range x.steps {
+		for _, id := range st.created {
+			note(r.Engine.Remove(ctx, id))
+		}
+	}
+	if len(errsSeen) > 0 {
+		return errors.New(strings.Join(errsSeen, "; "))
+	}
+	return nil
+}

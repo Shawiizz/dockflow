@@ -15,6 +15,8 @@ Each milestone ends with a usable tool and **one or more real projects migrated 
 
 Deploy a Compose app that uses public images to one server, with zero downtime.
 
+**Status: done (2026-10-26).** Every exit criterion below is an e2e test (`test/e2e/`), run in CI on Docker 27 and on the latest Docker. Left for later milestones: the download and signature check of the agent binary needs a published release (M1 sends the CLI's own binary, or `DOCKFLOW_AGENT_BINARY`), and `server init` installs the switch on a server that is already reachable; provisioning is M3.
+
 - **Foundations:** the Go module and its CI (lint, unit tests, contract tests in Docker-in-Docker), and a release workflow producing unsigned snapshot builds.
 - **Loading the project:**
   - `dockflow.yml`, Compose (compose-go) and secrets (CI variables, `DOCKFLOW_SECRETS`, `.env.dockflow`);
@@ -36,10 +38,10 @@ Exit criteria:
 - killing the agent mid-run leaves the previous release serving, and the next run converges.
 
 Also answered in M1:
-- the minimum Docker version ([ADR-0003](adr/0003-single-host-docker.md));
-- stdin vs a file for the agent input ([ADR-0004](adr/0004-ephemeral-agent.md));
-- the `authorized_keys` options ([ADR-0013](adr/0013-servers-access-security.md));
-- embedding or downloading the agent binary ([ADR-0020](adr/0020-releasing-dockflow.md)).
+- the minimum Docker version: Docker 27 ([ADR-0003](adr/0003-single-host-docker.md));
+- stdin vs a file for the agent input: stdin for the run document; uploads in M2 confirm it for large payloads ([ADR-0004](adr/0004-ephemeral-agent.md));
+- the `authorized_keys` options: moved to M3, with provisioning ([ADR-0013](adr/0013-servers-access-security.md));
+- embedding or downloading the agent binary: downloading ([ADR-0020](adr/0020-releasing-dockflow.md)).
 
 ## M2: Shipping real apps — shawiizz.dev and Dockflow's docs
 

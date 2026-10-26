@@ -19,7 +19,7 @@ Real projects also restrict HTTP to Cloudflare's ranges, refreshed weekly (Valie
 
 | Network | Type | Members |
 |---|---|---|
-| `dockflow-system` | bridge, internal | agents, the switch's admin API, the watchdog |
+| `dockflow-system` | bridge, internal | agents and the watchdog. The switch's admin API is a unix socket ([ADR-0011](0011-switch-and-edge.md)) |
 | The app's networks (`<stack>_default` and those its Compose file declares) | bridge | the app's containers; the switch joins those of routed services, and agents join them for health checks |
 | Shared networks ([ADR-0018](0018-shared-servers.md)) | bridge | services of several apps that must talk to each other |
 

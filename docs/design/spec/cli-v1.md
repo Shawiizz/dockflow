@@ -81,7 +81,7 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 
 | Command | What it does |
 |---|---|
-| `dockflow server init [<user@host[:port]>] [-k <key>] [--host <ip>] [--user <name>] [--password-file <path>] [--deploy-key <file.pub> \| --generate-key] [--host-key <SHA256:…>] [--from <cidr>…] [--edge builtin\|cloudflare\|external\|none] [--acme-email <email>] [--switch-listen <addr:port>] [--trusted-proxy <cidr>…] [--skip-docker-install] [--no-port-filter] [--no-watchdog] [--no-registry] [--nginx]` | Provisions a server ([ADR-0013](../adr/0013-servers-access-security.md)). Interactive when options are missing; runs locally when no host is given. Prints the connection string at the end |
+| `dockflow server init [<user@host[:port]>] [-k <key>] [--host <ip>] [--user <name>] [--password-file <path>] [--deploy-key <file.pub> \| --generate-key] [--host-key <SHA256:…>] [--from <cidr>…] [--edge builtin\|cloudflare\|external\|none] [--acme-email <email>] [--switch-listen <addr:port>] [--switch-image <image>] [--trusted-proxy <cidr>…] [--skip-docker-install] [--no-port-filter] [--no-watchdog] [--no-registry] [--nginx]` | Provisions a server ([ADR-0013](../adr/0013-servers-access-security.md)). Interactive when options are missing; runs locally when no host is given. Prints the connection string at the end |
 | `dockflow server cloud-init [same options]` | Prints cloud-init user-data that does the same on first boot |
 | `dockflow server check [<target>]` | Checks a server's prerequisites: OS, Docker, user, filter, ports 80 and 443 |
 | `dockflow server connection [<target>]` | Prints the connection string |

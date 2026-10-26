@@ -38,6 +38,6 @@ The CLI ships its own Linux binary to servers ([ADR-0004](0004-ephemeral-agent.m
 - The CLI and the agent are always the same version, so their protocol is internal.
 - Development builds need either a Linux machine or the override variable.
 
-## Open questions
+## Embedding the Linux binaries
 
-- Embedding both Linux binaries in the CLI instead of downloading them: about 40 MB more per CLI binary, but no network access needed. Decided in M1.
+Decided in M1: not embedded. The CLI downloads the binary it needs, as above. Embedding both Linux binaries would add about 40 MB to every CLI, for the benefit of offline machines that deploy from macOS or Windows, which `DOCKFLOW_AGENT_BINARY` already covers.

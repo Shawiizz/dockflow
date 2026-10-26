@@ -1,0 +1,38 @@
+// Package proxy is the port to the switch: the Dockflow-managed proxy in front of every app
+// (ADR-0011). The Caddy adapter lives in proxy/caddy.
+package proxy
+
+import "context"
+
+// Route is one route the switch serves, with the containers it sends traffic to.
+type Route struct {
+	Stack       string   `json:"stack"`
+	Service     string   `json:"service"`
+	Domains     []string `json:"domains"`
+	Path        string   `json:"path"`
+	Port        int      `json:"port"`
+	TLS         bool     `json:"tls"`
+	StripPrefix bool     `json:"strip_prefix,omitempty"`
+	// Network is the Docker network the switch reaches the upstreams through.
+	Network string `json:"network,omitempty"`
+	// Upstreams are container names, resolved by Docker's DNS in the networks the switch shares
+	// with the app.
+	Upstreams []string `json:"upstreams"`
+}
+
+// Edge modes (ADR-0011).
+const (
+	EdgeBuiltin = "builtin"
+	EdgeNone    = "none"
+)
+
+// Config is everything the switch serves.
+type Config struct {
+	Edge   string
+	Routes []Route
+}
+
+// Switch applies a configuration to the running switch, without dropping connections.
+type Switch interface {
+	Apply(ctx context.Context, c Config) error
+}

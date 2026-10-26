@@ -1,0 +1,72 @@
+name: v2
+
+on:
+  push:
+    branches: [v2]
+  pull_request:
+    branches: [v2]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
+          golangci-lint run --build-tags e2e ./...
+
+  test:
+    name: unit and contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go test
+        env:
+          DOCKFLOW_CONTRACT: "1"
+        run: go test -count=1 ./...
+
+  e2e:
+    name: e2e (${{ matrix.docker }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        docker: ["27-dind", "dind"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go test -tags e2e
+        env:
+          DOCKFLOW_E2E_DIND_IMAGE: mirror.gcr.io/library/docker:${{ matrix.docker }}
+        run: go test -tags e2e -count=1 -v -timeout 20m ./test/e2e/
+
+  snapshot:
+    name: snapshot builds
+    needs: [lint, test, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build
+        run: make snapshot VERSION=snapshot-${GITHUB_SHA::12}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dockflow-snapshot
+          path: dist/
+          retention-days: 14

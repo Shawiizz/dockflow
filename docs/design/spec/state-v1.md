@@ -13,7 +13,9 @@ All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/000
 
 ```
 /var/lib/dockflow/
-├── server.json                     server settings: edge, switch address, filter state, versions
+├── server.json                     server settings: edge, switch image, filter state, versions
+├── server.lock                     empty file, held with flock while the switch's configuration changes
+├── switch/routes/<stack>.json      the routes the switch serves for each app environment
 ├── apps/<stack>/
 │   ├── lock                        empty file, held with flock by the running agent
 │   ├── lock.json                   who holds the lock (informational)
@@ -121,30 +123,34 @@ It deletes the other release files, then the images, registry manifests, secret 
   "run": "01jbx6k3m8w0v7c9q2r5t4y6z8",
   "created_at": "2026-10-26T14:03:11Z",
   "finished_at": "2026-10-26T14:04:02Z",
-  "created_by": { "user": "shawiizz", "machine": "laptop", "ci": null },
-  "source": { "git_sha": "a1b2c3d4e5…", "dirty": false },
+  "created_by": { "user": "shawiizz", "machine": "laptop", "ci": "github" },
+  "source": { "git_sha": "a1b2c3d4e5…", "branch": "main", "dirty": false },
   "dockflow_version": "2.0.0",
-  "rollback_of": null,
-  "services": {
-    "web": {
-      "strategy": "switch",
-      "replicas": 2,
-      "container": { "…": "the container create spec sent to the Engine, without secret values" },
-      "image": "127.0.0.1:5959/shop/web@sha256:…"
-    }
+  "rollback_of": 40,
+  "desired": {
+    "name": "shop", "env": "production", "stack": "shop-production",
+    "services": [
+      {
+        "name": "web", "strategy": "switch", "replicas": 2, "pull_policy": "missing",
+        "spec": { "image": "ghcr.io/acme/web:1.4@sha256:…", "env": ["…"], "networks": [ { "network": "shop-production_default", "aliases": ["web"] } ], "restart": "unless-stopped", "…": "…" },
+        "routes": [ { "domains": ["shop.example.com"], "path": "/", "port": 3000, "tls": true } ],
+        "drain": "30s", "health_grace": "10s"
+      }
+    ],
+    "networks": [ { "key": "default", "name": "shop-production_default" } ],
+    "volumes": [ { "key": "pgdata", "name": "shop-production_pgdata" } ]
   },
-  "jobs": { "migrate": { "when": "before", "container": { "…": "…" }, "image": "…" } },
-  "networks": ["shop-production_default"],
-  "volumes": ["shop-production_pgdata"],
-  "secrets": { "db_password": "9f2c1ab3e4d5" },
-  "routes": [ { "service": "web", "domains": ["shop.example.com"], "path": "/", "port": 3000, "options": {} } ],
-  "published_ports": [],
-  "uploads": [ { "dest": "volume:site", "manifest": "sha256:…", "files": 12873 } ],
-  "plan_fingerprint": "sha256:…"
+  "serving": { "web": 42, "db": 37 },
+  "hashes": { "web": "5d0c1e9a7b3f2c4d", "db": "9e8f7a6b5c4d3e2f" },
+  "plan_fingerprint": "sha256:…",
+  "error": null
 }
 ```
 
 **What a record contains:**
-- **Container specs.** Each `container` is exactly what was sent to the Engine, so a rollback recreates the same containers.
+- **`desired`** is the app as it was deployed: every service with its container spec, the input of the Engine's create call, with images pinned by digest. A rollback recreates the same containers from it.
+- **`serving`** says, per service, which release's containers serve it: a service a deploy left unchanged keeps the containers of an older release.
+- **`hashes`** identify each service's containers: an unchanged hash means unchanged containers.
+- **`error`** is set on a release that is `rolled-back`, `failed` or `abandoned`: `{ "code": "…", "message": "…" }`.
 - **Interpolated values.** Values interpolated into environment variables are part of the spec, as they are of `docker inspect`. The file is readable by root only.
-- **Secrets.** Secret values are never stored: `secrets` maps each name to the hash of its value, and a rollback needs the same values to still be available from the environment's secrets.
+- **Later milestones** add `jobs` (M2), `secrets` (the hash of each secret's value, never the value, M3), `uploads` (M2) and `published_ports` to the record.

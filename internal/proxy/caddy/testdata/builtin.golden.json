@@ -1,0 +1,134 @@
+{
+  "admin": {
+    "listen": "unix//run/dockflow-switch/admin.sock"
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "http": {
+          "listen": [
+            ":80"
+          ],
+          "routes": [
+            {
+              "@id": "dockflow-blog-staging-web-root",
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "load_balancing": {
+                    "selection_policy": {
+                      "policy": "round_robin"
+                    },
+                    "try_duration": "2s"
+                  },
+                  "upstreams": [
+                    {
+                      "dial": "blog-staging-web-1-1:80"
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "blog.test"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "abort": true,
+                  "handler": "static_response"
+                }
+              ]
+            }
+          ]
+        },
+        "https": {
+          "listen": [
+            ":443"
+          ],
+          "routes": [
+            {
+              "@id": "dockflow-shop-production-api-api",
+              "handle": [
+                {
+                  "handler": "rewrite",
+                  "strip_path_prefix": "/api"
+                },
+                {
+                  "handler": "reverse_proxy",
+                  "load_balancing": {
+                    "selection_policy": {
+                      "policy": "round_robin"
+                    },
+                    "try_duration": "2s"
+                  },
+                  "upstreams": [
+                    {
+                      "dial": "shop-production-api-3-1:8080"
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "shop.example.com"
+                  ],
+                  "path": [
+                    "/api",
+                    "/api/*"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "@id": "dockflow-shop-production-web-root",
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "load_balancing": {
+                    "selection_policy": {
+                      "policy": "round_robin"
+                    },
+                    "try_duration": "2s"
+                  },
+                  "upstreams": [
+                    {
+                      "dial": "shop-production-web-4-1:3000"
+                    },
+                    {
+                      "dial": "shop-production-web-4-2:3000"
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "shop.example.com",
+                    "www.shop.example.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "abort": true,
+                  "handler": "static_response"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}
