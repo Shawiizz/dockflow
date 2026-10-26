@@ -1,0 +1,34 @@
+{
+  "app": "shop",
+  "env": "production",
+  "fingerprint": "sha256:131adc26e4130ef714b6a4469bce509aac701b3981b234c4e4322786a6b34dc8",
+  "actions": [
+    {
+      "id": "01-job.run-migrate",
+      "kind": "job.run",
+      "target": "migrate",
+      "reason": "job, before the services"
+    },
+    {
+      "id": "02-service.update-web",
+      "kind": "service.update",
+      "target": "web",
+      "reason": "image whoami@sha256:bbbb → whoami@sha256:cccc",
+      "strategy": "switch"
+    },
+    {
+      "id": "03-job.run-warm",
+      "kind": "job.run",
+      "target": "warm",
+      "reason": "job, after the services"
+    }
+  ],
+  "unchanged": [
+    "db"
+  ],
+  "summary": {
+    "create": 0,
+    "update": 1,
+    "remove": 0
+  }
+}

@@ -67,12 +67,7 @@ func (p *Pusher) Push(ctx context.Context, b image.Built, d image.Destination) (
 		tags = []string{"latest"}
 	}
 	counter := &counting{base: p.transport()}
-	ropts := []remote.Option{remote.WithContext(ctx), remote.WithTransport(counter)}
-	if d.Username != "" || d.Password != "" {
-		ropts = append(ropts, remote.WithAuth(&authn.Basic{Username: d.Username, Password: d.Password}))
-	} else {
-		ropts = append(ropts, remote.WithAuth(authn.Anonymous))
-	}
+	ropts := []remote.Option{remote.WithContext(ctx), remote.WithTransport(counter), remote.WithAuth(auth(d))}
 	for i, tag := range tags {
 		ref, err := name.NewTag(d.Repository+":"+tag, opts...)
 		if err != nil {
@@ -101,6 +96,36 @@ func (p *Pusher) Push(ctx context.Context, b image.Built, d image.Destination) (
 		Ref: d.Repository + "@" + digest.String(), Digest: digest.String(),
 		BlobsSent: sent, BlobsSkipped: blobs - sent,
 	}, nil
+}
+
+// Resolve returns the image d's first tag names in its registry, pinned by digest: an image
+// pushed before, by `build --push`.
+func (p *Pusher) Resolve(ctx context.Context, service string, d image.Destination) (string, error) {
+	var opts []name.Option
+	if d.Insecure {
+		opts = append(opts, name.Insecure)
+	}
+	tag := "latest"
+	if len(d.Tags) > 0 {
+		tag = d.Tags[0]
+	}
+	ref, err := name.NewTag(d.Repository+":"+tag, opts...)
+	if err != nil {
+		return "", errs.Config("%s:%s is not a valid image name", d.Repository, tag).WithCause(err)
+	}
+	desc, err := remote.Head(ref, remote.WithContext(ctx), remote.WithTransport(p.transport()), remote.WithAuth(auth(d)))
+	if err != nil {
+		return "", errs.Newf("build.not_pushed", errs.ExitBuild, "no image of %s for this version in %s (%s)", service, d.Repository, ref.TagStr()).
+			WithCause(err).WithHint("build and push it first with `dockflow build --push`, for the same version, or deploy without --skip-build")
+	}
+	return d.Repository + "@" + desc.Digest.String(), nil
+}
+
+func auth(d image.Destination) authn.Authenticator {
+	if d.Username != "" || d.Password != "" {
+		return &authn.Basic{Username: d.Username, Password: d.Password}
+	}
+	return authn.Anonymous
 }
 
 func pushHint(d image.Destination) string {

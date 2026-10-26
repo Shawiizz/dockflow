@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"runtime"
 	"strings"
 
@@ -183,12 +184,7 @@ func (s *session) ship(ctx context.Context, only []string) error {
 	if err != nil {
 		return err
 	}
-	pusher := &oci.Pusher{}
-	if l.Config.Registry == nil {
-		pusher.Dial = func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return s.ssh.DialContext(ctx, "tcp", agent.RegistryAddr)
-		}
-	}
+	pusher := s.pusher()
 	for _, b := range built {
 		d := destination(l, b.Service)
 		p, err := pusher.Push(ctx, b, d)
@@ -199,6 +195,51 @@ func (s *session) ship(ctx context.Context, only []string) error {
 			map[string]any{"image": p.Ref, "digest": p.Digest, "blobs_sent": p.BlobsSent, "blobs_skipped": p.BlobsSkipped})
 		svc, _ := l.App.Service(b.Service)
 		svc.Spec.Image = p.Ref
+	}
+	return nil
+}
+
+// pusher reaches the environment's registry: the server's own, through the SSH connection, or
+// the external one.
+func (s *session) pusher() *oci.Pusher {
+	p := &oci.Pusher{}
+	if s.loaded.Config.Registry == nil {
+		p.Dial = func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return s.ssh.DialContext(ctx, "tcp", agent.RegistryAddr)
+		}
+	}
+	return p
+}
+
+// deliver gives every built service of only (all of them without only) its image: built and
+// pushed now, or, with skipBuild, the one `build --push` pushed for this version.
+func (s *session) deliver(ctx context.Context, only []string, skipBuild bool) error {
+	l := s.loaded
+	var names []string
+	for _, b := range l.Builds {
+		if len(only) == 0 || slices.Contains(only, b.Service) {
+			names = append(names, b.Service)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	if !skipBuild {
+		return s.ship(ctx, names)
+	}
+	if l.Config.Build.Builder == "remote" && l.Config.Registry == nil {
+		return errs.Usage("images built on the server are named after their content, not the version: --skip-build cannot find them").
+			WithHint("deploy without --skip-build, or push to a registry (registry.url)")
+	}
+	p := s.pusher()
+	for _, name := range names {
+		ref, err := p.Resolve(ctx, name, destination(l, name))
+		if err != nil {
+			return err
+		}
+		svc, _ := l.App.Service(name)
+		svc.Spec.Image = ref
+		s.app.emitter.Info(events.Log, fmt.Sprintf("%s: using %s, built before", name, ref), map[string]any{"line": "image " + ref})
 	}
 	return nil
 }

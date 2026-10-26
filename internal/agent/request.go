@@ -84,9 +84,16 @@ type Request struct {
 	// NoRollback leaves a failed run in place.
 	NoRollback bool `json:"no_rollback,omitempty"`
 
-	// Target is the release to roll back to; 0 means the previous one.
-	Target int `json:"target,omitempty"`
-	// Services are the services restart, stop, scale and destroy act on; none means all.
+	// Only limits plan and deploy to these services: the others stay as the current release has
+	// them.
+	Only []string `json:"only,omitempty"`
+
+	// Target is the release to roll back to; 0 means the previous one, or the newest release of
+	// TargetVersion when it is set.
+	Target        int    `json:"target,omitempty"`
+	TargetVersion string `json:"target_version,omitempty"`
+	// Services are the services restart, stop, scale, destroy and rollback act on; none means
+	// all.
 	Services []string `json:"services,omitempty"`
 	// Replicas is scale's count.
 	Replicas int `json:"replicas,omitempty"`

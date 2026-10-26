@@ -112,6 +112,7 @@ Print what a deploy would change, without changing any container. The plan is co
 | Option | Default | Description |
 |---|---|---|
 | `--no-build` | `false` | Plan without building: built services show as changed. |
+| `--only strings` | all | Plan these services only, as `deploy --only` would deploy them. |
 | `--render` | `false` | Also print the service specs that would be sent. |
 
 ## deploy
@@ -122,12 +123,18 @@ dockflow deploy [<env>] [flags]
 
 Plan, confirm and apply. In order: the `before_build` hooks, the build and push of images, the `after_build` hooks, the `before_deploy` hooks, then the plan. On a terminal, the plan is shown for confirmation, and the agent applies exactly that plan. On the server, the agent applies the uploads, the jobs, the rollouts, the switch of traffic and the checks. The `after_deploy` hooks run once the release is live. If the run fails, the previous release is restored (unless [`on_failure`](/reference/dockflow-yml/#on_failure) or `--no-rollback` say otherwise) and the `after_failure` hooks run. See [how it works](/concepts/how-it-works/) and [releases and rollbacks](/concepts/releases-and-rollbacks/).
 
+With `--only web,worker`, only those services move to the new version; every other service stays as the current release has it, even when `compose.yml` changed it, and is neither updated nor removed. The new release still records the whole app, so a later full deploy updates the services `--only` left out. Jobs come from the deployed version and run as on a full deploy. A named service that depends on a service the server does not run is refused (`plan.only_dependency`).
+
+With `--skip-build`, nothing is built: each built service uses the image `dockflow build --push` pushed for the same version, so a CI pipeline can build in one job and deploy in another. The build hooks do not run. A version that was never pushed fails with `build.not_pushed` (exit code 7). Images built on the server (`build.builder: remote`) without an external registry are named after their content, so `--skip-build` cannot find them.
+
 Exit codes: 5 when another run holds the lock, 7 when the build fails, 8 when the run failed and was rolled back, 9 when it failed and was left in place, 11 when a fatal `before_*` hook failed. See [exit codes](/reference/exit-codes/).
 
 | Option | Default | Description |
 |---|---|---|
 | `--force` | `false` | Deploy despite a manual lock. |
 | `--no-rollback` | `false` | Leave a failed deploy in place instead of rolling back. It applies to failed HTTP checks; a failed rollout always rolls back. |
+| `--only strings` | all | Deploy these services only: the others stay as the current release has them. |
+| `--skip-build` | `false` | Use the images `dockflow build --push` pushed for this version instead of building. |
 | `--version string` | the git commit | The version label of the release. In CI, a tag's version is used. |
 | `--wait-lock duration` | `0` | Wait up to this long for another run's lock instead of failing, like `--wait-lock 10m`. For CI runs that may overlap. |
 
@@ -141,7 +148,8 @@ Re-apply a recorded release, by default the previous one. The rollback is a new 
 
 | Option | Default | Description |
 |---|---|---|
-| `--to string` | the previous release | The release to restore, by its number (see `dockflow releases`). |
+| `--service string` | all | Restore this service only, as the release has it; the other services stay as they are. The new release keeps the current version label. |
+| `--to string` | the previous release | The release to restore: its number (see `dockflow releases`), or a version label such as `1.4.0`, for the newest release of that version that went live. |
 
 ## attach
 

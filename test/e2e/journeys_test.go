@@ -251,3 +251,52 @@ func TestKilledAgentKeepsServingAndNextRunConverges(t *testing.T) {
 		t.Fatalf("release 3 must serve web: %s", names)
 	}
 }
+
+// deploy --only moves the named services to the new version and keeps the others as the
+// current release has them; rollback --service restores one service of an earlier release.
+func TestDeployOnlyAndRollbackOneService(t *testing.T) {
+	app := "journey22"
+	dir := filepath.Join(workDir, app)
+	writeProject(t, dir, app, webApp(app, "whoami-e2e:v1", ""))
+	mustSucceed(t, dockflow(t, dir, "deploy", "--version", "1.0.0"), "first deploy")
+
+	services := func(r result) []string {
+		var touched []string
+		for _, a := range planOf(t, r).Actions {
+			if strings.HasPrefix(a.Kind, "service.") {
+				touched = append(touched, a.Kind+" "+a.Target)
+			}
+		}
+		return touched
+	}
+	// a new version changes both services
+	writeProject(t, dir, app, strings.Replace(webApp(app, "whoami-e2e:v2", ""), `"sleep", "infinity"`, `"sleep", "999999"`, 1))
+	only := dockflow(t, dir, "deploy", "--only", "web")
+	mustSucceed(t, only, "deploy --only web")
+	if got := services(only); len(got) != 1 || got[0] != "service.update web" {
+		t.Fatalf("deploy --only web must update web only, got %v", got)
+	}
+	// worker was kept as release 1 had it: the next full deploy updates it, and web no more
+	full := dockflow(t, dir, "deploy")
+	mustSucceed(t, full, "full deploy")
+	if got := services(full); len(got) != 1 || got[0] != "service.update worker" {
+		t.Fatalf("the full deploy must update worker only, got %v", got)
+	}
+
+	back := dockflow(t, dir, "rollback", "--to", "1", "--service", "web")
+	mustSucceed(t, back, "rollback --service web")
+	if got := services(back); len(got) != 1 || got[0] != "service.update web" {
+		t.Fatalf("rollback --service web must restore web only, got %v", got)
+	}
+
+	// by version: release 1 had the old worker too; web already runs what it had
+	byVersion := dockflow(t, dir, "rollback", "--to", "1.0.0")
+	mustSucceed(t, byVersion, "rollback --to 1.0.0")
+	if got := services(byVersion); len(got) != 1 || got[0] != "service.update worker" {
+		t.Fatalf("rollback --to 1.0.0 must restore worker only, got %v", got)
+	}
+
+	if r := dockflow(t, dir, "deploy", "--only", "nope"); r.code != 2 {
+		t.Fatalf("an unknown service must be a usage error, got %d:\n%s", r.code, r.out)
+	}
+}

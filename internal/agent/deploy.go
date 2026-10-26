@@ -24,7 +24,10 @@ func (r *runner) plan(ctx context.Context) events.RunFinishedData {
 	if r.req.Desired == nil {
 		return failed(errs.Usage("plan needs the desired app"))
 	}
-	desired := *r.req.Desired
+	desired, err := r.only(*r.req.Desired)
+	if err != nil {
+		return failed(err)
+	}
 	if err := r.resolve(ctx, &desired, false); err != nil {
 		return failed(err)
 	}
@@ -82,12 +85,27 @@ func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
 			return failed(err)
 		}
 		desired, rollbackOf, version, source = target.Desired, target.Seq, target.Version, target.Source
+		if len(r.req.Services) > 0 {
+			// rollback --service: those services as the target has them, the rest as now
+			cur, err := r.currentRelease()
+			if err != nil {
+				return failed(err)
+			}
+			if desired, err = planner.Only(target.Desired, cur.Desired, r.req.Services); err != nil {
+				return failed(err)
+			}
+			desired.Uploads = cur.Desired.Uploads
+			version, source = cur.Version, cur.Source
+		}
 		r.ev.Info(events.Log, fmt.Sprintf("rolling back to release %d (%s)", target.Seq, target.Version), map[string]any{"line": "target release " + strconv.Itoa(target.Seq)})
 	case OpDeploy:
 		if r.req.Desired == nil {
 			return failed(errs.Usage("deploy needs the desired app"))
 		}
-		desired = *r.req.Desired
+		var err error
+		if desired, err = r.only(*r.req.Desired); err != nil {
+			return failed(err)
+		}
 	default:
 		// restart, stop, scale, destroy --only: the current release, changed
 		cur, err := r.currentRelease()
@@ -166,12 +184,67 @@ func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
 	return r.fail(ctx, rel, env, x, runErr)
 }
 
+// only applies --only to the desired app, against the current release: on a server where the app
+// was never deployed, the named services are all there is.
+func (r *runner) only(desired domain.App) (domain.App, error) {
+	if len(r.req.Only) == 0 {
+		return desired, nil
+	}
+	base := domain.App{Name: desired.Name, Env: desired.Env, Stack: desired.Stack}
+	env, err := r.app.Env()
+	if err != nil {
+		return desired, err
+	}
+	if env != nil && env.Current != 0 {
+		cur, err := r.currentRelease()
+		if err != nil {
+			return desired, err
+		}
+		base = cur.Desired
+	}
+	return planner.Only(desired, base, r.req.Only)
+}
+
+// releaseOf is the newest release of version that went live, other than the current one.
+func (r *runner) releaseOf(version string, env *domain.EnvRecord) (int, error) {
+	seqs, err := r.app.Releases()
+	if err != nil {
+		return 0, err
+	}
+	current := false
+	for i := len(seqs) - 1; i >= 0; i-- {
+		rel, err := r.app.Release(seqs[i])
+		if err != nil {
+			return 0, err
+		}
+		if rel == nil || rel.Version != version || (rel.Status != domain.StatusActive && rel.Status != domain.StatusSuperseded) {
+			continue
+		}
+		if env != nil && rel.Seq == env.Current {
+			current = true
+			continue
+		}
+		return rel.Seq, nil
+	}
+	if current {
+		return 0, errs.Plan("rollback.current", "version %s is the current release", version)
+	}
+	return 0, errs.Plan("rollback.unknown_release", "no kept release of version %s went live", version).
+		WithHint("list the releases with `dockflow releases`")
+}
+
 func (r *runner) rollbackTarget() (*domain.Release, error) {
 	env, err := r.app.Env()
 	if err != nil {
 		return nil, err
 	}
 	seq := r.req.Target
+	if v := r.req.TargetVersion; v != "" {
+		var err error
+		if seq, err = r.releaseOf(v, env); err != nil {
+			return nil, err
+		}
+	}
 	if seq == 0 {
 		if env == nil || env.Previous == 0 {
 			return nil, errs.Plan("rollback.no_previous", "there is no previous release to roll back to").

@@ -120,6 +120,34 @@ func TestBuildPushAndDeploy(t *testing.T) {
 	}
 }
 
+// build --push, then deploy --skip-build: the deploy uses the pushed image and builds nothing.
+func TestDeploySkipBuild(t *testing.T) {
+	app := "journey23"
+	host := app + ".test"
+	dir := filepath.Join(workDir, app)
+	builtApp(t, dir, app, "prebuilt")
+	// as in CI: build and deploy take the version from the same commit
+	if out, err := exec.Command("sh", "-c", "cd "+dir+" && git init -q && git add -A && git -c user.name=e2e -c user.email=e2e@example.com commit -qm v1").CombinedOutput(); err != nil {
+		t.Fatalf("git: %v: %s", err, out)
+	}
+	mustSucceed(t, dockflow(t, dir, "build", "--push"), "build --push")
+
+	r := dockflow(t, dir, "deploy", "--skip-build")
+	mustSucceed(t, r, "deploy --skip-build")
+	if r.has("build.started") || len(pushes(r)) != 0 {
+		t.Fatalf("deploy --skip-build must not build:\n%s", r.out)
+	}
+	waitServing(t, host)
+	if got := served(t, host); got != "prebuilt" {
+		t.Fatalf("served %q, want prebuilt", got)
+	}
+
+	missing := dockflow(t, dir, "deploy", "--skip-build", "--version", "never-built")
+	if missing.code != 7 || !strings.Contains(missing.out, "build.not_pushed") {
+		t.Fatalf("a version that was never pushed must fail with build.not_pushed, got %d:\n%s", missing.code, missing.out)
+	}
+}
+
 // The Dockerfile is a template: rendered with the environment's vars in a temporary copy, the
 // project left untouched.
 func TestTemplatedBuild(t *testing.T) {

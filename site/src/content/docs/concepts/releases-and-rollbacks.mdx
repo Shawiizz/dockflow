@@ -112,8 +112,10 @@ A failure of the rollout itself (a container that crashes, stays unhealthy or ti
 ## dockflow rollback
 
 ```sh
-dockflow rollback production          # the previous release
-dockflow rollback production --to 41  # a given release
+dockflow rollback production                       # the previous release
+dockflow rollback production --to 41               # a given release
+dockflow rollback production --to 1.4.0            # the newest release of a version
+dockflow rollback production --to 41 --service web # only web, as release 41 had it
 ```
 
 `--to` takes a release number, as listed by `dockflow releases`. The target must be a release that went live (`active` or `superseded`), still kept, and not the current one.
@@ -128,6 +130,8 @@ A rollback is a deploy whose desired state is the recorded release, so it goes t
 The images are still on the server, as long as the release is kept, so nothing is built, pushed or downloaded. A rollback works even when your registry or your CI is down.
 
 A rollback is always a move forward: it creates a new release, with the target's version label, shown as `active (rollback to 41)`. Rolling back the rollback is another `dockflow rollback`.
+
+With `--service`, only that service goes back; the others keep what they run now, and the new release keeps the current version label.
 
 <Aside type="caution">
 A rollback runs no jobs: it does not replay old migrations, and it does not undo the ones the newer release ran. It does not restore the data in volumes either. If a release changed a database schema, check that the previous version of your app works with it before rolling back.

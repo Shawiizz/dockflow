@@ -220,3 +220,46 @@ func TestForeignNetworkIsRefused(t *testing.T) {
 		t.Fatalf("an external network is used as it is: %v", err)
 	}
 }
+
+// deploy --only web: web moves to the new version, db keeps the current release's spec although
+// this version changes it too, and the migration web waits for comes from this version.
+func TestOnlyDeploysTheNamedServices(t *testing.T) {
+	cur := withJobs()
+	next := withJobs()
+	next.Services[0].Spec.Image = "postgres:18@sha256:dddd"
+	next.Services[1].Spec.Image = "whoami@sha256:cccc"
+	next.Services[2].Spec.Command = []string{"migrate", "--v2"}
+	merged, err := Only(next, cur, []string{"web"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if db, _ := merged.Service("db"); db.Spec.Image != cur.Services[0].Spec.Image {
+		t.Fatalf("db must keep the current release's image, got %s", db.Spec.Image)
+	}
+	if m, _ := merged.Service("migrate"); m.Spec.Command[1] != "--v2" {
+		t.Fatalf("jobs come from the deployed version: %v", m.Spec.Command)
+	}
+	p, err := Plan(merged, deployed(app(), 3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.Golden(t, "only", p)
+
+	if _, err := Only(next, cur, []string{"nope"}); err == nil {
+		t.Fatal("an unknown service must be refused")
+	}
+	// on a server without db, web cannot go alone
+	if _, err := Only(next, domain.App{Name: "shop", Env: "production", Stack: "shop-production"}, []string{"web"}); err == nil {
+		t.Fatal("a dependency that is not deployed must be refused")
+	}
+	// a service the current release has and this version removed is kept
+	next.Services = append(next.Services[:0:0], next.Services[1:]...)
+	next.Services[0].DependsOn = []domain.Dependency{{Service: "migrate", Condition: "service_completed_successfully"}}
+	merged, err = Only(next, cur, []string{"web"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := merged.Service("db"); !ok {
+		t.Fatal("--only never removes a service it does not name")
+	}
+}
