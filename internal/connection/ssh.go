@@ -28,6 +28,8 @@ type Target struct {
 	Password   string
 	// FromString tells whether the target came from a connection string.
 	FromString bool
+	// Verified is the host key fingerprint SSH verified, once connected.
+	Verified string
 }
 
 // Lookup reads a secret of the environment (PRODUCTION_X, then X).
@@ -51,7 +53,7 @@ func Resolve(env string, cfg *config.Resolved, secret Lookup, flag string, geten
 	}
 	if cfg == nil || cfg.Server == nil {
 		return nil, errs.Config("no server for environment %s", env).
-			WithHint("set the %s_CONNECTION secret (printed by `dockflow server init`), or describe the server under environments.%s.server in %s",
+			WithHint("set the %s_CONNECTION secret (printed by `dockflow server connection`), or describe the server under environments.%s.server in %s",
 				strings.ToUpper(env), env, config.FileName)
 	}
 	t := &Target{Server: Server{
@@ -173,6 +175,7 @@ func hostKeyCallback(t *Target) ssh.HostKeyCallback {
 		got := ssh.FingerprintSHA256(key)
 		if t.Server.HostKey != "" {
 			if got == t.Server.HostKey {
+				t.Verified = got
 				return nil
 			}
 			return &hostKeyError{errs.Newf("ssh.host_key_mismatch", errs.ExitConnect,
@@ -183,6 +186,7 @@ func hostKeyCallback(t *Target) ssh.HostKeyCallback {
 		kh := filepath.Join(home, ".ssh", "known_hosts")
 		if cb, err := knownhosts.New(kh); err == nil {
 			if err := cb(hostname, remote, key); err == nil {
+				t.Verified = got
 				return nil
 			}
 		}

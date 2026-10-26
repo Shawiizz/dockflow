@@ -432,7 +432,7 @@ func (a *app) serverCmd() *cobra.Command {
 	initCmd.Flags().StringVar(&switchImage, "switch-image", "", "the Caddy image of the switch (default caddy:2, pinned by digest)")
 	initCmd.Flags().BoolVar(&noRegistry, "no-registry", false, "no server-local registry: every built image goes to registry.url")
 	initCmd.Flags().StringVar(&registryImage, "registry-image", "", "the image of the server-local registry (default registry:3, pinned by digest)")
-	cmd.AddCommand(initCmd)
+	cmd.AddCommand(initCmd, a.connectionCmd())
 	return cmd
 }
 
