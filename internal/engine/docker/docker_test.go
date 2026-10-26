@@ -73,8 +73,8 @@ func TestCreateRunAndList(t *testing.T) {
 		t.Fatalf("creating an existing network must succeed: %v", err)
 	}
 	nets, _ := e.Networks(ctx)
-	if !nets[net.Name] {
-		t.Fatal("the network is not listed")
+	if nets[net.Name] != p {
+		t.Fatalf("the network must be listed with its project %q: %q", p, nets[net.Name])
 	}
 
 	spec := domain.ContainerSpec{

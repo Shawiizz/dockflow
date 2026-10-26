@@ -75,7 +75,7 @@ type Engine interface {
 	// loop, or when timeout passes.
 	WaitHealthy(ctx context.Context, id string, grace, timeout time.Duration) error
 
-	Networks(ctx context.Context) (map[string]bool, error)
+	Networks(ctx context.Context) (map[string]string, error)
 	CreateNetwork(ctx context.Context, n domain.Network, project string) error
 	Connect(ctx context.Context, network, container string, aliases []string) error
 	Disconnect(ctx context.Context, network, container string) error

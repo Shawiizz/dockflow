@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
+	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/testutil"
 )
 
@@ -28,11 +29,11 @@ func app() domain.App {
 func deployed(a domain.App, seq int) domain.Actual {
 	act := domain.Actual{
 		Services: map[string]domain.ActualService{},
-		Networks: map[string]bool{}, Volumes: map[string]bool{},
+		Networks: map[string]string{}, Volumes: map[string]bool{},
 		Env: &domain.EnvRecord{Schema: 1, LastSeq: seq, Current: seq},
 	}
 	for _, n := range a.Networks {
-		act.Networks[n.Name] = true
+		act.Networks[n.Name] = a.Stack
 	}
 	for _, v := range a.Volumes {
 		act.Volumes[v.Name] = true
@@ -125,7 +126,7 @@ func TestJobsRunAroundAChange(t *testing.T) {
 func TestBeforeJobRunsAfterItsDependencies(t *testing.T) {
 	a := withJobs()
 	a.Services[2].DependsOn = []domain.Dependency{{Service: "db", Condition: "service_healthy"}}
-	p, err := Plan(a, domain.Actual{Services: map[string]domain.ActualService{}, Networks: map[string]bool{}, Volumes: map[string]bool{}})
+	p, err := Plan(a, domain.Actual{Services: map[string]domain.ActualService{}, Networks: map[string]string{}, Volumes: map[string]bool{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,5 +198,25 @@ func TestFingerprintFollowsActualState(t *testing.T) {
 	act.Services["web"] = web
 	if f1 == Fingerprint(a, act) {
 		t.Fatal("a changed container must change the fingerprint")
+	}
+}
+
+// A network of the same name that the app does not own (a Swarm stack's, another Compose
+// project's) is refused before anything changes; an external one is used as it is.
+func TestForeignNetworkIsRefused(t *testing.T) {
+	a := withJobs()
+	name := a.Networks[0].Name
+	act := domain.Actual{Services: map[string]domain.ActualService{}, Networks: map[string]string{name: ""}, Volumes: map[string]bool{}}
+	_, err := Plan(a, act)
+	if e, ok := errs.As(err); !ok || e.Code != "plan.network_foreign" {
+		t.Fatalf("a network of no project must be refused, got %v", err)
+	}
+	act.Networks[name] = "other-production"
+	if _, err := Plan(a, act); err == nil {
+		t.Fatal("another project's network must be refused")
+	}
+	a.Networks[0].External = true
+	if _, err := Plan(a, act); err != nil {
+		t.Fatalf("an external network is used as it is: %v", err)
 	}
 }

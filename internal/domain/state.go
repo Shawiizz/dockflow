@@ -6,7 +6,9 @@ import "time"
 // Dockflow's state files.
 type Actual struct {
 	Services map[string]ActualService `json:"services"`
-	Networks map[string]bool          `json:"networks"` // Docker names that exist
+	// Networks maps the Docker name of each network that exists to the Compose project it
+	// belongs to (LabelProject), empty for a network of no project.
+	Networks map[string]string `json:"networks"`
 	Volumes  map[string]bool          `json:"volumes"`
 	// Env is the environment's record; nil when the app was never deployed.
 	Env *EnvRecord `json:"env,omitempty"`

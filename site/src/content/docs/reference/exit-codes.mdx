@@ -105,6 +105,7 @@ The codes below are the ones you are most likely to meet. A few errors use a gen
 | `plan.no_switch` | 6 | The app declares routes, and the server has no switch. | Run `dockflow server init`. |
 | `plan.routes_without_switch` | 6 | The server was set up with `--edge none`, and the app declares routes. | Publish ports instead, or run `dockflow server init --edge builtin`. |
 | `plan.network_missing`, `plan.volume_missing` | 6 | A network or volume marked `external: true` does not exist on the server. | Create it on the server, or remove `external: true`. |
+| `plan.network_foreign` | 6 | A network of the app's name exists on the server but belongs to something else: a Docker Swarm stack, another Compose project, or a network created by hand. Dockflow never takes it over. | Remove it once nothing uses it (`docker stack rm` for a Swarm stack), or give the network another name in `compose.yml`. |
 | `plan.stateful_replicas`, `plan.container_name_replicas` | 6 | `dockflow scale` was asked for several replicas of a service that runs once. | Stateful services and services with a `container_name` keep one container. |
 | `rollback.no_previous`, `rollback.unknown_release` | 6 | There is no release to roll back to, or the one asked for is no longer kept. | List the releases with `dockflow releases`. |
 | `env.never_deployed` | 6 | The command needs a deployed release, and the environment has none. | Deploy it first. |

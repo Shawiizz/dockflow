@@ -418,14 +418,14 @@ func timeoutErr(ctx context.Context, id string, timeout time.Duration) error {
 	return ctx.Err()
 }
 
-func (e *Engine) Networks(ctx context.Context) (map[string]bool, error) {
+func (e *Engine) Networks(ctx context.Context) (map[string]string, error) {
 	r, err := e.c.NetworkList(ctx, client.NetworkListOptions{})
 	if err != nil {
 		return nil, apiErr("list networks", err)
 	}
-	out := map[string]bool{}
+	out := map[string]string{}
 	for _, n := range r.Items {
-		out[n.Name] = true
+		out[n.Name] = n.Labels[domain.LabelProject]
 	}
 	return out, nil
 }

@@ -31,8 +31,14 @@ func Plan(desired domain.App, actual domain.Actual, restart ...string) (*domain.
 		})
 	}
 
+	stack := desired.Stack
 	for _, n := range desired.Networks {
-		if actual.Networks[n.Name] {
+		if project, ok := actual.Networks[n.Name]; ok {
+			if !n.External && project != stack {
+				// a Swarm stack's or another project's: its containers' settings are not ours
+				return nil, errs.Plan("plan.network_foreign", "the network %s exists on the server and does not belong to %s", n.Name, stack).
+					WithHint("remove it once nothing uses it (a Swarm stack: docker stack rm), or give the network another name in compose.yml")
+			}
 			continue
 		}
 		if n.External {
