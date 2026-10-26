@@ -1,32 +1,58 @@
 name: v2 release
 
-# A tag v<semver> on the v2 branch publishes a release (ADR-0020), once the whole CI has passed
-# on the tagged commit.
+# Publishes a release (ADR-0020), once the whole CI has passed on the released commit: a tag
+# v<semver> pushed on the v2 branch, or a run started by hand on the v2 branch with the version,
+# whose tag the release then creates on that commit.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version to release, v<semver> (v4.0.0-alpha.2)"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - id: tag
+        env:
+          INPUT: ${{ inputs.version }}
+        run: |
+          tag="${INPUT:-$GITHUB_REF_NAME}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::not a version: $tag"; exit 1; }
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$GITHUB_REF" != refs/heads/v2 ]; then
+            echo "::error::releases are made from the v2 branch"; exit 1
+          fi
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+
   ci:
+    needs: [version]
     uses: ./.github/workflows/v2.yml
 
   release:
-    needs: [ci]
+    needs: [version, ci]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      # keyless signing: the certificate binds the signature to this workflow and tag
+      # keyless signing: the certificate binds the signature to this workflow and its ref
       id-token: write
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - name: build
-        run: make snapshot VERSION="$GITHUB_REF_NAME"
+        run: make snapshot VERSION="$TAG"
       - uses: sigstore/cosign-installer@v3
       - name: sign the checksums
         run: cosign sign-blob --yes --bundle dist/SHA256SUMS.sigstore.json dist/SHA256SUMS
@@ -35,8 +61,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           flags=""
-          case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
-          # never marked latest: which release the repository's page leads to is the owner's call
-          gh release create "$GITHUB_REF_NAME" dist/* install.sh $flags --latest=false \
-            --title "Dockflow $GITHUB_REF_NAME" \
-            --notes "Install: \`curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/v2/install.sh | sh -s -- --version $GITHUB_REF_NAME\`. The binaries are listed in SHA256SUMS, signed with Sigstore (SHA256SUMS.sigstore.json)."
+          case "$TAG" in *-*) flags="--prerelease" ;; esac
+          # never marked latest: which release the repository's page leads to is the owner's call;
+          # --target creates the tag on the released commit when it does not exist yet
+          gh release create "$TAG" dist/* install.sh $flags --latest=false --target "$GITHUB_SHA" \
+            --title "Dockflow $TAG" \
+            --notes "Install: \`curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/$TAG/install.sh | sh -s -- --version $TAG\`. The binaries are listed in SHA256SUMS, signed with Sigstore (SHA256SUMS.sigstore.json)."

@@ -42,8 +42,8 @@ The CLI ships its own Linux binary to servers ([ADR-0004](0004-ephemeral-agent.m
 
 ## Implementation status (M2)
 
-- `.github/workflows/v2-release.yml` runs on a tag `v*`: the whole CI on the tagged commit, then the binaries, `SHA256SUMS` signed keyless with cosign (`SHA256SUMS.sigstore.json`), and a GitHub release. Releases are never marked as the repository's latest; a tag with a pre-release suffix makes a pre-release.
-- `install.sh` checks the binary against `SHA256SUMS`, and `SHA256SUMS` against its signature when cosign is installed (identity: this repository's release workflow, at a `v` tag).
+- `.github/workflows/v2-release.yml` runs on a tag `v*`, or by hand on the `v2` branch with the version (the release then creates the tag): the whole CI on the released commit, then the binaries, `SHA256SUMS` signed keyless with cosign (`SHA256SUMS.sigstore.json`), and a GitHub release. Releases are never marked as the repository's latest; a tag with a pre-release suffix makes a pre-release.
+- `install.sh` checks the binary against `SHA256SUMS`, and `SHA256SUMS` against its signature when cosign is installed (identity: this repository's release workflow, at a `v` tag or on the `v2` branch).
 - The CLI downloads the agent binary over HTTPS and checks it against `SHA256SUMS`; it does not check the signature yet. That check, the PowerShell installer, Homebrew and the npm package come with the signed releases of v1.0 ([roadmap](../roadmap.md)).
 
 ## Embedding the Linux binaries
