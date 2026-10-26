@@ -138,11 +138,21 @@ def verified(secret: bytes, body: bytes, header: str) -> bool:
 
 Reject requests whose signature does not match. Use an `https://` URL, so the payload and its signature are not readable on the way.
 
+## The deploy user and its key
+
+`dockflow server init <admin>@<host>` creates the deploy user `dockflow`, in the `docker` group, and gives it a key:
+
+- generated on your machine (ed25519), never on the server: the private key exists only in the connection string printed at the end;
+- installed in `~dockflow/.ssh/authorized_keys` with `restrict,port-forwarding,pty`, which turns off agent and X11 forwarding and re-enables only what Dockflow uses;
+- one per run: running `server init` again adds a new key, so each environment or CI system can have its own. Remove a key you no longer use from `authorized_keys`.
+
+The administrator's account is used for this run only, and its credentials are never stored.
+
 ## Coming with server provisioning
 
-<Badge text="Coming in M3" variant="caution" /> Today, `dockflow server init` installs the switch and the registry on a server that already has Docker and an SSH user. Full provisioning will also:
+<Badge text="Coming in M3" variant="caution" /> Provisioning will also:
 
-- create a `dockflow` deploy user, with a key generated on your machine, never on the server, and installed with `restrict,port-forwarding,pty` and an optional `from=` restriction;
+- restrict the deploy key to source addresses (`from=`);
 - harden SSH (no password authentication, root by key only) and install fail2ban;
 - enable unattended security updates, time synchronisation and Docker log rotation;
 - install the published-port filter.

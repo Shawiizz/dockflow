@@ -78,6 +78,15 @@ Provisioning does the following, and every step is idempotent:
 
 Provisioning commands build their shell commands with a typed command builder that quotes every value.
 
+### Implementation status (M2)
+
+`dockflow server init <admin>@<host>` ships in M2 with part of the provisioning above: Docker from Docker's repository on Debian and Ubuntu (with log rotation when Docker is freshly installed), the deploy user in the `docker` group, its key generated on the CLI's machine and installed with `restrict,port-forwarding,pty`, then the switch and the registry as the deploy user, and the connection string printed at the end. It differs from the plan in two points:
+
+- the steps run as one shell script sent over the administrator's SSH session (`sh -s`, or `sudo -n sh -s`), built with the typed builder (`internal/shell`), rather than by uploading the binary and running `dockflow provision`: nothing is left on the server, and the script is contract-tested in Debian and Alpine containers;
+- `--deploy-key` takes a private key file, not a public one, since the connection string must hold the private key.
+
+The rest (interactive mode, running on the server itself, `from=`, SSH hardening, fail2ban, unattended updates, time synchronisation, the port filter, the watchdog, `--nginx`, `server cloud-init`) stays in M3.
+
 ## Consequences
 
 - The 1.x experience is kept: one secret per environment, nothing about the server in the repository.

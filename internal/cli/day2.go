@@ -400,12 +400,23 @@ func (a *app) serverCmd() *cobra.Command {
 	var edge, switchImage, registryImage, switchListen string
 	var trusted []string
 	var noRegistry bool
+	var pf provisionFlags
 	initCmd := &cobra.Command{
-		Use:   "init [<env>]",
-		Short: "Install the switch and the registry on an environment's server",
-		Long:  "Installs or updates the switch and the server-local registry on the server of an environment, reached as for a deploy. Provisioning a bare server comes in a later version.",
-		Args:  cobra.MaximumNArgs(1),
+		Use:   "init [<env> | <admin>@<host>[:port]]",
+		Short: "Prepare a server: Docker, the deploy user and its key, the switch and the registry",
+		Long: "With <admin>@<host>, connects as root or as a user with passwordless sudo, installs Docker when it is " +
+			"missing (Debian, Ubuntu), creates the deploy user with a key generated on this machine, then installs " +
+			"the switch and the registry as that user, and prints the connection string for your CI. The server's " +
+			"host key must be known: --host-key, or your known_hosts. Every step can be run again.\n\n" +
+			"With an environment, installs or updates the switch and the registry on its server, reached as for a deploy.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 && strings.Contains(args[0], "@") {
+				return a.provisionServer(cmd.Context(), args[0], pf, func(req *agent.Request) {
+					req.Edge, req.SwitchImage, req.SwitchListen, req.TrustedProxies = edge, switchImage, switchListen, trusted
+					req.Registry, req.RegistryImage = !noRegistry, registryImage
+				})
+			}
 			s, err := a.connect(cmd.Context(), envArg(args), "")
 			if err != nil {
 				return err
@@ -432,6 +443,14 @@ func (a *app) serverCmd() *cobra.Command {
 	initCmd.Flags().StringVar(&switchImage, "switch-image", "", "the Caddy image of the switch (default caddy:2, pinned by digest)")
 	initCmd.Flags().BoolVar(&noRegistry, "no-registry", false, "no server-local registry: every built image goes to registry.url")
 	initCmd.Flags().StringVar(&registryImage, "registry-image", "", "the image of the server-local registry (default registry:3, pinned by digest)")
+	f := initCmd.Flags()
+	f.StringVarP(&pf.key, "key", "k", "", "with <admin>@<host>: the administrator's private key (default: ssh-agent, ~/.ssh)")
+	f.StringVar(&pf.passwordFile, "password-file", "", "with <admin>@<host>: a file holding the administrator's password")
+	f.StringVar(&pf.hostKey, "host-key", "", "with <admin>@<host>: the server's host key fingerprint (SHA256:…), when known_hosts does not have it")
+	f.StringVar(&pf.user, "user", "", "with <admin>@<host>: the deploy user to create (default dockflow)")
+	f.StringVar(&pf.deployKey, "deploy-key", "", "with <admin>@<host>: use this private key for the deploy user instead of generating one")
+	f.StringVar(&pf.name, "name", "", "with <admin>@<host>: the server's name in the connection string (default main)")
+	f.BoolVar(&pf.skipDocker, "skip-docker-install", false, "with <admin>@<host>: refuse a server without Docker instead of installing it")
 	cmd.AddCommand(initCmd, a.connectionCmd())
 	return cmd
 }

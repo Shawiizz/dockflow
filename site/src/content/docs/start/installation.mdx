@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh |
 This installs the newest release. To install a given version, pass `--version`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.2
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.3
 ```
 
 </TabItem>
@@ -64,7 +64,7 @@ It needs `curl` or `wget`, and `sha256sum` or `shasum`.
 
 | Option | Environment variable | Default | Effect |
 |---|---|---|---|
-| `--version <tag>` | `DOCKFLOW_VERSION` | The newest release | The release to install, such as `v4.0.0-alpha.2` |
+| `--version <tag>` | `DOCKFLOW_VERSION` | The newest release | The release to install, such as `v4.0.0-alpha.3` |
 | `--dir <path>` | `DOCKFLOW_INSTALL_DIR` | `/usr/local/bin`, or `~/.local/bin` | Where to install `dockflow` |
 | – | `DOCKFLOW_RELEASES_URL` | `https://github.com/Shawiizz/dockflow/releases/download` | Where releases are downloaded from: a mirror holding `<version>/<file>` |
 
@@ -85,7 +85,7 @@ dockflow version
 ```
 
 ```text
-dockflow v4.0.0-alpha.2
+dockflow v4.0.0-alpha.3
 ```
 
 With an environment, `dockflow version production` prints the version deployed there instead. `dockflow --help` lists the commands, and `dockflow <command> --help` shows the options of one.
@@ -162,13 +162,13 @@ export DOCKFLOW_AGENT_BINARY=$PWD/dockflow-linux-amd64
 
 ## Server requirements
 
-Dockflow does not provision servers yet: `dockflow server init` installs its own containers on a server that already has Docker and an SSH user. The server needs:
+`dockflow server init <admin>@<host>` prepares a server from an administrator's account: it installs Docker on Debian and Ubuntu when it is missing, creates the deploy user and its key, and installs the switch and the registry. See the [Quickstart](/start/quickstart/). The server needs:
 
 | Requirement | Why |
 |---|---|
 | Linux on `amd64` or `arm64` | The agent is a Linux binary for one of these architectures |
-| Docker Engine 27 or later | The CLI checks the version when it connects, and refuses older engines (exit code 4) |
-| An SSH user that can use Docker | Usually a user in the `docker` group. Dockflow reaches the Docker socket through SSH stream-local forwarding, which OpenSSH allows by default (`AllowStreamLocalForwarding`); when the server refuses it, it falls back to `docker system dial-stdio`, which needs the `docker` CLI on the server |
+| Docker Engine 27 or later | `server init` installs it on Debian and Ubuntu; elsewhere, install it first. The CLI checks the version when it connects, and refuses older engines (exit code 4) |
+| SSH as `root` or a user with passwordless `sudo`, for `server init` | It creates the deploy user `dockflow`, in the `docker` group, which every other command uses. A user of your own in the `docker` group works too, with [`server connection`](/reference/cli/#server-connection). Dockflow reaches the Docker socket through SSH stream-local forwarding, which OpenSSH allows by default (`AllowStreamLocalForwarding`); when the server refuses it, it falls back to `docker system dial-stdio`, which needs the `docker` CLI on the server |
 | A known SSH host key | Every connection verifies it: pinned in the configuration or the connection string, or present in your `~/.ssh/known_hosts`. Nothing is trusted on first use |
 | Ports 80 and 443 free, for the `builtin` edge | The switch publishes them and obtains TLS certificates. With the `external` edge, behind your own proxy, the switch listens on `127.0.0.1:8080` instead. See [The switch and edges](/concepts/switch-and-edges/) |
 | Port 5959 free on loopback | The server-local registry listens on `127.0.0.1:5959`, unless you use `--no-registry` |

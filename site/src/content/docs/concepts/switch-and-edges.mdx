@@ -158,7 +158,7 @@ Moving a server to `none` is refused while apps on it still have routes (`server
 
 ## server init
 
-`dockflow server init [<env>]` installs or updates the switch and the server-local registry on the server of an environment, reached as a deploy reaches it. It does not install Docker or create users: the server must already meet the [requirements](/start/installation/#server-requirements). It is safe to run again: a container whose settings did not change is kept.
+`dockflow server init <admin>@<host>` prepares a server (Docker, the deploy user and its key) and then installs the switch and the server-local registry; `dockflow server init [<env>]` installs or updates them on the server of an environment, reached as a deploy reaches it. See the [CLI reference](/reference/cli/#server-init). It is safe to run again: a container whose settings did not change is kept.
 
 | Option | Default | Description |
 |---|---|---|
@@ -171,4 +171,4 @@ Moving a server to `none` is refused while apps on it still have routes (`server
 
 To change the edge of a server, run `server init` again with another `--edge`. The switch container is replaced, which interrupts traffic for a moment, and every app's routes are loaded into the new one.
 
-<Badge text="Coming in M3" variant="caution" /> Provisioning a bare server (installing Docker, creating the deploy user, hardening SSH), the `cloudflare` edge, `--acme-email` and the `server status`, `server edge` and `server upgrade` commands.
+<Badge text="Coming in M3" variant="caution" /> SSH hardening and the rest of provisioning, the `cloudflare` edge, `--acme-email` and the `server status`, `server edge` and `server upgrade` commands.

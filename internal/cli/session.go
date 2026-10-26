@@ -400,7 +400,13 @@ func (s *session) hookRunner() *hooks.Runner {
 
 // hostScript runs a script on the server with `sh -s`, feeding it on stdin.
 func (s *session) hostScript(ctx context.Context, script string, out io.Writer) (int, error) {
-	sess, err := s.ssh.NewSession()
+	return runScript(ctx, s.ssh, "sh -s", script, out)
+}
+
+// runScript runs command on the server with script on its stdin, so no value of the script
+// appears in a command line, and returns its exit code.
+func runScript(ctx context.Context, c *ssh.Client, command, script string, out io.Writer) (int, error) {
+	sess, err := c.NewSession()
 	if err != nil {
 		return -1, errs.Connect("cannot open an SSH session").WithCause(err)
 	}
@@ -408,7 +414,7 @@ func (s *session) hostScript(ctx context.Context, script string, out io.Writer) 
 	sess.Stdin = strings.NewReader(script)
 	sess.Stdout, sess.Stderr = out, out
 	done := make(chan error, 1)
-	go func() { done <- sess.Run("sh -s") }()
+	go func() { done <- sess.Run(command) }()
 	select {
 	case <-ctx.Done():
 		_ = sess.Signal(ssh.SIGKILL)
@@ -444,6 +450,10 @@ var notifies = map[string]bool{
 
 // notify sends the environment's webhooks for a run that changed something or failed.
 func (s *session) notify(ctx context.Context, req agent.Request, res *launcher.Result) {
+	if s.loaded == nil {
+		// a server-level run, outside any project
+		return
+	}
 	hooks := s.loaded.Config.Notify
 	if len(hooks) == 0 || !notifies[req.Op] || res.Outcome == events.OutcomeNoop || errCode(res.Error) == "lock.held" {
 		return

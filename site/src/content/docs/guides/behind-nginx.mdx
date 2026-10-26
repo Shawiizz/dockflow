@@ -10,7 +10,7 @@ import { Aside, Badge, Steps } from '@astrojs/starlight/components';
 By default, Dockflow's switch listens on ports 80 and 443 and obtains certificates itself. If your server already runs nginx, Apache, HAProxy or another proxy on those ports, use the **external edge**: the switch listens on one local address, and your proxy sends every routed domain to it. Your proxy keeps TLS; Dockflow keeps zero-downtime deploys.
 
 ```sh
-dockflow server init production --edge external
+dockflow server init root@203.0.113.10 --edge external
 ```
 
 ```nginx
@@ -38,13 +38,13 @@ A request for a host name that no route declares gets a 404 from the switch.
 
 <Steps>
 
-1. Install the switch in external mode on the environment's server:
+1. Prepare the server with the switch in external mode, from an administrator's account (see the [Quickstart](/start/quickstart/)):
 
    ```sh
-   dockflow server init production --edge external
+   dockflow server init root@203.0.113.10 --edge external
    ```
 
-   The switch listens on `127.0.0.1:8080` on the server, reachable from the server only. Running `server init` again with another `--edge` changes the mode of an installed server.
+   On a server already prepared for an environment, `dockflow server init production --edge external` does the same through the deploy user. The switch listens on `127.0.0.1:8080` on the server, reachable from the server only. Running `server init` again with another `--edge` changes the mode of an installed server.
 
 2. Keep your routes as they are. Each routed service declares its domains, and the switch matches them against the `Host` header nginx sends:
 

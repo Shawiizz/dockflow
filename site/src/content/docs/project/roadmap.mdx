@@ -9,7 +9,7 @@ import { Aside, Badge } from '@astrojs/starlight/components';
 
 Dockflow is built in milestones. Each one ends with a tool you can use, and is done only when real projects run on it in production and its exit criteria pass as automated tests. Milestones have no dates.
 
-The current release is **v4.0.0-alpha.2**, which delivers milestones M1 and M2.
+The current release is **v4.0.0-alpha.3**, which delivers milestones M1 and M2.
 
 <Aside type="caution">
 Until 4.0.0, releases are alphas. The configuration (`version: 1`), the server state (`schema: 1`) and the event stream (`v: 1`) are designed to stay, but they are frozen only at 4.0.0.
@@ -42,7 +42,7 @@ Everything a web app needs to go to production from CI.
 - **Day-2 commands:** `logs`, `exec`, `run`, `cp`, `ssh`, `ps`, `details`, `diagnose`, `restart`, `stop`, `scale`, `prune`, `list`, `destroy`, `releases --stats` and `cancel`.
 - **CI:** the environment and version derived from tags, on GitHub Actions, GitLab CI, Jenkins, Buildkite and Bitbucket Pipelines; signed webhooks.
 - **Cleanup:** release retention, and pruning of images and the registry.
-- `dockflow server connection`, the release workflow, the installer, and the download of the agent binary checked against the release's checksums.
+- `dockflow server init <admin>@<host>`: Docker installed on Debian and Ubuntu, the deploy user with a key generated on your machine, the switch and the registry, and the connection string printed at the end; `dockflow server connection`; the release workflow, the installer, and the download of the agent binary checked against the release's checksums.
 
 ## Coming next
 
@@ -52,7 +52,7 @@ Everything a web app needs to go to production from CI.
 
 Take a blank server to a hardened production host, and cover the needs of larger apps.
 
-- **Provisioning:** the full `server init`, interactive, run locally or over SSH: Docker installation, a deploy user with a restricted key, SSH hardening, fail2ban, security updates, time synchronisation, and `--nginx`. Plus `server cloud-init`, `server check`, `server status`, `server edge` and `server upgrade`.
+- **Provisioning:** the rest of `server init`: interactive questions, running on the server itself, SSH hardening, fail2ban, security updates, time synchronisation, `from=` restrictions on the deploy key, and `--nginx`. Plus `server cloud-init`, `server check`, `server status`, `server edge` and `server upgrade`.
 - **Edges and routes:** the `cloudflare` edge; route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks.
 - **Plugins:** project plugins and the built-in `nginx` and `systemd` plugins, with `plugins list`.
 - **Firewall:** the published-port filter, with `firewall.public_ports` and per-port source ranges, and Cloudflare's ranges refreshed automatically.
@@ -102,5 +102,5 @@ Considered, not committed: several servers per environment, Podman as the server
 To pin the version your CI installs:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.2
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.3
 ```

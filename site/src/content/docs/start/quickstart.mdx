@@ -1,13 +1,13 @@
 ---
 title: Quickstart
-description: From a Linux server with Docker to a first zero-downtime deploy, a second deploy and a rollback.
+description: From a Linux server to a first zero-downtime deploy, a second deploy and a rollback.
 sidebar:
   order: 3
 ---
 
 import { Aside, Steps, Tabs, TabItem, LinkCard, CardGrid } from '@astrojs/starlight/components';
 
-This guide deploys a small web app, an nginx container behind a route with HTTPS, to one server. You install the CLI, tell Dockflow how to reach the server, prepare the server, deploy, deploy a change, and roll it back. It takes about ten minutes.
+This guide deploys a small web app, an nginx container behind a route with HTTPS, to one server. You install the CLI, prepare the server with one command, deploy, deploy a change, and roll it back. It takes about ten minutes.
 
 <Steps>
 
@@ -15,8 +15,8 @@ This guide deploys a small web app, an nginx container behind a route with HTTPS
 
    You need:
 
-   - a Linux server (`amd64` or `arm64`) with Docker Engine 27 or later;
-   - an SSH user on it that can use Docker (in the `docker` group), and its private key on your machine;
+   - a Linux server (`amd64` or `arm64`), freshly installed or not. Dockflow installs Docker on Debian and Ubuntu; on another distribution, install Docker Engine 27 or later first;
+   - SSH access to it as `root`, or as a user with passwordless `sudo`, from your machine;
    - ports 80 and 443 of the server free and reachable from the internet;
    - a domain name whose DNS record points to the server, here `hello.example.com`.
 
@@ -31,50 +31,42 @@ This guide deploys a small web app, an nginx container behind a route with HTTPS
 
    Other systems and options are in [Installation](/start/installation/).
 
-3. **Describe the server.**
-
-   Create a directory for the project. Dockflow reaches the server over SSH and verifies its host key on every connection, so it needs the host, the user, the host key and a private key. Choose one of two ways to give them.
-
-   <Tabs>
-   <TabItem label="In dockflow.yml">
-
-   Get the server's host key fingerprint, on the server itself:
+3. **Prepare the server.**
 
    ```sh
-   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+   dockflow server init root@203.0.113.10
    ```
 
-   Then write `dockflow.yml` at the root of the project:
+   ```text
+     connecting to 203.0.113.10:22 as root
+     installing Docker from download.docker.com (debian bookworm)
+     creating the user dockflow
+     adding dockflow to the docker group
+     installing the deploy key of dockflow
+     connecting as dockflow with the deploy key
+     installing the agent image dockflow/agent:v4.0.0-alpha.3
+   ✓ 203.0.113.10 is ready (edge: builtin, deploy user: dockflow)
 
-   ```yaml
-   # dockflow.yml
-   version: 1
-   app: hello
+   The connection string below holds the deploy key: store it as the <ENV>_CONNECTION secret
+   …
 
-   environments:
-     production:
-       server:
-         host: 203.0.113.10
-         user: deploy
-         host_key: "SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s"
-       vars:
-         DOMAIN: hello.example.com
+   eyJ2IjoyLCJzZXJ2ZXJzIjpb…
    ```
 
-   `port` defaults to 22 and `user` to `dockflow`. Without `host_key`, the host must be in your `~/.ssh/known_hosts`.
+   With your administrator's account (your SSH key from `ssh-agent` or `~/.ssh`, or `-k <key>`), `server init`:
 
-   The private key comes from the first of: the `DOCKFLOW_SSH_KEY_PRODUCTION` or `DOCKFLOW_SSH_KEY` environment variable (the key itself, or the path of its file), then the keys loaded in `ssh-agent` and `~/.ssh/id_ed25519`, `id_ecdsa` or `id_rsa`.
+   - installs Docker when it is missing, from Docker's own repository;
+   - creates the deploy user `dockflow`, in the `docker` group, with an SSH key generated on your machine and restricted to what Dockflow uses. The private key is never written on the server;
+   - reconnects as `dockflow`, and installs the switch (`dockflow-switch`, Caddy), which publishes ports 80 and 443 and obtains certificates, and the server-local registry (`dockflow-registry`, on `127.0.0.1:5959`);
+   - prints the **connection string**: the server, its host key and the deploy key, in one value.
 
-   </TabItem>
-   <TabItem label="Connection string">
+   Every step can be run again: on a prepared server, it changes nothing.
 
-   A connection string holds the server, its host key and the private key in one value, so nothing about the server appears in the repository. Print it:
+   <Aside type="note" title="The host key">
+   Dockflow never trusts a server it cannot verify. If you have already connected to it with `ssh`, its key is in your `~/.ssh/known_hosts` and there is nothing to do. Otherwise `server init` stops and shows the server's fingerprint: compare it with the output of `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server (your provider's console shows it too), then run again with `--host-key SHA256:…`.
+   </Aside>
 
-   ```sh
-   dockflow server connection deploy@203.0.113.10 -k ~/.ssh/id_ed25519
-   ```
-
-   The command connects, verifies the host key against your `~/.ssh/known_hosts` (or `--host-key SHA256:…`), checks that the user can use Docker, and prints the string. Store it as the `PRODUCTION_CONNECTION` secret: in a local, gitignored `.env.dockflow` file for now, and as a CI secret later.
+   Create a directory for the project, and store the connection string in a local `.env.dockflow` file, kept out of git. In CI, it becomes the `PRODUCTION_CONNECTION` secret ([Deploying from CI](/guides/ci/)).
 
    ```sh
    # .env.dockflow
@@ -85,7 +77,13 @@ This guide deploys a small web app, an nginx container behind a route with HTTPS
    echo .env.dockflow >> .gitignore
    ```
 
-   `dockflow.yml` then needs no `server`:
+   <Aside type="caution">
+   The connection string contains the deploy key: anyone holding it controls Docker on the server, which means root. Never commit `.env.dockflow`. If it leaks, run `server init` again (it installs a new key) and remove the old line from `/home/dockflow/.ssh/authorized_keys`.
+   </Aside>
+
+4. **Describe the environment.**
+
+   Write `dockflow.yml` at the root of the project. The server comes from the connection string, so nothing about it appears here:
 
    ```yaml
    # dockflow.yml
@@ -97,23 +95,6 @@ This guide deploys a small web app, an nginx container behind a route with HTTPS
        vars:
          DOMAIN: hello.example.com
    ```
-
-   </TabItem>
-   </Tabs>
-
-   <Aside type="caution">
-   The connection string contains the private key. Anyone holding it is root on the server. Never commit `.env.dockflow`.
-   </Aside>
-
-4. **Prepare the server.**
-
-   ```sh
-   dockflow server init production
-   ```
-
-   This connects to the server of `production`, and installs two containers there: the switch (`dockflow-switch`, Caddy), which publishes ports 80 and 443 and obtains certificates, and the server-local registry (`dockflow-registry`), on `127.0.0.1:5959`. It also creates `/var/lib/dockflow`, where Dockflow keeps its state. Running it again is safe: it only replaces what changed.
-
-   The first command that reaches a server also installs the agent image there, about 20 MB, once per Dockflow version.
 
 5. **Describe the app.**
 

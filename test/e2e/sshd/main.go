@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"golang.org/x/crypto/ssh"
@@ -37,8 +38,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	cfg := &ssh.ServerConfig{PublicKeyCallback: func(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+	cfg := &ssh.ServerConfig{PublicKeyCallback: func(meta ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 		if string(key.Marshal()) == string(allowed.Marshal()) {
+			return nil, nil
+		}
+		// as OpenSSH: the keys in the user's own authorized_keys (commands still run as root)
+		if userKeys(meta.User())[string(key.Marshal())] {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("unknown key")
@@ -171,4 +176,36 @@ func session(nc ssh.NewChannel) {
 		ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
 		return
 	}
+}
+
+// userKeys reads ~user/.ssh/authorized_keys, options included.
+func userKeys(user string) map[string]bool {
+	keys := map[string]bool{}
+	passwd, err := os.ReadFile("/etc/passwd")
+	if err != nil {
+		return keys
+	}
+	home := ""
+	for _, line := range strings.Split(string(passwd), "\n") {
+		f := strings.Split(line, ":")
+		if len(f) > 5 && f[0] == user {
+			home = f[5]
+		}
+	}
+	if home == "" {
+		return keys
+	}
+	rest, err := os.ReadFile(home + "/.ssh/authorized_keys")
+	if err != nil {
+		return keys
+	}
+	for len(rest) > 0 {
+		var k ssh.PublicKey
+		k, _, _, rest, err = ssh.ParseAuthorizedKey(rest)
+		if err != nil {
+			break
+		}
+		keys[string(k.Marshal())] = true
+	}
+	return keys
 }
