@@ -27,6 +27,10 @@ const (
 	EdgeNone     = "none"
 )
 
+// SharedDir is where the volume shared by the switch and the agents is mounted, in both: the
+// admin socket and the upstream files.
+const SharedDir = "/run/dockflow-switch"
+
 // DefaultListen is where the switch listens with the external edge, on the server.
 const DefaultListen = "127.0.0.1:8080"
 
@@ -39,9 +43,13 @@ type Config struct {
 	Routes []Route
 	// TrustedProxies are the CIDRs whose X-Forwarded-For is believed (external edge).
 	TrustedProxies []string
+	// Reload loads the configuration even when its routes did not change: the switch was just
+	// (re)installed.
+	Reload bool
 }
 
-// Switch applies a configuration to the running switch, without dropping connections.
+// Switch applies a configuration to the running switch, without dropping connections. Moving a
+// route to other containers must not reload anything that holds client connections.
 type Switch interface {
 	Apply(ctx context.Context, c Config) error
 }

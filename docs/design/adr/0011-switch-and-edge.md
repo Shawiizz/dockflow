@@ -1,7 +1,7 @@
 # ADR-0011: The switch and the edge: a Dockflow-managed Caddy in front of every app, any proxy in front of it
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (single server: the switch handles zero-downtime transitions; any front proxy, nginx included, points at it once; the admin API on a unix socket)
+- Date: 2026-10-25, revised 2026-10-26 (single server: the switch handles zero-downtime transitions; any front proxy, nginx included, points at it once; the admin API on a unix socket; moving traffic without reloading Caddy)
 
 ## Context
 
@@ -30,9 +30,11 @@ The project owner asked how proxies should be handled. There are three options:
 - Its admin API listens only on a unix socket, in the volume `dockflow-switch-admin`, which only agents mount. Containers of apps share networks with the switch, so an admin API on a network would be reachable by them.
 - Caddy saves each configuration it loads and resumes it when it restarts, so the switch serves the same routes after a reboot, without an agent.
 
+**Moving traffic never reloads Caddy.** A reload starts new servers and shuts the old ones down, and Go's HTTP server closes, without an answer, a connection the old server accepted just before its shutdown began. Clients that do not retry (nginx in front of the switch, a browser on a fresh connection) then see an error, a few times per reload under load. So each route's upstreams are slots, `{file./run/dockflow-switch/up/<route>/<n>}`, which Caddy reads on every request; the agent moves traffic by rewriting these files atomically. The configuration is reloaded only when the routes themselves change (a domain, a path, a number of replicas), which ordinary deploys do not do.
+
 **During a deploy** (`switch` strategy):
 1. The new containers become healthy.
-2. The agent loads the new configuration through the admin API. Caddy swaps it gracefully, with no restart and no dropped connection.
+2. The agent points the route's upstream files at them. The next requests go to the new containers; nothing is reloaded.
 3. Requests in flight on the old containers finish within the drain time (default 30 s, `x-dockflow.rollout.drain`). WebSocket connections still open after that are closed.
 4. The old containers are stopped.
 

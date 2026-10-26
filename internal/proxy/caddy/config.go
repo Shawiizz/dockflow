@@ -14,8 +14,16 @@ import (
 	"github.com/Shawiizz/dockflow/internal/proxy"
 )
 
+// Dir is the volume shared by the switch and the agents, at the same path in both.
+const Dir = proxy.SharedDir
+
 // AdminSocket is the path of the admin socket inside the switch and the agent.
-const AdminSocket = "/run/dockflow-switch/admin.sock"
+const AdminSocket = Dir + "/admin.sock"
+
+// upstreamDir holds one file per upstream slot, <route id>/<n>, holding host:port. Caddy reads
+// it on every request through a {file.*} placeholder, so moving traffic is writing files: no
+// configuration reload, which would close the connections the old server had just accepted.
+const upstreamDir = Dir + "/up"
 
 type obj = map[string]any
 
@@ -33,7 +41,7 @@ func Build(c proxy.Config) ([]byte, error) {
 			seen[k] = r.Stack + "/" + r.Service
 		}
 	}
-	routes := append([]proxy.Route(nil), c.Routes...)
+	routes := withIDs(c.Routes)
 	sort.SliceStable(routes, func(i, j int) bool {
 		if len(routes[i].Path) != len(routes[j].Path) {
 			return len(routes[i].Path) > len(routes[j].Path)
@@ -75,7 +83,7 @@ func Build(c proxy.Config) ([]byte, error) {
 
 // external serves every route on one plain HTTP address, behind the user's own proxy, which
 // terminates TLS and sends X-Forwarded-For.
-func external(c proxy.Config, routes []proxy.Route) ([]byte, error) {
+func external(c proxy.Config, routes []identified) ([]byte, error) {
 	var rs []any
 	for _, r := range routes {
 		rs = append(rs, route(r))
@@ -101,7 +109,36 @@ func external(c proxy.Config, routes []proxy.Route) ([]byte, error) {
 	return json.MarshalIndent(cfg, "", "  ")
 }
 
-func route(r proxy.Route) obj {
+// identified is a route with its id: <stack>.<service>.<n>, n counting the service's routes.
+type identified struct {
+	proxy.Route
+	ID string
+}
+
+func withIDs(rs []proxy.Route) []identified {
+	out := make([]identified, 0, len(rs))
+	seen := map[string]int{}
+	for _, r := range rs {
+		key := r.Stack + "." + r.Service
+		out = append(out, identified{Route: r, ID: fmt.Sprintf("%s.%d", key, seen[key])})
+		seen[key]++
+	}
+	return out
+}
+
+// Upstreams returns the contents of the upstream files of c: path relative to the upstream
+// directory, and host:port.
+func Upstreams(c proxy.Config) map[string]string {
+	out := map[string]string{}
+	for _, r := range withIDs(c.Routes) {
+		for i, u := range r.Upstreams {
+			out[r.ID+"/"+strconv.Itoa(i)] = net.JoinHostPort(u, strconv.Itoa(r.Port))
+		}
+	}
+	return out
+}
+
+func route(r identified) obj {
 	match := obj{"host": r.Domains}
 	if r.Path != "" && r.Path != "/" {
 		p := strings.TrimSuffix(r.Path, "/")
@@ -112,8 +149,8 @@ func route(r proxy.Route) obj {
 		handle = append(handle, obj{"handler": "rewrite", "strip_path_prefix": strings.TrimSuffix(r.Path, "/")})
 	}
 	ups := make([]any, 0, len(r.Upstreams))
-	for _, u := range r.Upstreams {
-		ups = append(ups, obj{"dial": net.JoinHostPort(u, strconv.Itoa(r.Port))})
+	for i := range r.Upstreams {
+		ups = append(ups, obj{"dial": fmt.Sprintf("{file.%s/%s/%d}", upstreamDir, r.ID, i)})
 	}
 	handle = append(handle, obj{
 		"handler":        "reverse_proxy",
@@ -121,17 +158,9 @@ func route(r proxy.Route) obj {
 		"load_balancing": obj{"selection_policy": obj{"policy": "round_robin"}, "try_duration": "2s"},
 	})
 	return obj{
-		"@id":      fmt.Sprintf("dockflow-%s-%s-%s", r.Stack, r.Service, pathID(r.Path)),
+		"@id":      "dockflow." + r.ID,
 		"match":    []any{match},
 		"handle":   handle,
 		"terminal": true,
 	}
-}
-
-func pathID(p string) string {
-	p = strings.Trim(p, "/")
-	if p == "" {
-		return "root"
-	}
-	return strings.NewReplacer("/", "_", ".", "_").Replace(p)
 }

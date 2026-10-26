@@ -169,8 +169,8 @@ const (
 	DefaultSwitchImage = "caddy:2"
 )
 
-// SwitchAdminDir is where the admin socket's volume is mounted, in the switch and in the agent.
-const SwitchAdminDir = "/run/dockflow-switch"
+// SwitchAdminDir is where the switch's shared volume is mounted, in the switch and in the agent.
+const SwitchAdminDir = proxy.SharedDir
 
 // serverInit installs or updates the switch and the registry, and records the server's settings.
 func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
@@ -261,7 +261,9 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 		if r.Switch == nil {
 			return failed(errs.Internal("the agent has no switch client"))
 		}
-		if err := r.Switch.Apply(ctx, switchConfig(&srv, routes)); err != nil {
+		cfg := switchConfig(&srv, routes)
+		cfg.Reload = true
+		if err := r.Switch.Apply(ctx, cfg); err != nil {
 			return failed(err)
 		}
 	}

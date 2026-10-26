@@ -303,7 +303,9 @@ func startLoad(t *testing.T, host string, workers int) *load {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	l := &load{cancel: cancel}
-	client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{MaxIdleConnsPerHost: workers}}
+	// a new connection per request, as a front proxy opens them: Go's client would otherwise
+	// retry a request on a reused connection the server closed, hiding a dropped connection
+	client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
 	for i := 0; i < workers; i++ {
 		l.wg.Add(1)
 		go func() {
@@ -319,10 +321,11 @@ func startLoad(t *testing.T, host string, workers int) *load {
 					l.fail(err.Error())
 					continue
 				}
+				b, _ := io.ReadAll(io.LimitReader(resp.Body, 200))
 				io.Copy(io.Discard, resp.Body)
 				resp.Body.Close()
 				if resp.StatusCode != http.StatusOK {
-					l.fail(fmt.Sprintf("status %d", resp.StatusCode))
+					l.fail(fmt.Sprintf("status %d from %q: %q", resp.StatusCode, resp.Header.Get("Server"), b))
 					continue
 				}
 				l.ok.Add(1)

@@ -11,7 +11,7 @@
           ],
           "routes": [
             {
-              "@id": "dockflow-blog-staging-web-root",
+              "@id": "dockflow.blog-staging.web.0",
               "handle": [
                 {
                   "handler": "reverse_proxy",
@@ -23,7 +23,7 @@
                   },
                   "upstreams": [
                     {
-                      "dial": "blog-staging-web-1-1:80"
+                      "dial": "{file./run/dockflow-switch/up/blog-staging.web.0/0}"
                     }
                   ]
                 }
@@ -53,7 +53,7 @@
           ],
           "routes": [
             {
-              "@id": "dockflow-shop-production-api-api",
+              "@id": "dockflow.shop-production.api.0",
               "handle": [
                 {
                   "handler": "rewrite",
@@ -69,7 +69,7 @@
                   },
                   "upstreams": [
                     {
-                      "dial": "shop-production-api-3-1:8080"
+                      "dial": "{file./run/dockflow-switch/up/shop-production.api.0/0}"
                     }
                   ]
                 }
@@ -88,7 +88,7 @@
               "terminal": true
             },
             {
-              "@id": "dockflow-shop-production-web-root",
+              "@id": "dockflow.shop-production.web.0",
               "handle": [
                 {
                   "handler": "reverse_proxy",
@@ -100,10 +100,10 @@
                   },
                   "upstreams": [
                     {
-                      "dial": "shop-production-web-4-1:3000"
+                      "dial": "{file./run/dockflow-switch/up/shop-production.web.0/0}"
                     },
                     {
-                      "dial": "shop-production-web-4-2:3000"
+                      "dial": "{file./run/dockflow-switch/up/shop-production.web.0/1}"
                     }
                   ]
                 }

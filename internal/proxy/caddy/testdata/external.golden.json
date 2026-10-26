@@ -17,7 +17,7 @@
           ],
           "routes": [
             {
-              "@id": "dockflow-docs-production-docs-root",
+              "@id": "dockflow.docs-production.docs.0",
               "handle": [
                 {
                   "handler": "reverse_proxy",
@@ -29,7 +29,7 @@
                   },
                   "upstreams": [
                     {
-                      "dial": "docs-production-docs-7-1:3000"
+                      "dial": "{file./run/dockflow-switch/up/docs-production.docs.0/0}"
                     }
                   ]
                 }

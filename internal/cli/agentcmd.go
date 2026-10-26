@@ -56,7 +56,7 @@ func (a *app) agentCmd() *cobra.Command {
 			}
 			res := agent.Run(ctx, agent.Deps{
 				Engine: eng, Store: store, Events: ev,
-				Switch: caddy.New(caddy.AdminSocket),
+				Switch: caddy.New(caddy.Dir),
 			}, req)
 			if res.ExitCode != 0 {
 				return &errs.Error{Code: "run.failed", Exit: res.ExitCode, Message: "run failed", Reported: true}

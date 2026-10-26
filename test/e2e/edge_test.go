@@ -27,6 +27,10 @@ const nginxConf = `server {
 func TestExternalEdgeBehindNginx(t *testing.T) {
 	mustSucceed(t, serverInit("--edge", "external"), "server init --edge external")
 	t.Cleanup(func() {
+		if t.Failed() {
+			logs, _ := inServer("docker logs e2e-nginx 2>&1 | grep -E 'error|\" 502 ' | head -20")
+			t.Logf("nginx:\n%s", logs)
+		}
 		inServer("docker rm -f e2e-nginx")
 		if r := serverInit(); r.code != 0 {
 			t.Errorf("restoring the builtin edge: exit %d\n%s", r.code, r.out)
