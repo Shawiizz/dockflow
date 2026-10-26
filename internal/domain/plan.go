@@ -9,6 +9,7 @@ const (
 	ActionRemoveService = "service.remove"
 	ActionRoutes        = "routes.apply"
 	ActionJob           = "job.run"
+	ActionUpload        = "upload.apply"
 )
 
 // Plan is the ordered list of changes that turns the actual state into the desired one

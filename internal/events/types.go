@@ -26,6 +26,7 @@ const (
 	DrainStarted     = "drain.started"
 	HealthCheck      = "health.check"
 	JobLog           = "job.log"
+	UploadFinished   = "upload.finished"
 	HookStarted      = "hook.started"
 	HookLog          = "hook.log"
 	HookFinished     = "hook.finished"

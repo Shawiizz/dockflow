@@ -1,11 +1,16 @@
 package cli
 
 import (
+	"archive/tar"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/user"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,8 +25,11 @@ import (
 	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/events"
 	"github.com/Shawiizz/dockflow/internal/hooks"
+	"github.com/Shawiizz/dockflow/internal/ignore"
 	"github.com/Shawiizz/dockflow/internal/launcher"
 	"github.com/Shawiizz/dockflow/internal/project"
+	"github.com/Shawiizz/dockflow/internal/render"
+	"github.com/Shawiizz/dockflow/internal/upload"
 	"github.com/Shawiizz/dockflow/internal/version"
 )
 
@@ -35,6 +43,13 @@ type session struct {
 	info     engine.Info
 	launcher *launcher.Launcher
 	run      string
+
+	ws *render.Workspace
+	// manifests and blobs are the uploads' manifests and where each blob is read.
+	manifests map[string]upload.Manifest
+	blobs     map[string]string
+	// payload, when set, follows the next agent request on its stdin.
+	payload func(io.Writer) error
 }
 
 // load reads the project for env (as typed) without reaching the server.
@@ -108,8 +123,123 @@ func (a *app) dial(ctx context.Context, t *connection.Target) (*session, error) 
 }
 
 func (s *session) Close() {
+	if s.ws != nil {
+		s.ws.Close()
+	}
 	s.engine.Close()
 	s.ssh.Close()
+}
+
+// workspace is the session's rendered copy of the build contexts and upload sources.
+func (s *session) workspace() (*render.Workspace, error) {
+	if s.ws == nil {
+		ws, err := workspace(s.loaded)
+		if err != nil {
+			return nil, err
+		}
+		s.ws = ws
+	}
+	return s.ws, nil
+}
+
+// prepareUploads describes each upload source by its manifest, and adds the uploads to the
+// desired app (ADR-0021).
+func (s *session) prepareUploads() error {
+	l := s.loaded
+	if len(l.Config.Uploads) == 0 || s.manifests != nil {
+		return nil
+	}
+	ws, err := s.workspace()
+	if err != nil {
+		return err
+	}
+	s.manifests, s.blobs = map[string]upload.Manifest{}, map[string]string{}
+	for _, e := range l.Config.Uploads {
+		src := ws.Path(filepath.Join(l.Config.Dir, e.Src))
+		m, paths, err := upload.Scan(src, ignore.New(e.Exclude))
+		if err != nil {
+			return errs.Config("uploads: cannot read %s", e.Src).WithCause(err)
+		}
+		u := domain.Upload{Dest: e.Dest, Mirror: e.Mirror, Mode: e.Mode, Owner: e.Owner, Manifest: m.Digest()}
+		if key, ok := strings.CutPrefix(e.Dest, "volume:"); ok {
+			for _, v := range l.App.Volumes {
+				if v.Key == key {
+					u.Volume = v.Name
+				}
+			}
+			if u.Volume == "" {
+				return errs.Config("uploads: %s names no volume of the Compose file", e.Dest).
+					WithHint("declare it under volumes: in the Compose file")
+			}
+		}
+		l.App.Uploads = append(l.App.Uploads, u)
+		s.manifests[u.Manifest] = *m
+		for sum, p := range paths {
+			s.blobs[sum] = p
+		}
+	}
+	return nil
+}
+
+// sendUploads asks the agent which files it lacks, and sends them with req.
+func (s *session) sendUploads(ctx context.Context, req *agent.Request) error {
+	if len(s.manifests) == 0 {
+		return nil
+	}
+	sums := make([]string, 0, len(s.blobs))
+	for sum := range s.blobs {
+		sums = append(sums, sum)
+	}
+	sort.Strings(sums)
+	ask := s.request(agent.OpUploadHave)
+	ask.Have = sums
+	s.run = launcher.NewRunID(timeNow())
+	res, err := s.runAgent(ctx, ask)
+	if err != nil {
+		return err
+	}
+	var have struct {
+		Missing []string `json:"missing"`
+	}
+	if len(res.Results) > 0 {
+		_ = json.Unmarshal(res.Results[len(res.Results)-1], &have)
+	}
+	s.run = launcher.NewRunID(timeNow())
+	req.Run = s.run
+	req.Manifests, req.Blobs = s.manifests, len(have.Missing)
+	missing := have.Missing
+	s.payload = func(w io.Writer) error {
+		tw := tar.NewWriter(w)
+		for _, sum := range missing {
+			path, ok := s.blobs[sum]
+			if !ok {
+				return fmt.Errorf("no local file for %s", sum)
+			}
+			if err := addFile(tw, path, sum); err != nil {
+				return err
+			}
+		}
+		return tw.Close()
+	}
+	s.app.emitter.Info(events.Log, fmt.Sprintf("uploading %d of %d files", len(missing), len(sums)), map[string]any{"line": "upload"})
+	return nil
+}
+
+func addFile(tw *tar.Writer, path, name string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: st.Size(), Typeflag: tar.TypeReg}); err != nil {
+		return err
+	}
+	_, err = io.Copy(tw, f)
+	return err
 }
 
 // request returns an agent request for the session's environment.
@@ -129,7 +259,9 @@ func (s *session) request(op string) agent.Request {
 // runAgent runs req on the server and returns its result, mapping a failed run to its exit code.
 func (s *session) runAgent(ctx context.Context, req agent.Request) (*launcher.Result, error) {
 	s.app.agentRunning.Store(true)
-	res, err := s.launcher.Run(ctx, req, s.app.interrupts)
+	payload := s.payload
+	s.payload = nil
+	res, err := s.launcher.Run(ctx, req, s.app.interrupts, payload)
 	s.app.agentRunning.Store(false)
 	if err != nil {
 		return nil, err

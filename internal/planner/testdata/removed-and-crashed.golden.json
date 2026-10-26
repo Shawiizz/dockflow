@@ -1,7 +1,7 @@
 {
   "app": "shop",
   "env": "production",
-  "fingerprint": "sha256:e4bfaba603059e3b15a7d50e3146537fc9ac91a82d2ee7b7c171cc831bd0afee",
+  "fingerprint": "sha256:6a31c832ec5aa9b77a66b47ac526be297b40201031018c216f10b993374baeeb",
   "actions": [
     {
       "id": "01-service.update-web",

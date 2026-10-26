@@ -28,6 +28,20 @@ type App struct {
 	Services []Service `json:"services"`
 	Networks []Network `json:"networks"`
 	Volumes  []Volume  `json:"volumes"`
+	Uploads  []Upload  `json:"uploads,omitempty"`
+}
+
+// Upload sends files to a volume of the app or a path on the server (ADR-0021).
+type Upload struct {
+	// Dest is volume:<key> or an absolute path on the server.
+	Dest string `json:"dest"`
+	// Volume is the Docker name of the volume, for volume:<key>.
+	Volume string `json:"volume,omitempty"`
+	Mirror bool   `json:"mirror,omitempty"`
+	Mode   string `json:"mode,omitempty"`  // octal, for the written files
+	Owner  string `json:"owner,omitempty"` // uid or uid:gid
+	// Manifest is the digest of the manifest of the files.
+	Manifest string `json:"manifest"`
 }
 
 // Service returns the service with the given name.

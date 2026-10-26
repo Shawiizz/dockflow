@@ -129,6 +129,24 @@ func TestJobsDoNotRunWithoutAChange(t *testing.T) {
 	}
 }
 
+func TestUploadsRunFirstAndAlone(t *testing.T) {
+	a := app()
+	a.Uploads = []domain.Upload{{Dest: "volume:site", Volume: "shop-production_site", Manifest: "sha256:new"}}
+	act := deployed(app(), 3)
+	act.Uploads = map[string]string{"volume:site": "sha256:old"}
+	p, err := Plan(a, act)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Actions) != 1 || p.Actions[0].Kind != domain.ActionUpload || p.Actions[0].Reason != "files changed" {
+		t.Fatalf("want one upload, got %+v", p.Actions)
+	}
+	act.Uploads["volume:site"] = "sha256:new"
+	if p, _ := Plan(a, act); !p.Empty() {
+		t.Fatalf("applied uploads plan nothing: %+v", p.Actions)
+	}
+}
+
 func TestRestartReplacesUnchangedServices(t *testing.T) {
 	a := app()
 	p, err := Plan(a, deployed(a, 3), "web")

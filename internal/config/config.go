@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,10 +44,10 @@ type Settings struct {
 	Health    *Health         `yaml:"health"`
 	Templates []TemplateEntry `yaml:"templates"`
 	Hooks     *Hooks          `yaml:"hooks"`
+	Uploads   []UploadEntry   `yaml:"uploads"`
 
 	// Keys of the specification that arrive in later milestones. They are refused with a clear
 	// message instead of being ignored.
-	Uploads  *yaml.Node `yaml:"uploads"`
 	Notify   *yaml.Node `yaml:"notify"`
 	Firewall *yaml.Node `yaml:"firewall"`
 	Routes   *yaml.Node `yaml:"routes"`
@@ -78,6 +79,16 @@ type Endpoint struct {
 	Retries        *int   `yaml:"retries"`
 	RetryDelay     string `yaml:"retry_delay"`
 	ValidateCerts  *bool  `yaml:"validate_certs"`
+}
+
+// UploadEntry is one entry of uploads (ADR-0021).
+type UploadEntry struct {
+	Src     string   `yaml:"src"`
+	Dest    string   `yaml:"dest"`
+	Mirror  bool     `yaml:"mirror"`
+	Exclude []string `yaml:"exclude"`
+	Mode    string   `yaml:"mode"`
+	Owner   string   `yaml:"owner"`
 }
 
 // Hooks is the hooks block, per phase (ADR-0022).
@@ -182,12 +193,12 @@ type Resolved struct {
 	Endpoints    []domain.Endpoint
 	Templates    []render.Template
 	Hooks        []domain.Hook
+	Uploads      []UploadEntry
 }
 
 // laterKeys are spec keys not available yet, with the milestone that brings them.
 var laterKeys = map[string]string{
-	"uploads": "M2",
-	"notify":  "M2", "firewall": "M3", "routes": "M3", "plugins": "M3",
+	"notify": "M2", "firewall": "M3", "routes": "M3", "plugins": "M3",
 	"backups": "M4", "secrets_file": "M3",
 }
 
@@ -352,6 +363,12 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 			}
 			res.Hooks = h
 		}
+		if s.Uploads != nil {
+			if err := checkUploads(s.Uploads); err != nil {
+				return nil, err
+			}
+			res.Uploads = s.Uploads
+		}
 		if s.Templates != nil {
 			t, err := templates(s.Templates)
 			if err != nil {
@@ -385,6 +402,36 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 		}
 	}
 	return res, nil
+}
+
+func checkUploads(entries []UploadEntry) error {
+	dests := map[string]bool{}
+	for i, u := range entries {
+		at := fmt.Sprintf("uploads[%d]", i)
+		clean := filepath.Clean(u.Src)
+		if u.Src == "" || filepath.IsAbs(u.Src) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return errs.Config("%s.src %q must be a path inside the project", at, u.Src)
+		}
+		switch {
+		case strings.HasPrefix(u.Dest, "volume:"):
+			if key := strings.TrimPrefix(u.Dest, "volume:"); key == "" || strings.ContainsAny(key, "/:") {
+				return errs.Config("%s.dest %q: volume:<name>, a volume of the Compose file", at, u.Dest)
+			}
+		case filepath.IsAbs(u.Dest) && !strings.Contains(u.Dest, ".."):
+		default:
+			return errs.Config("%s.dest %q must be volume:<name> or an absolute path on the server", at, u.Dest)
+		}
+		if dests[u.Dest] {
+			return errs.Config("%s.dest %s is the destination of two uploads", at, u.Dest)
+		}
+		dests[u.Dest] = true
+		if u.Mode != "" {
+			if _, err := strconv.ParseUint(u.Mode, 8, 32); err != nil {
+				return errs.Config("%s.mode %q is not an octal mode like 644", at, u.Mode)
+			}
+		}
+	}
+	return nil
 }
 
 func hooks(h *Hooks) ([]domain.Hook, error) {

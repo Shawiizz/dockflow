@@ -64,6 +64,9 @@ func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
 	defer r.unlock(l)
 	defer r.leaveNetworks(ctx)
 
+	if err := r.receive(); err != nil {
+		return failed(err)
+	}
 	if err := r.recover(ctx); err != nil {
 		return failed(err)
 	}
@@ -351,6 +354,8 @@ func actionMessage(a domain.Action) string {
 		return "applying routes"
 	case domain.ActionJob:
 		return "running job " + a.Target
+	case domain.ActionUpload:
+		return "uploading to " + a.Target
 	}
 	return a.Kind + " " + a.Target
 }
@@ -385,6 +390,8 @@ func (r *runner) action(ctx context.Context, a domain.Action, desired *domain.Ap
 	case domain.ActionJob:
 		s, _ := desired.Service(a.Target)
 		return r.runJob(ctx, s, seq)
+	case domain.ActionUpload:
+		return r.upload(ctx, desired, a.Target)
 	}
 	return nil
 }
@@ -744,6 +751,7 @@ func (r *runner) commit(ctx context.Context, rel *domain.Release, desired *domai
 			}
 		}
 	}
+	r.forgetBaselines()
 	r.pruneReleases(ctx)
 	return nil
 }
@@ -759,6 +767,7 @@ func (r *runner) pruneReleases(ctx context.Context) {
 		r.warn("cleanup.failed", "cannot prune releases: "+err.Error())
 		return
 	}
+	r.pruneUploads(kept)
 	used := map[string]bool{}
 	for _, rel := range kept {
 		for _, s := range rel.Desired.Services {
@@ -891,6 +900,7 @@ func (r *runner) undo(ctx context.Context, x *execution) error {
 	if x.routesTouched {
 		note(r.applyRoutes(ctx, x.routesBefore))
 	}
+	note(r.undoUploads(ctx))
 	for _, st := range x.steps {
 		for _, id := range st.created {
 			note(r.Engine.Remove(ctx, id))

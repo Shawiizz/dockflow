@@ -1,7 +1,7 @@
 {
   "app": "shop",
   "env": "production",
-  "fingerprint": "sha256:59e4f9d60d7b7a35babe40ea1a830d2e4034be25489796721e828b502866d4ef",
+  "fingerprint": "sha256:a72d0fe3651b3f4ea943306076e8b780149b13f38a147f1d3752a6c6381e5e2a",
   "actions": [
     {
       "id": "01-network.create-shop-production_default",

@@ -10,6 +10,8 @@ type Actual struct {
 	Volumes  map[string]bool          `json:"volumes"`
 	// Env is the environment's record; nil when the app was never deployed.
 	Env *EnvRecord `json:"env,omitempty"`
+	// Uploads maps each upload destination to the manifest it holds.
+	Uploads map[string]string `json:"uploads,omitempty"`
 }
 
 // ActualService is a service as it runs.

@@ -79,6 +79,12 @@ func observe(ctx context.Context, eng engine.Engine, app *state.App, stack strin
 		}
 		o.actual.Services[name] = as
 	}
+	if o.current != nil && len(o.current.Desired.Uploads) > 0 {
+		o.actual.Uploads = map[string]string{}
+		for _, u := range o.current.Desired.Uploads {
+			o.actual.Uploads[u.Dest] = u.Manifest
+		}
+	}
 	if o.actual.Networks, err = eng.Networks(ctx); err != nil {
 		return nil, err
 	}

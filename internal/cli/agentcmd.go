@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"io"
@@ -26,8 +27,10 @@ func (a *app) agentCmd() *cobra.Command {
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			input, err := io.ReadAll(io.LimitReader(a.stdin, 256<<20))
-			if err != nil {
+			// the request is one line of JSON; the uploaded files follow it, as a tar
+			in := bufio.NewReaderSize(a.stdin, 1<<20)
+			input, err := in.ReadBytes('\n')
+			if err != nil && err != io.EOF {
 				return errs.Internal("read the request: %v", err)
 			}
 			var req agent.Request
@@ -56,7 +59,7 @@ func (a *app) agentCmd() *cobra.Command {
 			}
 			res := agent.Run(ctx, agent.Deps{
 				Engine: eng, Store: store, Events: ev,
-				Switch: caddy.New(caddy.Dir),
+				Switch: caddy.New(caddy.Dir), Payload: in,
 			}, req)
 			if res.ExitCode != 0 {
 				return &errs.Error{Code: "run.failed", Exit: res.ExitCode, Message: "run failed", Reported: true}

@@ -1,7 +1,7 @@
 {
   "app": "shop",
   "env": "production",
-  "fingerprint": "sha256:dbd9ec0747a73e77917a715e31487fbf6cf912d9410f5c6d9a459660262277ff",
+  "fingerprint": "sha256:8ebe8e42dd696096a8dcc3b544a54e49986c6c3d45678b5a6b73b8769f353199",
   "actions": [
     {
       "id": "01-job.run-migrate",

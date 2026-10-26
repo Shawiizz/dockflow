@@ -45,11 +45,12 @@ type Result struct {
 
 // Run starts an agent for req and relays its events until it finishes. interrupts delivers
 // Ctrl+C: the first asks the agent to stop and roll back, the second detaches.
-func (l *Launcher) Run(ctx context.Context, req agent.Request, interrupts <-chan struct{}) (*Result, error) {
+func (l *Launcher) Run(ctx context.Context, req agent.Request, interrupts <-chan struct{}, payload func(io.Writer) error) (*Result, error) {
 	image, err := l.ensureImage(ctx)
 	if err != nil {
 		return nil, err
 	}
+	req.AgentImage = image
 	l.prune(ctx)
 	labels := map[string]string{
 		domain.LabelKind: domain.KindRun, domain.LabelSchema: "1", domain.LabelManagedBy: "true",
@@ -87,6 +88,11 @@ func (l *Launcher) Run(ctx context.Context, req agent.Request, interrupts <-chan
 	}
 	if _, err := att.Stdin.Write(append(input, '\n')); err != nil {
 		return nil, errs.Connect("cannot send the run to the agent").WithCause(err)
+	}
+	if payload != nil {
+		if err := payload(att.Stdin); err != nil {
+			return nil, errs.Connect("cannot send the files to the agent").WithCause(err)
+		}
 	}
 	att.Stdin.Close()
 

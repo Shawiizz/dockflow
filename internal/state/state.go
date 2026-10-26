@@ -61,6 +61,9 @@ func (s *Store) App(stack string) (*App, error) {
 	return &App{s: s, dir: dir}, nil
 }
 
+// Dir is the directory of the app environment's state.
+func (a *App) Dir() string { return a.dir }
+
 // Delete removes the state of the app environment: its releases, locks and records. The held
 // lock file goes with it; the run holding it ends right after.
 func (a *App) Delete() error {

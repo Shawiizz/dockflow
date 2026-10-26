@@ -74,17 +74,3 @@ func TestUndefinedVariableIsAnError(t *testing.T) {
 		t.Fatalf("want an error naming the template, got %v", err)
 	}
 }
-
-func TestDockerignoreExceptions(t *testing.T) {
-	d := &dockerignore{}
-	for _, p := range []string{"*.md", "!README.md", "build/**/tmp"} {
-		neg := strings.HasPrefix(p, "!")
-		d.patterns = append(d.patterns, ignorePattern{segments: strings.Split(strings.TrimPrefix(p, "!"), "/"), negate: neg})
-	}
-	cases := map[string]bool{"CHANGES.md": true, "README.md": false, "build/a/b/tmp": true, "build/a/b/tmp/x": true, "src/x.go": false}
-	for path, want := range cases {
-		if got := d.excludes(path, false); got != want {
-			t.Errorf("%s: excluded %v, want %v", path, got, want)
-		}
-	}
-}

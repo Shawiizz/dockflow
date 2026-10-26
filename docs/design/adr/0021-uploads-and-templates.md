@@ -32,17 +32,13 @@ Options:
 ### How it works
 
 1. **Templates are rendered** ([ADR-0006](0006-compose-as-written.md)).
-2. **The CLI hashes every file** and asks the agent for the manifest of what each destination holds (the hashes recorded by the previous upload).
-3. **Only new or changed files are sent**, over the agent's stdin ([ADR-0004](0004-ephemeral-agent.md)).
-4. **The agent writes them**, through a helper container that mounts the destination's parent directory (or the volume), to a staging directory next to the destination, then swaps them in:
-   - a directory by rename;
-   - a file by atomic replace.
+2. **The CLI describes each source by a manifest**: every file's path, sha256 and mode, after `exclude`. A manifest is identified by its digest, which the release records for each destination, so the plan shows an upload exactly when its files changed.
+3. **The server keeps a content-addressed store** of the app's files (`uploads/blobs/<sha256>`). The CLI asks the agent which blobs it lacks and sends only those, as a tar following the request on the agent's stdin ([ADR-0004](0004-ephemeral-agent.md)). Each blob is checked against its hash on arrival.
+4. **A helper container applies the manifest.** It runs the agent's own image, mounts the destination (the volume, or the parent directory of a host path) and the store, and makes the destination match the manifest: each changed file is written to a temporary file next to it and renamed over it, and with `mirror` the files the manifest does not list are deleted. A volume is the root of what its containers serve and cannot be swapped as a whole, so the swap is per file.
+5. **Nothing is lost.** Every file the helper overwrites or deletes is first saved into the store, and the helper returns the manifest that restores the destination as it was. A failed run applies it; a later rollback applies the manifest of the release it restores, whose blobs stay in the store while that release is in retention.
+6. **An interrupted run** is repaired by the next one, which applies the current release's manifests again before planning.
 
-   The previous content is moved aside, not deleted.
-5. **On success**, the previous content is kept until the release leaves retention, then removed. **On failure**, the agent swaps it back.
-   - A backup that fails is fatal *before* anything is overwritten, which fixes the 1.x bug.
-   - The plan of what was written is kept even when the upload fails halfway, which fixes the other one.
-6. **The release record lists each destination with its manifest.** Rollback re-applies the previous manifest.
+Uploads run in the plan after the networks and volumes and before the jobs, so a job can read what was uploaded.
 
 An app may have no services at all and consist only of uploads (`no_services` in 1.x): an empty Compose file, or none, is valid.
 

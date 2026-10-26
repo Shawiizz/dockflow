@@ -18,6 +18,7 @@ import (
 	"github.com/nikolalohinski/gonja/v2/loaders"
 
 	"github.com/Shawiizz/dockflow/internal/errs"
+	"github.com/Shawiizz/dockflow/internal/ignore"
 )
 
 // Template is one entry of `templates:`, relative to the project. Src equals Dest for a file
@@ -177,9 +178,9 @@ func containsAny(dir string, paths []string) bool {
 // copyTree copies dir into the workspace, with hard links where the filesystem allows, leaving
 // out .git and what dir's .dockerignore excludes (the build would not read it).
 func (w *Workspace) copyTree(dir string) error {
-	ignore, err := readDockerignore(dir)
+	patterns, err := ignore.File(dir)
 	if err != nil {
-		return err
+		return errs.Internal("read %s/.dockerignore: %v", dir, err)
 	}
 	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -190,8 +191,8 @@ func (w *Workspace) copyTree(dir string) error {
 			if d.IsDir() && d.Name() == ".git" {
 				return filepath.SkipDir
 			}
-			if ignore.excludes(filepath.ToSlash(rel), d.IsDir()) {
-				if d.IsDir() && !ignore.hasExceptions() {
+			if patterns.Excludes(filepath.ToSlash(rel)) {
+				if d.IsDir() && !patterns.HasExceptions() {
 					return filepath.SkipDir
 				}
 				if !d.IsDir() {

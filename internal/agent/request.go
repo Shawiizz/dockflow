@@ -6,6 +6,7 @@ package agent
 import (
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/engine"
+	"github.com/Shawiizz/dockflow/internal/upload"
 )
 
 // PruneRequest selects the unused Docker objects prune removes.
@@ -36,6 +37,7 @@ const (
 	OpDestroy     = "destroy"
 	OpPrune       = "prune"
 	OpDetails     = "details"
+	OpUploadHave  = "upload.have"
 )
 
 // Request is the agent's input. Secret values reach the agent only here, on stdin, never in its
@@ -58,6 +60,14 @@ type Request struct {
 	Keep      int             `json:"keep,omitempty"`
 	OnFailure string          `json:"on_failure,omitempty"`
 	Timeout   domain.Duration `json:"timeout,omitempty"`
+	// Manifests are the upload manifests of Desired, by digest; Blobs is how many files follow
+	// the request on stdin, as a tar of blobs named by their sha256.
+	Manifests map[string]upload.Manifest `json:"manifests,omitempty"`
+	Blobs     int                        `json:"blobs,omitempty"`
+	// Have lists blobs whose presence on the server is asked (upload.have).
+	Have []string `json:"have,omitempty"`
+	// AgentImage is the agent's own image, which helper containers run.
+	AgentImage string `json:"agent_image,omitempty"`
 	// Hooks are the exec hooks, with their environments.
 	Hooks []domain.Hook `json:"hooks,omitempty"`
 	// Endpoints are the public checks, run StartupDelay after the switch.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
@@ -25,6 +26,8 @@ type Deps struct {
 	Switch proxy.Switch
 	Events *events.Emitter
 	Now    func() time.Time
+	// Payload is what follows the request on stdin: the uploaded files.
+	Payload io.Reader
 }
 
 type runner struct {
@@ -36,6 +39,8 @@ type runner struct {
 	start time.Time
 	// joined are the app networks the agent's container joined for internal checks.
 	joined map[string]bool
+	// uploads are the uploads this run applied, to undo on failure.
+	uploads []appliedUpload
 }
 
 // Run executes one request. It emits run.started first and run.finished last, and returns the
@@ -102,6 +107,8 @@ func (r *runner) dispatch(ctx context.Context) events.RunFinishedData {
 		return r.prune(ctx)
 	case OpDetails:
 		return r.details()
+	case OpUploadHave:
+		return r.haveBlobs()
 	case OpStatus:
 		return r.status(ctx)
 	case OpReleases:

@@ -22,7 +22,9 @@ All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/000
 │   ├── manual-lock.json            present while a manual lock is held
 │   ├── env.json                    last_seq, current, previous, degraded
 │   ├── releases/<seq>.json.gz      one immutable release record per release
-│   └── uploads/<dest-hash>/        previous contents and manifests of uploads
+│   └── uploads/
+│       ├── blobs/<sha256>          the uploaded files, and those uploads overwrote, by content
+│       └── manifests/<digest>.json the manifests of uploads, and of what they replaced
 └── runs/                           nothing: run logs live in the agent containers
 ```
 
@@ -156,4 +158,6 @@ It deletes the other release files, then the images, registry manifests, secret 
 - **`error`** is set on a release that is `rolled-back`, `failed` or `abandoned`: `{ "code": "…", "message": "…" }`.
 - **Interpolated values.** Values interpolated into environment variables are part of the spec, as they are of `docker inspect`. The file is readable by root only.
 - **Jobs** are services of `desired` with `"job": "before"` or `"after"`; they have no containers once the run is over.
-- **Later milestones** add `secrets` (the hash of each secret's value, never the value, M3), `uploads` (M2) and `published_ports` to the record.
+- **Uploads** are in `desired.uploads`: each destination with the digest of its manifest.
+- **Uploads** are in `desired.uploads`: each destination with the digest of its manifest.
+- **A later milestone** adds `secrets` to the record: the hash of each secret's value, never the value (M3).

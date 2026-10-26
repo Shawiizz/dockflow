@@ -27,23 +27,26 @@ import (
 // buildTail is how many lines of a failed build are shown without --verbose.
 const buildTail = 40
 
-// build builds the images of l for platform, keeping only the services in only when given.
-// The layouts live in dir.
-func (a *app) build(ctx context.Context, l *project.Loaded, platform, dir string, only []string) ([]image.Built, error) {
+// workspace renders the templates in a temporary copy of the build contexts and upload
+// sources (ADR-0006).
+func workspace(l *project.Loaded) (*render.Workspace, error) {
+	dirs := make([]string, 0, len(l.Builds)+len(l.Config.Uploads))
+	for _, b := range l.Builds {
+		dirs = append(dirs, b.Context)
+	}
+	for _, u := range l.Config.Uploads {
+		dirs = append(dirs, filepath.Join(l.Config.Dir, u.Src))
+	}
+	return render.Prepare(l.Config.Dir, l.Config.Templates, l.Values, dirs)
+}
+
+// build builds the images of l for platform, keeping only the services in only when given,
+// from the rendered workspace. The layouts live in dir.
+func (a *app) build(ctx context.Context, l *project.Loaded, ws *render.Workspace, platform, dir string, only []string) ([]image.Built, error) {
 	builds, err := selectBuilds(l.Builds, only)
 	if err != nil || len(builds) == 0 {
 		return nil, err
 	}
-	// templates are rendered in a temporary copy, and bake reads the contexts from it
-	contexts := make([]string, 0, len(builds))
-	for _, b := range builds {
-		contexts = append(contexts, b.Context)
-	}
-	ws, err := render.Prepare(l.Config.Dir, l.Config.Templates, l.Values, contexts)
-	if err != nil {
-		return nil, err
-	}
-	defer ws.Close()
 	for i := range builds {
 		b := &builds[i]
 		if filepath.IsAbs(b.Dockerfile) {
@@ -143,7 +146,11 @@ func (s *session) ship(ctx context.Context, only []string) error {
 		return errs.Internal("temporary directory: %v", err)
 	}
 	defer os.RemoveAll(dir)
-	built, err := s.app.build(ctx, l, "linux/"+s.info.Arch, dir, only)
+	ws, err := s.workspace()
+	if err != nil {
+		return err
+	}
+	built, err := s.app.build(ctx, l, ws, "linux/"+s.info.Arch, dir, only)
 	if err != nil {
 		return err
 	}
@@ -226,7 +233,12 @@ func (a *app) buildCmd() *cobra.Command {
 				return errs.Internal("temporary directory: %v", err)
 			}
 			defer os.RemoveAll(dir)
-			_, err = a.build(ctx, l, platform, dir, only)
+			ws, err := workspace(l)
+			if err != nil {
+				return err
+			}
+			defer ws.Close()
+			_, err = a.build(ctx, l, ws, platform, dir, only)
 			return err
 		},
 	}

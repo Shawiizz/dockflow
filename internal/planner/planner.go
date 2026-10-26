@@ -52,6 +52,17 @@ func Plan(desired domain.App, actual domain.Actual, restart ...string) (*domain.
 		add(domain.ActionCreateVolume, v.Name, "does not exist", "")
 	}
 
+	for _, u := range desired.Uploads {
+		if actual.Uploads[u.Dest] == u.Manifest {
+			continue
+		}
+		reason := "files changed"
+		if actual.Uploads[u.Dest] == "" {
+			reason = "new upload"
+		}
+		add(domain.ActionUpload, u.Dest, reason, "")
+	}
+
 	order, err := compose.Order(&desired)
 	if err != nil {
 		return nil, err
@@ -271,9 +282,11 @@ func Fingerprint(desired domain.App, actual domain.Actual) string {
 		Desired  []svc
 		Networks []domain.Network
 		Volumes  []domain.Volume
+		Uploads  []domain.Upload
 		Actual   []svc
 		Current  int
-	}{d, desired.Networks, desired.Volumes, a, current})
+		Applied  map[string]string
+	}{d, desired.Networks, desired.Volumes, desired.Uploads, a, current, actual.Uploads})
 	sum := sha256.Sum256(b)
 	return "sha256:" + hex.EncodeToString(sum[:])
 }

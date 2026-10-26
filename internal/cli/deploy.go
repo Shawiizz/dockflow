@@ -37,6 +37,9 @@ func (a *app) planCmd() *cobra.Command {
 					return err
 				}
 			}
+			if err := s.prepareUploads(); err != nil {
+				return err
+			}
 			req := s.request(agent.OpPlan)
 			req.Desired = &s.loaded.App
 			if _, err = s.runAgent(cmd.Context(), req); err != nil {
@@ -98,6 +101,9 @@ func (a *app) deployCmd() *cobra.Command {
 			if err := hk.Run(ctx, domain.HookAfterBuild, hookList); err != nil {
 				return err
 			}
+			if err := s.prepareUploads(); err != nil {
+				return err
+			}
 			// local and host hooks run here, around the agent's run, which must not depend on
 			// this connection (ADR-0022)
 			if err := hk.Run(ctx, domain.HookBeforeDeploy, hookList); err != nil {
@@ -128,6 +134,9 @@ func (a *app) deployCmd() *cobra.Command {
 			req.Force = force
 			req.WaitLock = domain.Duration(waitLock)
 			req.Hooks = execHooks(hookList)
+			if err := s.sendUploads(ctx, &req); err != nil {
+				return err
+			}
 			res, err := s.runAgent(ctx, req)
 			if err != nil {
 				if res != nil && res.ExitCode != errs.ExitLocked {
