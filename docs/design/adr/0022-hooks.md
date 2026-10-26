@@ -5,11 +5,11 @@
 
 ## Context
 
-Dockflow 1.x runs hooks at seven moments (pre and post build, upload, deploy, and on failure), locally or on the manager over SSH. Real projects use them to:
+Dockflow 1.x runs hooks at seven moments (pre and post build, upload, deploy, and on failure), locally or on the Swarm manager over SSH. Real projects use them to:
 
 - **generate files from secrets before the build**: a JWT key pair (`valientrp-backend`);
 - **write a key on the host and run `sudo systemctl`** to enable FUSE mounts (`mohistmc-backend`);
-- **stop a game server gracefully before a deploy** (`minecraft-server`): warn players over RCON, back the world up inside the running container, save, stop. Its script calls `docker exec` on the manager, which only works on a single-node cluster;
+- **stop a game server gracefully before a deploy** (`minecraft-server`): warn players over RCON, back the world up inside the running container, save, stop. Its script calls `docker exec` by hand and finds the container by name;
 - **truncate a container's log file after the deploy.** Log rotation in provisioning makes this unnecessary ([ADR-0013](0013-servers-access-security.md)).
 
 ## Decision
@@ -29,31 +29,26 @@ Each entry runs in one of three places:
 | Kind | Where | Typical use |
 |---|---|---|
 | `run: <command>` or `script: <file>` | **Locally**, on the CLI's machine, in the project directory | Generating files, notifying a chat |
-| `host: <command>` | **On nodes**, over SSH as the deploy user. `nodes: managers` (default) or `all` | `sudo systemctl …`, host maintenance |
-| `exec: [<argv>]` with `service: <name>` | **Inside every running task of that service**, as `docker exec` would | Warning players, flushing a cache, a backup that only the app knows how to make |
+| `host: <command>` | **On the server**, over SSH as the deploy user | `sudo systemctl …`, host maintenance |
+| `exec: [<argv>]` with `service: <name>` | **Inside every running container of that service**, through the Engine API's exec | Warning players, flushing a cache, a backup that only the app knows how to make |
 
 Entry options: `name`, `timeout` (default 5 minutes), and `fatal` (default `true` for `before_*` phases, `false` for the others). A fatal `before_*` hook stops the run with nothing changed. A fatal `after_deploy` hook triggers the rollback.
 
 **Variables:**
 
 - Hook commands are not interpolated: their `$` belongs to the shell.
-- Every hook gets, as environment variables, the built-in `DOCKFLOW_*` values, the environment's `vars` (overridden per node for `host` and `exec` hooks), and the secrets it lists under `secrets:`.
+- Every hook gets, as environment variables, the built-in `DOCKFLOW_*` values, the environment's `vars`, and the secrets it lists under `secrets:`.
 - A script that needs a real template is listed under `templates:` and rendered with Jinja ([ADR-0006](0006-compose-as-written.md)).
 
 ### Running inside containers
 
-**`exec` hooks.** The Engine API on a manager can only exec into containers on that manager. So for each node running a task of the service, the agent starts a short job pinned to that node:
-
-- the job uses the agent image and mounts that node's Docker socket;
-- it runs the command in the local container and streams its output back as events.
-
-**`dockflow exec` uses the same mechanism** for a container on a worker, so the CLI never needs SSH to workers for it.
+`exec` hooks use the Engine API's exec on the server's containers, as `docker exec` does: the agent finds the service's current containers by their Compose labels. `dockflow exec` uses the same path.
 
 ## Consequences
 
-- The Minecraft sequence (warn, back up, stop) becomes an `exec` hook in `before_deploy`, and works on any node.
+- The Minecraft sequence (warn, back up, stop) becomes an `exec` hook in `before_deploy`, with no container name to look up.
 - Host-level actions remain possible, explicitly, through `host` hooks.
-- `host` hooks need SSH to the targeted nodes: the connection string lists them ([ADR-0013](0013-servers-access-security.md)).
+- `host` hooks use the environment's SSH access ([ADR-0013](0013-servers-access-security.md)).
 - `exec` hooks are run by the agent, so they survive a lost CLI.
 - `host` hooks are run by the CLI, which is the only one holding SSH access:
   - those of `before_deploy` run just before the agent starts, so before the `before` jobs rather than after them;

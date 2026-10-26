@@ -10,10 +10,10 @@ A project is configured by three things, all in its repository ([ADR-0006](../ad
 
 | Name | Rule | Why |
 |---|---|---|
-| app | `^[a-z][a-z0-9-]{0,22}[a-z0-9]$` (at most 24) | Part of every Swarm object name |
+| app | `^[a-z][a-z0-9-]{0,22}[a-z0-9]$` (at most 24) | Part of every container, network and volume name |
 | environment | `^[a-z][a-z0-9]{0,11}$` (at most 12, no hyphen or underscore) | Part of object names and of variable names (`PRODUCTION_…`) |
-| stack | `<app>-<env>` (at most 37) | The Swarm namespace of an environment |
-| service | `^[a-z][a-z0-9-]*$`, with `<stack>_<service>` at most 63 | Swarm service names are DNS labels |
+| stack | `<app>-<env>` (at most 37) | The Compose project name of an environment |
+| service | `^[a-z][a-z0-9-]*$`, at most 63 | Service names are DNS names inside the app's networks |
 | secret and variable keys | `^[A-Z][A-Z0-9_]*$` | Valid in every CI provider |
 
 ## Variables and templating
@@ -38,15 +38,15 @@ Two syntaxes, each where it is native ([ADR-0006](../adr/0006-compose-as-written
    | `DOCKFLOW_VERSION` | the release's version label |
    | `DOCKFLOW_GIT_SHA` | the full commit |
    | `DOCKFLOW_GIT_BRANCH` | the branch |
-   | `DOCKFLOW_NODE` | the node, where values are resolved per node |
+   | `DOCKFLOW_SERVER` | the server's name |
 
-2. **Secrets.** For environment `production`, the key `X` is looked up as `PRODUCTION_<NODE>_X` (only where values are resolved per node), then `PRODUCTION_X`, then `X`, in each source in turn:
+2. **Secrets.** For environment `production`, the key `X` is looked up as `PRODUCTION_X`, then `X`, in each source in turn:
    1. process variables (only `PRODUCTION_*` ones) and the JSON in `DOCKFLOW_SECRETS`;
    2. `.env.dockflow`;
    3. the SOPS file.
-3. **`vars`:** the node's `node_vars`, where values are resolved per node, then the environment's `vars`.
+3. **The environment's `vars`.**
 
-Values are resolved per node for templates rendered for uploads to host paths, plugins, and `host` and `exec` hooks. Compose is rendered once for the cluster, with the environment's values.
+An environment is one server in v1, so its values are that server's. Per-server overrides come with several servers ([ADR-0023](../adr/0023-several-servers-later.md)).
 
 A variable with no value and no default is an error, in both syntaxes.
 
@@ -70,14 +70,14 @@ templates:                          # files rendered with Jinja before build and
     dest: config/app.conf           # relative to the project; a temporary copy, never the source tree
   - docker/entrypoint.sh            # rendered in place, in the temporary copy
 
-registry:                           # optional; absent means the cluster registry (ADR-0009)
+registry:                           # optional; absent means the server-local registry (ADR-0009)
   url: ghcr.io/acme                 # images are <url>/<app>/<service>
   username: acme-bot
   password: ${GHCR_TOKEN}
   additional_tags: ["${DOCKFLOW_ENV}-latest"]
 
 build:
-  builder: local                    # local (default) or remote (on a manager)
+  builder: local                    # local (default) or remote (on the server)
   engine: docker                    # docker (default) or podman
 
 releases:
@@ -108,7 +108,7 @@ routes:                             # routes that don't target a service of this
     redirect: https://maven.mohistmc.com/
   - domains: [mohistmc.com]
     path: /builds-raw
-    files: { host_path: /mnt/mohist-archives, browse: true, node: main }
+    files: { host_path: /mnt/mohist-archives, browse: true }
 
 uploads:                            # ADR-0021
   - src: .
@@ -118,11 +118,10 @@ uploads:                            # ADR-0021
   - src: deploy/rclone.service
     dest: /etc/systemd/system/rclone.service
     mode: "644"
-    nodes: managers
 
 plugins:                            # ADR-0017
-  - use: nginx                      # built-in; needs `server init --nginx` and `cluster init --no-proxy`
-    with: { domain: "${DOMAIN}", port: 3013, template: deploy/nginx/api.conf }
+  - use: nginx                      # built-in; needs `server init --nginx --edge external`
+    with: { domain: "${DOMAIN}", cloudflare: true }   # proxies to the switch; or template: deploy/nginx/api.conf
   - use: ./deploy/plugins/rclone    # the project's own
     id: archives
     with: { remote: "ovhs3:archives" }
@@ -155,11 +154,9 @@ backups:                            # ADR-0015; optional: without it, a local re
 
 environments:                       # required; at least one
   production:
-    # Servers: the PRODUCTION_CONNECTION secret (ADR-0013), or nodes listed here
-    nodes:                          # optional when the connection string exists
-      - { name: main, host: 203.0.113.10, port: 22, user: dockflow, role: manager, host_key: "SHA256:Xq…" }
-    node_vars:                      # per-node overrides of vars, by node name
-      main: { DATA_PATH: /srv/data }
+    # The server: the PRODUCTION_CONNECTION secret (ADR-0013), or described here
+    server:                         # optional when the connection string exists
+      { name: main, host: 203.0.113.10, port: 22, user: dockflow, host_key: "SHA256:Xq…" }
     compose: [compose.yml, compose.prod.yml]   # optional; replaces the top-level list
     profiles: [web]                 # optional Compose profiles
     vars:
@@ -201,8 +198,13 @@ services:
           caddy: |                   # raw Caddyfile directives, the escape hatch
             @ws header Connection *Upgrade*
             reverse_proxy @ws {upstream}:4327
-      health:                        # internal check, after convergence (ADR-0010)
-        http:
+      rollout:                       # ADR-0010; default: switch if routed, start-first otherwise,
+        strategy: switch             # stop-first if stateful; switch, start-first or stop-first
+        drain: 30s                   # switch only: time given to requests in flight
+      health:                        # ADR-0010
+        grace: 10s                   # without a HEALTHCHECK: running this long counts as healthy
+        restart_after: 2m            # the watchdog restarts the container after this long unhealthy
+        http:                        # internal check, before the switch
           path: /healthz
           port: 3000
           status: 200-399
@@ -210,7 +212,8 @@ services:
           retries: 10
           interval: 3s
       stateful: false                # true for databases (ADR-0010)
-      run: before                    # before or after: this service is a job
+      run: before                    # before or after: this service is a job (or use Compose's
+                                     # depends_on with condition: service_completed_successfully)
       backup:                        # ADR-0015; stateful services only
         type: postgres               # postgres, mysql, mongo, redis, volume or command
         database: shop
@@ -228,60 +231,53 @@ These combinations are refused:
 |---|---|
 | `routes` or `health` with `run` | A job serves no traffic |
 | `stateful` with `run` | A job is not a long-running service |
-| `stateful` without a single-node placement on a multi-node cluster | A stateful service must not move between nodes |
+| `stateful` with `deploy.replicas` above 1 | A stateful service runs once |
+| `rollout.strategy: switch` without `routes` | Nothing to switch |
 | `backup` without `stateful` | Only stateful services hold data to back up |
 
 ## Compose support
 
-Every Compose key falls in one of three groups.
-
-**Supported:**
+Docker runs Compose on one host, and so does Dockflow ([ADR-0003](../adr/0003-single-host-docker.md)): every key `docker compose up` supports is supported, with these specifics.
 
 | Key | Handling |
 |---|---|
-| `image` | Required unless `build` is set. Built services get `<registry>/<app>/<service>`, and the plan pins the digest |
+| `image` | Required unless `build` is set. Built services get `<app>/<service>` (or the external registry's name), and the plan pins the digest |
 | `build` | buildx bake, every key; Podman builds use `context`, `dockerfile`, `args`, `target` and `secrets` ([ADR-0009](../adr/0009-images.md)) |
-| `deploy` | Swarm: `mode`, `replicas`, `placement`, `resources`, `update_config`, `rollback_config`, `restart_policy`, `labels`, `endpoint_mode` |
-| `healthcheck` | Swarm |
+| `deploy.replicas` | n containers per service |
+| `deploy.resources`, `deploy.restart_policy` | Container limits and restart policy, as Compose applies them |
+| `deploy.update_config.order` | `start-first` or `stop-first` strategy ([ADR-0010](../adr/0010-rollout-health-jobs.md)) |
+| `deploy.placement`, `deploy.mode: global`, `deploy.endpoint_mode` | Ignored with a warning: one server |
+| `restart` | Honoured. A service without `restart` or `deploy.restart_policy` gets `unless-stopped` |
+| `depends_on` | Honoured, with its conditions: ordering, and jobs for `service_completed_successfully` |
+| `healthcheck` | Gates every strategy |
+| `container_name` | Honoured; forces `stop-first` and a single replica |
+| `ports` | Honoured, host IP included (`127.0.0.1:5432:5432`). Open to the internet only when listed in `firewall.public_ports` ([ADR-0014](../adr/0014-networking-port-filter.md)). A service publishing fixed host ports uses `stop-first`, since two containers cannot hold the same port |
+| `secrets` | Files on a tmpfs mounted at `/run/secrets/<name>`, with `environment:` or `file:` sources ([ADR-0012](../adr/0012-secrets-sops.md)) |
+| `configs` | Files mounted read-only, with `file:`, `content:` or `environment:` sources |
+| `networks` | Bridge networks, aliases included. `external: true` for the server's shared networks ([ADR-0018](../adr/0018-shared-servers.md)) |
+| `network_mode` | Honoured (`host`, `service:…`). A service on the host network cannot be routed by the switch and uses `stop-first` |
+| `volumes` | Named volumes, `driver` and `driver_opts` for volume plugins, bind mounts |
 | `environment`, `env_file` | `env_file` paths are read by the CLI, relative to the Compose file |
-| `secrets` | Swarm secrets, with `environment:` or `file:` sources ([ADR-0012](../adr/0012-secrets-sops.md)) |
-| `configs` | Swarm configs, with `file:`, `content:` or `environment:` sources |
-| `networks` | Overlay networks, attachable and encrypted. `external: true` for the cluster's shared networks ([ADR-0018](../adr/0018-shared-clusters.md)); `aliases` supported |
-| `volumes` | Named volumes, with `driver` and `driver_opts` for volume plugins. Bind mounts are allowed with a warning, because the path must exist on the node |
-| `ports` | Published in the routing mesh, or `mode: host` (preferred for game servers: client IP, UDP). Open to the internet only when listed in `firewall.public_ports` |
-| `restart` | Converted to `deploy.restart_policy` when that is not set |
 | `profiles`, `extends`, `include`, several files merged | Resolved by compose-go |
-| `command`, `entrypoint`, `user`, `working_dir`, `labels`, `stop_grace_period`, `stop_signal`, `sysctls`, `ulimits`, `cap_add`, `cap_drop`, `tmpfs`, `init`, `hostname`, `extra_hosts`, `dns`, `dns_search`, `logging`, `read_only` | Passed to the service spec |
-
-**Ignored, with a warning:**
-
-| Key | Note |
-|---|---|
-| `depends_on` | Use health checks and jobs |
-| `expose` | Informational in Compose |
-| `container_name` | Swarm names containers itself |
-| `name` | The stack name is always `<app>-<env>` |
-| `x-*` other than `x-dockflow` | – |
-
-**Refused, as an error:**
-
-`links`, `network_mode`, `privileged`, `devices`, `pid`, `ipc`, `cgroup_parent`, `volumes_from`, `scale`, a port with `host_ip`.
+| `privileged`, `devices`, `cap_add`, `cap_drop`, `pid`, `ipc`, `sysctls`, `ulimits`, `tmpfs`, `init`, `user`, `working_dir`, `hostname`, `extra_hosts`, `dns`, `logging`, `labels`, `stop_grace_period`, `stop_signal`, `command`, `entrypoint`, `read_only`, `shm_size`, `gpus` | Passed to the container, as Compose does |
+| `name` | Ignored with a warning: the project name is always `<app>-<env>` |
+| `develop`, `x-*` other than `x-dockflow` | Ignored |
 
 ## Migrating a 1.x project by hand
 
 | 1.x | v2 |
 |---|---|
 | `.dockflow/config.yml` + `servers.yml` | `dockflow.yml` |
+| `accessories.yml` deployed as a separate Swarm stack | A Compose file listed under `compose:`; its services are part of the app's project, marked `stateful` |
 | `{{ current.env.x }}` | `${X}` in Compose and `dockflow.yml`; `{{ X }}` in templates |
 | `{{ x \| default('y') }}` | `${X:-y}` in Compose; unchanged in templates |
 | `{{ env }}`, `{{ project_name }}` | `${DOCKFLOW_ENV}`, `${DOCKFLOW_APP}` (`{{ DOCKFLOW_ENV }}` in templates) |
-| `accessories.yml` | A Compose file listed under `compose:`, its services marked `stateful` |
-| The `nginx` plugin and its vhost | The `nginx` plugin, with the vhost as a Jinja template; or `x-dockflow.routes` with the built-in proxy |
-| `<ENV>_<SERVER>_CONNECTION` | `dockflow server connection <env>`, stored as `<ENV>_CONNECTION` |
+| The `nginx` plugin and its vhost proxying to a published port | `x-dockflow.routes`, with either the switch as the TLS edge, or the host's nginx in front of it (`--edge external` and the `nginx` plugin) |
+| `<ENV>_<SERVER>_CONNECTION` | `dockflow server connection`, stored as `<ENV>_CONNECTION` |
 | `health_checks.endpoints` with `remote: true` | `x-dockflow.health.http` |
 | `health_checks.endpoints` with a public URL | `health.endpoints` |
 | `hooks.pre-deploy` running `docker exec` | `hooks.before_deploy` with `exec` |
-| Secrets in CI | Unchanged, per-server prefixes (`PRODUCTION_MANAGER_X`) included, with the node's name |
+| Secrets in CI | Unchanged; per-server prefixes (`PRODUCTION_MANAGER_X`) become `PRODUCTION_X`, an environment being one server |
 | `build.dockerfile` relative to the Compose file's folder (a 1.x quirk every real project relies on: `context: ../..` with `dockerfile: Dockerfile.app` in `.dockflow/docker/`) | Relative to the build context, as Compose defines it: `dockerfile: .dockflow/docker/Dockerfile.app`. |
 | `deploy` failing on a held lock in CI, worked around with a concurrency group | `deploy --wait-lock` |
 
@@ -328,7 +324,7 @@ services:
       backup: { type: postgres, keep: { daily: 14, weekly: 8 } }
 
 networks:
-  valientrp: { external: true }   # dockflow cluster network create valientrp
+  valientrp: { external: true }   # dockflow server network create valientrp
 
 volumes:
   postgres_data: {}

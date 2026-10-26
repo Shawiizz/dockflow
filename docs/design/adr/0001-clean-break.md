@@ -5,7 +5,7 @@
 
 ## Context
 
-Dockflow 1.x (about 30,000 lines of TypeScript, plus a WebUI, an MCP server and a docs site) stores its state in files under `/var/lib/dockflow` on one manager, has five kinds of configuration files rendered with Nunjucks, and reimplements several things Docker and Swarm already do. Its review found design problems that cannot be fixed without changing the configuration format, the CLI and the server state at the same time.
+Dockflow 1.x (about 30,000 lines of TypeScript, plus a WebUI, an MCP server and a docs site) stores its state in files under `/var/lib/dockflow` on one Swarm manager, has five kinds of configuration files rendered with Nunjucks, and reimplements several things Docker and Swarm already do. Its review found design problems that cannot be fixed without changing the configuration format, the CLI and the server state at the same time.
 
 Keeping compatibility would mean reading the old configuration, understanding the old server state and keeping the old command names, which would carry the old design into the new one.
 

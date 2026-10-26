@@ -22,8 +22,9 @@ Dockflow v2, a rewrite from scratch in Go. It shares nothing with Dockflow 1.x (
 
 ## Architecture rules
 
-- `internal/domain` and `internal/planner` are pure: no I/O, no Moby or Swarm types, no clock or randomness except through parameters.
+- `internal/domain` and `internal/planner` are pure: no I/O, no Docker or Moby types, no clock or randomness except through parameters.
 - The outside world (Docker, SSH, registries, SOPS, Caddy, restic) is reached only through ports, each implemented by an adapter.
+- One server per environment, no orchestrator (ADR-0003). Nothing may assume more than one server beyond the check that refuses a second one (ADR-0023).
 - Docker is reached only through the Engine API (ADR-0005). No `docker` CLI invocations in the deploy path. Shell commands exist only in provisioning, built with the typed command builder.
 - No package prints. Operations emit events (`docs/design/spec/events-v1.md`). The CLI, the web UI and the MCP server render them.
 - Errors carry a stable dotted code and a hint, and map to the exit codes in `docs/design/spec/cli-v1.md`.
@@ -33,7 +34,7 @@ Dockflow v2, a rewrite from scratch in Go. It shares nothing with Dockflow 1.x (
 
 - Planner and converter: golden files (`testdata/`, regenerated with `go test ./... -update`), no mocks.
 - Adapters: contract tests against a real Docker Engine (Docker-in-Docker).
-- e2e: the compiled binary against a three-node Docker-in-Docker cluster, one test per user journey.
+- e2e: the compiled binary against a Docker-in-Docker server reached over SSH, one test per user journey. Zero downtime is tested under load: no failed request during a deploy or a rollback.
 - Never assert on the text of a command sent to a server.
 
 ## Language

@@ -5,7 +5,7 @@
 
 ## Context
 
-The CLI ships its own Linux binary to managers ([ADR-0004](0004-ephemeral-agent.md)) and to servers being provisioned ([ADR-0013](0013-servers-access-security.md)), so it needs that binary for the server's architecture, at exactly its own version. Dockflow 1.x checks downloads against a `SHA256SUMS` file from the same release, which proves integrity but not origin. Its npm wrapper depends on a postinstall script.
+The CLI ships its own Linux binary to servers ([ADR-0004](0004-ephemeral-agent.md)) and to servers being provisioned ([ADR-0013](0013-servers-access-security.md)), so it needs that binary for the server's architecture, at exactly its own version. Dockflow 1.x checks downloads against a `SHA256SUMS` file from the same release, which proves integrity but not origin. Its npm wrapper depends on a postinstall script.
 
 ## Decision
 

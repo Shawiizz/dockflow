@@ -1,7 +1,7 @@
 # ADR-0006: Compose plus `dockflow.yml`; Compose interpolation in Compose, Jinja in files
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (interpolation in `dockflow.yml`; `templates:` kept, rendered with Jinja through gonja; values per node; after review by the project owner)
+- Date: 2026-10-25, revised 2026-10-26 (interpolation in `dockflow.yml`; `templates:` kept, rendered with Jinja through gonja; after review by the project owner)
 
 ## Context
 
@@ -48,24 +48,18 @@ Compose keeps its own syntax, so a Compose file stays valid for `docker compose 
 | `DOCKFLOW_APP`, `DOCKFLOW_ENV`, `DOCKFLOW_STACK` | the app, the environment, `<app>-<env>` |
 | `DOCKFLOW_VERSION` | the release's version label |
 | `DOCKFLOW_GIT_SHA`, `DOCKFLOW_GIT_BRANCH` | the commit and the branch |
-| `DOCKFLOW_NODE` | the node, in values rendered per node |
-| Secrets | scoped by node, then environment ([ADR-0012](0012-secrets-sops.md)) |
-| `vars` | of the node, then of the environment |
+| `DOCKFLOW_SERVER` | the server's name |
+| Secrets | scoped by environment ([ADR-0012](0012-secrets-sops.md)) |
+| `vars` | of the environment |
 
 The lookup takes built-ins first, then secrets, then `vars`. In Jinja, the same names are top-level variables (`{{ DOMAIN }}`, `{{ DOCKFLOW_ENV }}`).
 
-**Values per node**, as 1.x had per server. An environment's `vars` can be overridden per node (`node_vars`), and secrets per node (`PRODUCTION_<NODE>_<KEY>`). Values are resolved per node wherever something runs or lands on one node:
-
-- templates rendered for uploads to host paths;
-- plugins;
-- `host` and `exec` hooks.
-
-Compose is rendered once for the whole cluster, because a Swarm service is not bound to one node, so it sees the environment's values. A service that needs a node's value takes it through a placement constraint and a variable named for that node.
+**Values per server.** An environment is one server in v1 ([ADR-0003](0003-single-host-docker.md)), so its `vars` are that server's values. Overrides per server (`server_vars`, `<ENV>_<SERVER>_<KEY>` secrets, as 1.x had) come back with several servers ([ADR-0023](0023-several-servers-later.md)).
 
 ### `templates:`
 
 - **What gets rendered:** only the files listed under `templates:` (as `src` → `dest`, or in place). Nothing is rendered implicitly.
-- **Where:** in a temporary copy of the project, and bake builds from that copy, so a rendered file can be part of an image (Dockflow's docs render a page and a build script this way). Templates are also rendered before uploads ([ADR-0021](0021-uploads-and-templates.md)), per node when the upload's values differ by node. The source tree is never modified.
+- **Where:** in a temporary copy of the project, and bake builds from that copy, so a rendered file can be part of an image (Dockflow's docs render a page and a build script this way). Templates are also rendered before uploads ([ADR-0021](0021-uploads-and-templates.md)). The source tree is never modified.
 - **Errors:** a listed template that doesn't exist, or that uses an undefined variable, is an error.
 
 ## Consequences

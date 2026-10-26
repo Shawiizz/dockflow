@@ -10,10 +10,10 @@ Every operation reports its progress as a stream of events ([ADR-0016](../adr/00
   "ts": "2026-10-25T14:03:11.123Z",
   "run": "01jbx6k3m8w0v7c9q2r5t4y6z8",
   "seq": 17,
-  "type": "service.converged",
+  "type": "service.healthy",
   "level": "info",
-  "msg": "web converged: 2/2 tasks running",
-  "data": { "service": "web", "running": 2, "desired": 2 }
+  "msg": "web: 2/2 containers healthy",
+  "data": { "service": "web", "healthy": 2, "desired": 2 }
 }
 ```
 
@@ -42,7 +42,7 @@ No event carries a secret value. Text fields (`msg`, `line`, `error.message`) ar
 
 | Type | `data` |
 |---|---|
-| `run.started` | `app`, `env`, `op` (`deploy`, `rollback`, `backup`, `restore`, `run`, `cluster.*`), `dockflow_version`, `manager` |
+| `run.started` | `app`, `env`, `op` (`deploy`, `rollback`, `restart`, `backup`, `restore`, `run`, `server.*`), `dockflow_version`, `server` |
 | `config.loaded` | `files` (paths of the Compose files, `dockflow.yml` and the secrets file), `services` |
 | `warning` | `code` (stable, for example `compose.depends_on_ignored`), `detail`, `service?` |
 | `lock.waiting` | `holder`, `op`, `by`, `since` |
@@ -61,19 +61,21 @@ No event carries a secret value. Text fields (`msg`, `line`, `error.message`) ar
 | `action.started` | `action` (id) |
 | `action.finished` | `action`, `duration_ms` |
 | `action.failed` | `action`, `error` |
-| `service.task` | `service`, `task`, `node`, `state`, `desired_state`, `error?` |
-| `service.converged` | `service`, `running`, `desired` |
-| `service.failed` | `service`, `reason` (`crash_loop`, `update_paused`, `rolled_back_by_swarm`, `timeout`) |
+| `container.state` | `service`, `container`, `release`, `state` (`created`, `running`, `healthy`, `unhealthy`, `exited`, `restarting`), `exit_code?`, `error?` |
+| `service.healthy` | `service`, `healthy`, `desired` |
+| `switch.changed` | `service`, `from_release`, `to_release`, `routes` |
+| `drain.started` | `service`, `release`, `timeout_ms` |
+| `service.failed` | `service`, `reason` (`crash_loop`, `unhealthy`, `exited`, `timeout`, `port_in_use`) |
 | `job.log` | `service`, `line` |
 | `job.finished` | `service`, `exit_code` |
 | `health.check` | `service`, `url`, `attempt`, `status?`, `ok` |
-| `routes.applied` | `domains`, `proxy_tasks` |
-| `filter.applied` | `nodes`, `ports` |
+| `routes.applied` | `domains` |
+| `filter.applied` | `ports` |
 | `hook.started` | `phase`, `name`, `kind` (`local`, `host`, `exec`), `target` |
 | `hook.log` | `name`, `target`, `line` |
 | `hook.finished` | `name`, `target`, `exit_code`, `fatal` |
 | `upload.progress` | `dest`, `files_sent`, `files_total`, `bytes_sent`, `bytes_total` |
-| `upload.finished` | `dest`, `nodes`, `files_changed`, `files_deleted` |
+| `upload.finished` | `dest`, `files_changed`, `files_deleted` |
 | `backup.finished` | `service`, `snapshot`, `bytes_added`, `duration_ms` |
 | `rollback.started` | `reason`, `target_seq` |
 | `rollback.finished` | `ok` |

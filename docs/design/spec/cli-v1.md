@@ -20,7 +20,7 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
   | `-y, --yes` | Never prompt |
   | `--connection <string>` | Use this connection string instead of the environment's secret |
 
-- **Prompts:** a command that changes a cluster shows its plan and asks for confirmation on a terminal. Without a terminal it never prompts.
+- **Prompts:** a command that changes a server shows its plan and asks for confirmation on a terminal. Without a terminal it never prompts.
 - **`--json`:** operations print [events](events-v1.md) as JSON Lines. Read commands print one JSON document.
 
 ## Project and deploy
@@ -28,36 +28,36 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 | Command | What it does |
 |---|---|
 | `dockflow init` | Writes `dockflow.yml` (and a `compose.yml` if there is none), adds `.env.dockflow` to `.gitignore`, and with `--ci github\|gitlab` a CI workflow: build on branches, deploy on tags, scheduled backups |
-| `dockflow validate [<env>]` | Loads and checks everything that can be checked without a cluster |
+| `dockflow validate [<env>]` | Loads and checks everything that can be checked without a server |
 | `dockflow config show [<env>] [--json]` | The resolved configuration, plugins expanded, secrets masked |
 | `dockflow plugins list` | Built-in and project plugins, with their inputs ([ADR-0017](../adr/0017-plugins.md)) |
 | `dockflow build [<env>] [--only <services>] [--push] [--skip-hooks]` | Builds images, without deploying |
 | `dockflow plan [<env>] [--out <file>] [--no-build] [--render] [--only <services>]` | Prints the plan. `--render` prints the service specs that would be sent |
-| `dockflow deploy [<env>] [--plan <file>] [--version <label>] [--only <services>] [--skip-build] [--no-rollback] [--detach] [--force] [--wait-lock [<duration>]] [--no-wait] [--branch <name>] [--manager <node>]` | Plans, confirms, applies. `--wait-lock` queues behind a running deploy instead of failing with code 5, for CI runs that may overlap (a push to `main` and a release) |
+| `dockflow deploy [<env>] [--plan <file>] [--version <label>] [--only <services>] [--skip-build] [--no-rollback] [--detach] [--force] [--wait-lock [<duration>]] [--no-wait] [--branch <name>]` | Plans, confirms, applies. `--wait-lock` queues behind a running deploy instead of failing with code 5, for CI runs that may overlap (a push to `main` and a release) |
 | `dockflow rollback [<env>] [--to <seq\|version>] [--service <name>]` | Re-applies a recorded release, by default the previous one. `--service` restores one service only |
 | `dockflow attach [<env>] [<run-id>]` | Follows a run in progress, or replays a finished one |
 | `dockflow cancel [<env>]` | Asks the running agent to stop and roll back |
-| `dockflow destroy [<env>] [--only <services>] [--volumes]` | Removes an environment, or some of its services, from the cluster. `--volumes` also deletes their data and asks to type the environment's name |
+| `dockflow destroy [<env>] [--only <services>] [--volumes]` | Removes an environment, or some of its services, from the server. `--volumes` also deletes their data and asks to type the environment's name |
 
 ## Day-2
 
 | Command | What it does |
 |---|---|
-| `dockflow status [<env>]` | Without `<env>`: every environment. With it: current release, services and task counts, degraded flag, lock |
-| `dockflow ps [<env>] [--tasks]` | Containers or tasks, on every node |
+| `dockflow status [<env>]` | Without `<env>`: every environment. With it: current release, services and container counts, degraded flag, lock, watchdog restarts |
+| `dockflow ps [<env>] [-a]` | The app's containers; `-a` includes stopped ones and jobs |
 | `dockflow details [<env>]` | Full view of services: image, ports, networks, mounts, placement, resources |
-| `dockflow diagnose [<env>]` | Why tasks don't run: pending reasons, crash loops, failed health checks, node state |
+| `dockflow diagnose [<env>]` | Why containers don't run: exit codes, crash loops, failed health checks, OOM kills, ports in use, disk space |
 | `dockflow releases [<env>] [-n <count>] [--stats]` | Release history; `--stats` adds durations and success rate |
 | `dockflow version [<env>]` | The deployed version; without `<env>`, the CLI's |
-| `dockflow logs [<env>] [<service>] [-f] [-n <lines>\|all] [--since <time>] [--timestamps] [--all-tasks] [--pick] [--no-prefix]` | Service logs from every node |
-| `dockflow exec [<env>] <service> [-e K=V]… [-u <user>] [-w <dir>] [--sh] [-T] [--pick] [-- <cmd…>]` | A command in a running container on any node; a shell by default |
+| `dockflow logs [<env>] [<service>] [-f] [-n <lines>\|all] [--since <time>] [--timestamps] [--all] [--pick] [--no-prefix]` | Service logs; `--all` includes the previous release's and stopped containers |
+| `dockflow exec [<env>] <service> [-e K=V]… [-u <user>] [-w <dir>] [--sh] [-T] [--pick] [-- <cmd…>]` | A command in a running container; a shell by default |
 | `dockflow run [<env>] <service> [-e K=V]… -- <cmd…>` | A one-off job with the service's spec (a console, a script) |
 | `dockflow cp [<env>] <src> <dest> [--pick]` | Copies files between the local machine and a container, in either direction (`service:/path`) |
-| `dockflow ssh [<env>] [<node>] [<command>]` | A shell, or a command, on a node |
-| `dockflow restart [<env>] [<service>]` | Restarts services, as a rolling update |
+| `dockflow ssh [<env>] [<command>]` | A shell, or a command, on the server |
+| `dockflow restart [<env>] [<service>]` | Restarts services with their rollout strategy, so routed services restart without downtime |
 | `dockflow stop [<env>] [<service>]` | Scales services to 0; `deploy` or `restart` brings them back |
 | `dockflow scale [<env>] <service> <replicas>` | Changes replicas until the next deploy, which restores Compose's count and says so in its plan |
-| `dockflow prune [<env>] [--images] [--containers] [--volumes] [--networks] [-a]` | Cleans unused Docker objects on every node |
+| `dockflow prune [<env>] [--images] [--containers] [--volumes] [--networks] [-a]` | Cleans unused Docker objects on the server |
 | `dockflow list envs\|services [<env>]\|images [<env>] [-a]` | Lists |
 | `dockflow lock status\|acquire\|release [<env>] [-m <message>] [--force]` | `acquire` holds the lock by hand (a maintenance window) until `release`; a manual lock never expires. `--force` releases or takes over someone else's |
 
@@ -69,30 +69,28 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 |---|---|
 | `dockflow secrets list [<env>]` | Keys and where each comes from (CI variable, `.env.dockflow`, SOPS), never values |
 | `dockflow secrets set\|edit [<env>] [<KEY>]` | Changes the SOPS file, when the environment uses one; the value is read from stdin |
-| `dockflow secrets revoke [<env>] <KEY>` | Removes every old Swarm secret of that key at once |
+| `dockflow secrets revoke [<env>] <KEY>` | Removes every old secret file of that key at once |
 | `dockflow backup run [<env>] [<service>]` | Backs up the services that declare `backup` |
-| `dockflow backup list [<env>] [<service>] [--node <node>]` | Lists snapshots |
+| `dockflow backup list [<env>] [<service>]` | Lists snapshots |
 | `dockflow backup restore [<env>] <service> [--snapshot <id or date>] [--from <env>]` | Restores a snapshot |
 | `dockflow backup prune [<env>] [<service>] [--keep …]` | Applies a retention now |
 
-## Servers and clusters
+## Servers
 
-`<target>` is `user@host[:port]`, or `--env <env>` to use an environment's nodes.
+`<target>` is `user@host[:port]`, or `--env <env>` to use an environment's server.
 
 | Command | What it does |
 |---|---|
-| `dockflow server init [<user@host[:port]>] [-k <key>] [--host <ip>] [--user <name>] [--password-file <path>] [--deploy-key <file.pub> \| --generate-key] [--host-key <SHA256:…>] [--from <cidr>…] [--skip-docker-install] [--no-port-filter] [--nginx]` | Provisions a server. Interactive when options are missing; runs locally when no host is given. Prints the connection string at the end |
-| `dockflow server cloud-init [--deploy-key <file.pub>] [--from <cidr>…]` | Prints cloud-init user-data that does the same on first boot |
-| `dockflow server check [<target>]` | Checks a server's prerequisites: OS, Docker, user, filter, ports |
-| `dockflow server connection [<env>]` | Prints the environment's connection string, rebuilt from the cluster's nodes |
-| `dockflow cluster init <target> [--advertise-addr <ip>] [--acme-email <email>] [--edge direct\|cloudflare\|proxy] [--trusted-proxy <cidr>…] [--private-cidr <cidr>…] [--no-overlay-encryption] [--no-proxy]` | Creates the Swarm and its system services. `--advertise-addr` keeps Swarm traffic on a private network, like 1.x's `private_host` |
-| `dockflow cluster join <target> <user@new-host> --role manager\|worker [--advertise-addr <ip>]` | Adds a provisioned server |
-| `dockflow cluster label <target> <node> <key>=<value>…` | Sets node labels |
-| `dockflow cluster network create\|list\|remove <target> [<name>]` | Shared networks between apps |
-| `dockflow cluster plugin install\|list\|remove <target> [<plugin>] [--alias <name>] [<key>=<value>…]` | Docker volume plugins on every node (not to be confused with Dockflow plugins) |
-| `dockflow cluster status <target>` | Nodes, system services, apps and their environments |
-| `dockflow cluster upgrade <target>` | Upgrades the system services to this CLI's version |
-| `dockflow cluster proxy sync <target>` | Rebuilds the proxy's configuration from the route records |
+| `dockflow server init [<user@host[:port]>] [-k <key>] [--host <ip>] [--user <name>] [--password-file <path>] [--deploy-key <file.pub> \| --generate-key] [--host-key <SHA256:…>] [--from <cidr>…] [--edge builtin\|cloudflare\|external\|none] [--acme-email <email>] [--switch-listen <addr:port>] [--trusted-proxy <cidr>…] [--skip-docker-install] [--no-port-filter] [--no-watchdog] [--no-registry] [--nginx]` | Provisions a server ([ADR-0013](../adr/0013-servers-access-security.md)). Interactive when options are missing; runs locally when no host is given. Prints the connection string at the end |
+| `dockflow server cloud-init [same options]` | Prints cloud-init user-data that does the same on first boot |
+| `dockflow server check [<target>]` | Checks a server's prerequisites: OS, Docker, user, filter, ports 80 and 443 |
+| `dockflow server connection [<target>]` | Prints the connection string |
+| `dockflow server status [<target>]` | The switch, the registry, the watchdog, the edge, the filter, the apps and their environments, disk usage |
+| `dockflow server edge <target> <mode> […]` | Changes the edge mode ([ADR-0011](../adr/0011-switch-and-edge.md)) |
+| `dockflow server network create\|list\|remove <target> [<name>]` | Shared networks between apps |
+| `dockflow server plugin install\|list\|remove <target> [<plugin>] [--alias <name>] [<key>=<value>…]` | Docker volume plugins (not to be confused with Dockflow plugins) |
+| `dockflow server upgrade <target>` | Upgrades the switch, the registry and the watchdog to this CLI's version |
+| `dockflow server proxy sync <target>` | Rebuilds the switch's configuration from the current releases |
 
 ## Interfaces
 
@@ -116,7 +114,7 @@ Internal commands are hidden from help: `agent`, `provision` and `filter apply`.
 | 4 | Cannot connect: SSH, host key mismatch, Docker API unreachable |
 | 5 | Another run holds the lock |
 | 6 | Plan refused: conflict, stale saved plan, missing image, unsupported Compose key |
-| 7 | Build or push failed; nothing was changed on the cluster |
+| 7 | Build or push failed; nothing was changed on the server |
 | 8 | The run failed and was rolled back: the previous release is running |
 | 9 | The run failed and was not rolled back (`on_failure: fail`, `--no-rollback`, or the rollback failed): the environment is degraded |
 | 10 | The lock was lost during the run |

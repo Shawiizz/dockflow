@@ -44,7 +44,7 @@ plugins:
 
 | Plugin | What it does |
 |---|---|
-| `nginx` | Uploads a vhost (the default one proxies `domain` to `127.0.0.1:port`, or the project's template) to `/etc/nginx/sites-enabled/`, then runs `sudo nginx -t && sudo systemctl reload nginx` as a fatal `host` hook. A failed test restores the previous vhost through the upload rollback. With the `cloudflare` edge, it also writes the real-IP configuration for Cloudflare's ranges |
+| `nginx` | Uploads a vhost to `/etc/nginx/sites-enabled/`: by default one that proxies `domain` to the switch's address (or, with the `none` edge, to `127.0.0.1:port`), or the project's own template. When the vhost changed, it runs `sudo nginx -t && sudo systemctl reload nginx` as a fatal `host` hook; a failed test restores the previous vhost through the upload rollback. Its `cloudflare: true` input adds the real-IP configuration for Cloudflare's ranges |
 | `systemd` | Uploads a unit to `/etc/systemd/system/`, then runs `daemon-reload` and `enable --now` |
 
 `dockflow server init --nginx` installs nginx and the narrow sudo rules these plugins need, as 1.x's `setup --nginx` did.
@@ -55,6 +55,6 @@ plugins:
 
 ## Consequences
 
-- The host's nginx stays a first-class option. With `cluster init --no-proxy`, it replaces Caddy entirely ([ADR-0011](0011-ingress-caddy.md)).
+- The host's nginx stays a first-class option, in front of the switch with the `external` edge ([ADR-0011](0011-switch-and-edge.md)). The switch handles zero-downtime transitions, so the `nginx` plugin writes a static vhost, reloaded only when domains change.
 - Plugins are cheap to maintain: an expansion step over mechanisms that exist anyway.
 - One templating language for plugins and projects (Jinja), where 1.x had two sets of rules.

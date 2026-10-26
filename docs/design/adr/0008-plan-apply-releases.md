@@ -7,7 +7,7 @@
 
 Dockflow 1.x runs an imperative pipeline and undoes it by hand on failure: restore uploads, choose between forget, keep and rollback, redeploy the previous stack file. Nothing shows the user what a deploy will change before it does, and a deploy killed outright leaves only a stale lock behind.
 
-Swarm rolls back one service at a time, to its previous spec only. An application is several services that must move together.
+Docker has no notion of a release: an application is several services that must move together, and roll back together.
 
 ## Decision
 
@@ -16,7 +16,7 @@ Swarm rolls back one service at a time, to its previous spec only. An applicatio
 `plan = f(desired, actual)`, a pure function in the planner package.
 
 - **Desired state:** `dockflow.yml` + the environment's Compose files + variables + secrets digests + built image digests, converted to the domain model.
-- **Actual state:** the environment's services, jobs, networks, volumes, secrets, configs and routes, read from the Engine, plus its current release from the state store ([ADR-0007](0007-state-in-raft.md)).
+- **Actual state:** the environment's services, jobs, networks, volumes, secrets, configs and routes, read from the Engine, plus its current release from the state store ([ADR-0007](0007-state-on-the-server.md)).
 - **The plan:** an ordered list of actions, each with the reason for it (the fields that differ):
   1. create networks and volumes, create secrets and configs (content-addressed, so never updated in place)
   2. run `before` jobs
@@ -25,7 +25,7 @@ Swarm rolls back one service at a time, to its previous spec only. An applicatio
   5. switch routes
   6. remove services that are no longer in the desired state
   7. prune unreferenced objects
-- **Identity:** a plan records a fingerprint of the actual state it was computed from (each object's Swarm version index). Applying a saved plan (`dockflow deploy --plan plan.json`) is refused if the actual state has changed since, as in Terraform.
+- **Identity:** a plan records a fingerprint of the actual state it was computed from (the release it was planned against and the IDs of the containers, networks and volumes it read). Applying a saved plan (`dockflow deploy --plan plan.json`) is refused if the actual state has changed since, as in Terraform.
 - **No-op:** an empty plan creates no release and exits 0.
 
 ### Apply
@@ -58,11 +58,11 @@ The failed release ends `rolled-back`. If the rollback itself fails, it ends `fa
 | `fail` | The failed release stays in place, marked failed, and the environment is degraded |
 | `ignore` | A failed HTTP check or `after_*` hook is reported as a warning, and the release becomes active |
 
-Webhooks are sent in every case ([config spec](../spec/config-v1.md)). A failure of Swarm itself (crash loop, paused update, timeout) always rolls back, because leaving a service half-updated is never a useful state.
+Webhooks are sent in every case ([config spec](../spec/config-v1.md)). A failure of the rollout itself (a crash loop, an unhealthy container, a timeout) always rolls back, because leaving a service half-switched is never a useful state.
 
 ### Recovery from a dead run
 
-If an agent dies (its manager fails or is rebooted), its release stays `applying` and its lock lease expires ([state spec](../spec/state-v1.md#lock)). The next run that takes the lock marks that release `abandoned` and plans from the actual state as usual. Because the plan is computed from what is really running, it converges whatever the dead run had done.
+If an agent dies (the server reboots, or its container is killed), its release stays `applying` and the kernel releases its lock ([state spec](../spec/state-v1.md#lock)). The next run that takes the lock marks that release `abandoned` and plans from the actual state as usual. Because the plan is computed from what is really running, it converges whatever the dead run had done.
 
 ### Versions
 
@@ -79,5 +79,5 @@ If an agent dies (its manager fails or is rebooted), its release stays `applying
 
 ## Alternatives considered
 
-- **Swarm's per-service `PreviousSpec` rollback only.** Rejected: one step deep, per service.
+- **Per-service rollback only (as Swarm's `PreviousSpec`).** Rejected: one step deep, per service.
 - **A detailed step journal for resuming a dead run.** Rejected as unnecessary: re-planning from the actual state is simpler and always correct.

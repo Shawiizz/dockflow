@@ -9,11 +9,11 @@ Dockflow 1.x runs `docker` commands over SSH. It splits their `--format` output 
 
 ## Decision
 
-Every interaction with Docker uses the Docker Engine API through the official Moby Go client. That includes images, services, tasks, nodes, networks, volumes, secrets, configs, events, logs and exec.
+Every interaction with Docker uses the Docker Engine API through the official Moby Go client. That includes images, containers, networks, volumes, plugins, events, logs and exec.
 
-- **From the CLI**, the client dials the manager's `/var/run/docker.sock` through the SSH connection, with OpenSSH stream-local forwarding (`direct-streamlocal@openssh.com`). If the server refuses stream forwarding, the CLI falls back to running `docker system dial-stdio` over an SSH session, as the `docker` CLI does for `ssh://` hosts.
+- **From the CLI**, the client dials the server's `/var/run/docker.sock` through the SSH connection, with OpenSSH stream-local forwarding (`direct-streamlocal@openssh.com`). If the server refuses stream forwarding, the CLI falls back to running `docker system dial-stdio` over an SSH session, as the `docker` CLI does for `ssh://` hosts.
 - **From the agent**, the client uses the mounted socket.
-- **Waiting** uses the `/events` stream, plus a periodic read of service `UpdateStatus` and task states as a safety net. There is no fixed polling loop as the primary mechanism.
+- **Waiting** uses the `/events` stream (container start, die, `health_status`), plus a periodic inspection of the containers as a safety net. There is no fixed polling loop as the primary mechanism.
 - **Errors** come back as typed API errors (not found, conflict, invalid parameter) and map to Dockflow errors by type, never by message.
 
 Shell commands remain only in provisioning ([ADR-0013](0013-servers-access-security.md)) and in the `host` hooks the user writes ([ADR-0022](0022-hooks.md)). There they are built with a typed command builder that quotes every value, a design carried over from 1.x.

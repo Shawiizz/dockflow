@@ -1,4 +1,4 @@
-# ADR-0015: Backups with restic, run as Swarm jobs
+# ADR-0015: Backups with restic, run in one-off containers
 
 - Status: Accepted
 - Date: 2026-10-25, revised 2026-10-26 (local repository by default, custom commands, application-aware quiesce, prune: nothing 1.x did is lost)
@@ -15,9 +15,9 @@ restic stores encrypted, deduplicated snapshots locally or in S3, B2, SFTP and o
 
 ### Where backups go
 
-- **By default**, a restic repository on the node that holds the data, in a dedicated volume. Like 1.x, it works with no configuration, but it is now deduplicated and encrypted.
+- **By default**, a restic repository on the server, in a dedicated volume. Like 1.x, it works with no configuration, but it is now deduplicated and encrypted.
 - **Off-site** (recommended): `backups.repository` in `dockflow.yml`, with storage credentials from the environment's secrets ([ADR-0012](0012-secrets-sops.md)).
-- **In both cases** the repository password comes from the secrets. Without one, Dockflow generates it, stores it as a Swarm secret and tells the user to save it.
+- **In both cases** the repository password comes from the secrets. Without one, Dockflow generates it, stores it under `/var/lib/dockflow` (root only) and tells the user to save it, since a lost password makes the backups unreadable.
 - Snapshots are tagged with `app`, `env`, `service` and the release sequence.
 
 ### What is backed up
@@ -38,16 +38,16 @@ Options:
 | Option | Effect |
 |---|---|
 | `dump_options`, `restore_options` | Extra arguments for the dump types, as in 1.x |
-| `quiesce` | For `volume`, how writes stop during the copy: `stop` (default: scale to 0, then back), `none`, or `exec` with `pre` and `post` commands run in the running container ([ADR-0022](0022-hooks.md)). `exec` is how a Minecraft world is backed up without stopping the server |
+| `quiesce` | For `volume`, how writes stop during the copy: `stop` (default: stop the containers, then start them again), `none`, or `exec` with `pre` and `post` commands run in the running container ([ADR-0022](0022-hooks.md)). `exec` is how a Minecraft world is backed up without stopping the server |
 | `keep` | Retention: `{ last, hourly, daily, weekly, monthly }`, applied by `restic forget` after each backup. `--prune` reclaims space at most once a day |
 
 ### How it runs
 
-`dockflow backup run <env> [service]` starts the agent. On the node the stateful service is pinned to ([ADR-0010](0010-rollout-health-jobs.md)), it runs:
+`dockflow backup run <env> [service]` starts the agent, which runs, in one-off containers:
 
 1. a dump job on the service's own image, so the dump tool matches the server's version, writing to a temporary volume; or the quiesce `pre` commands for `volume` and `command`;
 2. a restic job (official image, pinned by digest) that backs that up, then applies the retention;
-3. the cleanup: temporary volume, `post` commands, scale back up.
+3. the cleanup: temporary volume, `post` commands, start the service again.
 
 `restic check` runs on a sample of the data after each backup.
 
@@ -55,13 +55,14 @@ Options:
 
 - `dockflow backup restore <env> <service> [--snapshot <id or date>] [--from <env>]` runs the reverse, under the environment's lock.
 - **Dumps** are restored with the strictest options: `pg_restore --single-transaction --exit-on-error`, `mysql` with errors fatal.
-- **Volumes** are restored with the service scaled to 0.
+- **Volumes** are restored with the service stopped.
+- **`/var/lib/dockflow`** (release history, state) is part of what `backup run --server` backs up, so a lost server can be rebuilt with its history.
 - `--from` restores another environment's snapshot, given access to its repository.
 - `dockflow backup list` lists snapshots. `dockflow backup prune <env> [service] [--keep …]` applies a retention on demand.
 
 ### Scheduling
 
-There is no scheduler on the cluster in v1. Backups are triggered by the user's CI on a schedule (the generated workflow includes one) or by any cron that runs the CLI. A container that schedules its own backups, as the Minecraft server does, keeps doing so. A cluster scheduler may come with a permanent agent, behind its own ADR.
+There is no scheduler on the server in v1. Backups are triggered by the user's CI on a schedule (the generated workflow includes one) or by any cron that runs the CLI. A container that schedules its own backups, as the Minecraft server does, keeps doing so. A cluster scheduler may come with a permanent agent, behind its own ADR.
 
 ## Consequences
 

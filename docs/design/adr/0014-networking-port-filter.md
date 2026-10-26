@@ -1,25 +1,17 @@
 # ADR-0014: Networking and the published-port filter
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (per-port source ranges and the Cloudflare edge, as 1.x and real projects need)
+- Date: 2026-10-25, revised 2026-10-26 (single server: bridge networks, the filter becomes a safety net)
 
 ## Context
 
-Docker publishes ports by writing NAT rules that bypass the host firewall (ufw, firewalld), so a port published by mistake is open to the internet.
+Docker publishes ports with NAT rules that bypass the host firewall (ufw, firewalld), so a port published by mistake is open to the internet.
 
-Dockflow 1.x has a filter for this, the best part of its provisioning:
-- its own chain, jumped to from `DOCKER-USER`, matching the original destination port with conntrack;
-- installed by a systemd unit ordered before Docker;
-- per-port source restrictions (`firewall.public_ports[].from`).
+Under Swarm this was severe: Swarm cannot bind a port to `127.0.0.1`, so every published port was public. That is why Dockflow 1.x built a filter: its own chain jumped to from `DOCKER-USER`, matching the original destination port with conntrack, installed by a systemd unit ordered before Docker, with per-port source restrictions.
 
-Its weak points:
-- it filters only interfaces that carry a default route;
-- it fails open on nodes where it is missing;
-- it is updated over SSH on every node.
+Without Swarm, Compose's `127.0.0.1:5432:5432` works and solves the problem at its source. Mistakes remain possible: `5432:5432`, written out of habit, still binds every interface.
 
-It also opens Swarm's own ports (2377, 7946, 4789) to everyone, and leaves overlay traffic unencrypted.
-
-Real projects add, by hand: HTTP accepted only from Cloudflare's ranges, refreshed weekly (ValientRP's `ufw-cloudflare-sync`).
+Real projects also restrict HTTP to Cloudflare's ranges, refreshed weekly (ValientRP's `ufw-cloudflare-sync`).
 
 ## Decision
 
@@ -27,39 +19,31 @@ Real projects add, by hand: HTTP accepted only from Cloudflare's ranges, refresh
 
 | Network | Type | Members |
 |---|---|---|
-| `dockflow-system` | overlay, attachable, internal, encrypted | agents, the proxy's admin API, upload jobs |
-| `dockflow-ingress` | overlay, attachable, encrypted | the proxy, routed services |
-| `<stack>_default` and the networks a Compose file declares | overlay, attachable, encrypted | the app's services; the agent joins them for health checks |
-| Shared networks ([ADR-0018](0018-shared-clusters.md)) | overlay, attachable, encrypted | services of several apps that must talk to each other |
-
-Overlay encryption is on by default. A cluster can turn it off at `cluster init` when its nodes share a private network and the cost matters.
+| `dockflow-system` | bridge, internal | agents, the switch's admin API, the watchdog |
+| The app's networks (`<stack>_default` and those its Compose file declares) | bridge | the app's containers; the switch joins those of routed services, and agents join them for health checks |
+| Shared networks ([ADR-0018](0018-shared-servers.md)) | bridge | services of several apps that must talk to each other |
 
 ### The filter
 
-The filter keeps 1.x's design, with these changes:
+The filter is kept as a safety net, with 1.x's mechanism (a `DOCKER-USER` chain, conntrack on the original port, a systemd unit before Docker, `iptables-restore --noflush`).
 
-- **What it allows from outside:**
-  - the ports an app lists under `firewall.public_ports` in `dockflow.yml`, as in 1.x. Each is open to everyone, or only to the CIDRs given in its `from`. A port that is published in Compose but not listed stays reachable from the cluster's nodes and private networks only, and the plan says so;
-  - 80 and 443 on ingress nodes, restricted to the edge's ranges when the edge is `cloudflare` or `proxy` ([ADR-0011](0011-ingress-caddy.md#edge)). With `--no-proxy` and the host's nginx, the same restriction applies to the host's own ports 80 and 443, the one case where the filter also writes `INPUT` rules;
+- **What it lets in from outside:**
+  - the ports apps list under `firewall.public_ports` in `dockflow.yml`, as in 1.x. Each is open to everyone, or only to the CIDRs in its `from`;
+  - 80 and 443 for the switch;
   - SSH.
 
-  Every other port Docker has DNATed is dropped.
-- **Where it applies:** to every interface except loopback, Docker's bridges and the private interfaces or CIDRs declared at `cluster init`. No guessing from the default route.
-- **Swarm ports:** 2377/tcp, 7946/tcp and udp, 4789/udp and ESP (IP protocol 50) are accepted only from the cluster's node addresses.
-- **How it is updated:** by a global job, `dockflow-filter`, that the agent runs on every node when the allowed ports change. It runs on the host network with `NET_ADMIN`, writes the state to `/etc/dockflow/` and applies the chain atomically with `iptables-restore --noflush`. The systemd unit reapplies that state at boot, before Docker starts.
-- **Cloudflare's ranges** are downloaded and checked (enough entries, valid CIDRs) by a weekly systemd timer installed by provisioning. A failed download keeps the previous list, as ValientRP's script does.
-- **It fails closed:** a node where the job fails is reported, and the run fails before routes switch.
-- **It can be left out:** `server init --no-port-filter` skips it, as 1.x's option did.
+  Every other port Docker publishes on a public address is dropped. The plan warns about ports published on `0.0.0.0` that are not listed, and suggests `127.0.0.1:`.
+- **Where it applies:** every interface except loopback and Docker's bridges.
+- **Edge restrictions:** with the `cloudflare` edge ([ADR-0011](0011-switch-and-edge.md#the-edge)), 80 and 443 are open to Cloudflare's ranges only. A systemd timer installed by provisioning downloads and checks those ranges weekly, and keeps the previous list when a download fails. With the `external` edge and the host's nginx, the same restriction applies to the host's own ports 80 and 443, the one case where the filter writes `INPUT` rules.
+- **How it is updated:** the agent runs a short helper container (the Dockflow binary, host network, `NET_ADMIN`) whenever the allowed ports change. The helper writes the state to `/etc/dockflow/` and applies the chain atomically. The systemd unit reapplies that state at boot.
 - **Backend:** iptables (including iptables-nft) in v1.
-
-The filter does not manage the rest of the host's `INPUT` chain. Provisioning adds fail2ban for SSH ([ADR-0013](0013-servers-access-security.md)). The documentation recommends the provider's firewall as the outer layer.
+- **Opting out:** `server init --no-port-filter` leaves the filter out.
 
 ## Consequences
 
-- The CLI never connects to workers to update the filter.
-- A published port that Dockflow did not create stays closed to the internet.
-- Behind Cloudflare, the origin answers only Cloudflare, without a hand-written script.
-- Swarm's control and data planes are closed to anything outside the cluster.
+- Binding to `127.0.0.1` is the normal way to keep a port private, as with Compose on a laptop.
+- The filter catches the mistakes, and gives Cloudflare-only origins without a hand-written script.
+- No Swarm ports, no overlay encryption, no inter-node rules.
 
 ## Open questions
 

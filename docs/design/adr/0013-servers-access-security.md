@@ -1,7 +1,7 @@
 # ADR-0013: Servers: connection strings, provisioning and an honest security model
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (connection strings kept, after review by the project owner)
+- Date: 2026-10-25, revised 2026-10-26 (connection strings kept at the project owner's request; single server, no cluster commands)
 
 ## Context
 
@@ -22,7 +22,7 @@ Its connection string is practical, and the project owner wants it kept:
 
 ### The security model, stated
 
-Whoever can reach a manager's Docker socket is root on the cluster. Dockflow does not try to reduce that with sudo rules. It limits **who holds the keys** and **what a key can do**.
+Whoever can reach the server's Docker socket is root on it. Dockflow does not try to reduce that with sudo rules. It limits **who holds the keys** and **what a key can do**.
 
 ### Connection strings
 
@@ -31,30 +31,27 @@ An environment's connection string is the base64 of a JSON document:
 ```json
 {
   "v": 2,
-  "nodes": [
-    { "name": "main", "host": "203.0.113.10", "port": 22, "user": "dockflow", "role": "manager", "host_key": "SHA256:Xq…" },
-    { "name": "worker1", "host": "203.0.113.11", "port": 22, "user": "dockflow", "role": "worker", "host_key": "SHA256:Lm…" }
+  "servers": [
+    { "name": "main", "host": "203.0.113.10", "port": 22, "user": "dockflow", "host_key": "SHA256:Xq…" }
   ],
   "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n…"
 }
 ```
 
 - **Where it lives:** the `<ENV>_CONNECTION` secret (`PRODUCTION_CONNECTION`), read like any other secret ([ADR-0012](0012-secrets-sops.md)): a CI variable, `DOCKFLOW_SECRETS`, `.env.dockflow` or the SOPS file.
-- **What it holds:** one value per environment, for all its servers. Managers are tried in order, and workers are used only by the commands that need a node directly: `ssh`, host hooks and node-specific `exec`.
-- **Host keys:** it carries every node's host key fingerprint, and every connection verifies it. Nothing is ever trusted on first use.
-- **Node names** (`^[a-z][a-z0-9_]*$`) are the Swarm node names, and key per-node values (`node_vars`, `PRODUCTION_MAIN_X`).
+- **Servers:** `servers` holds exactly one server in v1. The list leaves room for several later ([ADR-0023](0023-several-servers-later.md)).
+- **Host keys:** it carries the server's host key fingerprint, and every connection verifies it. Nothing is ever trusted on first use.
 - **Passwords:** a `password` field may replace `private_key` for servers that only accept password authentication, as 1.x allowed. `server init` warns that keys are safer.
-- **How it is produced:** `dockflow server init` prints it at the end. `dockflow server connection <env>` rebuilds it, for example after `cluster join` adds a node.
-- **The alternative:** listing the nodes in `dockflow.yml` (`nodes:`) and authenticating with `ssh-agent`, `~/.ssh/config` or `DOCKFLOW_SSH_KEY`, for teams that prefer it. When both are present, the connection string wins.
+- **How it is produced:** `dockflow server init` prints it at the end, and `dockflow server connection` prints it again.
+- **The alternative:** the server can be described in `dockflow.yml` (`server:`), with the key from `ssh-agent`, `~/.ssh/config` or `DOCKFLOW_SSH_KEY`, for teams that prefer it. When both exist, the connection string wins.
 
 ### Keys
 
-- The deploy user is `dockflow` by default, in the `docker` group, with no sudo except the rules a feature needs (the port filter, [ADR-0014](0014-networking-port-filter.md)). Those rules are documented as convenience, not containment.
+- The deploy user is `dockflow` by default, in the `docker` group, with no sudo except the narrow rules a feature needs (the `nginx` and `systemd` plugins). Those rules are documented as convenience, not containment.
 - **Its key:**
-  - it is generated on the administrator's machine, or by `server init` on the CLI's machine, never on a server;
+  - it is generated on the administrator's machine, or by `server init` on the CLI's machine, never on the server;
   - it is installed with the options `restrict,port-forwarding,pty`, which re-enable only what the CLI uses;
-  - an optional `from=` restricts the source addresses;
-  - one key per environment is recommended.
+  - an optional `from=` restricts the source addresses.
 
 ### Provisioning
 
@@ -63,7 +60,7 @@ An environment's connection string is the base64 of a JSON document:
 - without a host, it runs on the server itself, as root;
 - with a host, it connects as root or as a sudo user, uploads the binary ([ADR-0020](0020-releasing-dockflow.md)) and runs `dockflow provision` there.
 
-`--host`, `--user`, `--deploy-key`, `--password-file`, `--skip-docker-install` and `--yes` make it non-interactive.
+`--host`, `--user`, `--deploy-key`, `--password-file`, `--skip-docker-install`, `--edge`, `--nginx` and `--yes` make it non-interactive.
 
 Provisioning does the following, and every step is idempotent:
 
@@ -72,31 +69,26 @@ Provisioning does the following, and every step is idempotent:
 - create the deploy user and install its key with the options above;
 - add an SSH hardening drop-in (no password authentication, root only by key) and fail2ban for SSH;
 - enable unattended security updates and time synchronisation;
+- create `/var/lib/dockflow`;
+- start the switch with the chosen edge ([ADR-0011](0011-switch-and-edge.md)), the local registry ([ADR-0009](0009-images.md)) and the watchdog ([ADR-0010](0010-rollout-health-jobs.md)), each one optional;
 - install the published-port filter ([ADR-0014](0014-networking-port-filter.md)), unless `--no-port-filter`;
-- with `--nginx`, install nginx, refuse unknown hosts by default, and add the narrow sudo rules the `nginx` plugin needs ([ADR-0017](0017-plugins.md)).
+- with `--nginx`, install nginx, refuse unknown hosts, and add the sudo rules of the `nginx` plugin ([ADR-0017](0017-plugins.md)).
 
-`dockflow server cloud-init` prints the equivalent cloud-init user-data, for servers that are ready on first boot.
+`dockflow server cloud-init` prints the equivalent cloud-init user-data, for servers that are ready on first boot. `dockflow server upgrade` upgrades the switch, the registry and the watchdog to the CLI's version.
 
-### Clusters
-
-- `dockflow cluster init` creates the Swarm, its system networks and services, and the cluster record.
-- `dockflow cluster join` adds a provisioned server.
-- `dockflow cluster label` sets node labels.
-
-Provisioning and cluster commands build their shell commands with a typed command builder that quotes every value.
+Provisioning commands build their shell commands with a typed command builder that quotes every value.
 
 ## Consequences
 
-- The 1.x experience is kept: one secret per environment, nothing about the servers in the repository.
+- The 1.x experience is kept: one secret per environment, nothing about the server in the repository.
 - Host keys are always verified, because the connection string carries them.
 - No private key is left on a server.
-- A leaked connection string gives root on that environment's servers. The documentation says so and recommends one key per environment and `from=` restrictions.
+- A leaked connection string gives root on that server. The documentation says so and recommends one key per environment and `from=` restrictions.
 
 ## Alternatives considered
 
-- **Nodes in `dockflow.yml` and a key in `ssh-agent` only (first draft of this ADR).** Kept as an option, not as the default, at the project owner's request.
 - **A forced-command wrapper exposing only some Docker operations.** Rejected: any access to the Docker API can start a privileged container.
-- **Rootless Docker.** Rejected for v1: Swarm's overlay networks and host-mode ports don't work with it.
+- **Rootless Docker.** Possible later, behind the `Engine` port. Not in v1: binding ports 80 and 443 and the port filter need root.
 
 ## Open questions
 

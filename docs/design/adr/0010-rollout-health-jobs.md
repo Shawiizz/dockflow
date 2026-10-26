@@ -1,68 +1,86 @@
-# ADR-0010: Rollout, health and jobs are delegated to Swarm
+# ADR-0010: Rollout, health, jobs and self-healing, without an orchestrator
 
 - Status: Accepted
-- Date: 2026-10-25
+- Date: 2026-10-25, revised 2026-10-26 (Swarm's rolling update replaced by Dockflow's own rollout)
 
 ## Context
 
-Dockflow 1.x polls task states every 5 seconds with a fixed 300-second timeout, which a 10-replica service with the default update settings cannot meet. It runs a separate "internal health" pass that repeats the convergence check. It runs migrations as hooks on the manager, non-fatal by default. When an update pauses, it removes the whole stack, accessories included.
+Swarm gave Dockflow 1.x rolling updates (`start-first`), health-gated tasks, automatic rollback, replacement of unhealthy tasks and `replicated-job`s. Without an orchestrator ([ADR-0003](0003-single-host-docker.md)), Dockflow does these itself, on one Docker host.
 
-Swarm already holds tasks until their `HEALTHCHECK` passes, rolls a service back by itself (`failure_action: rollback`) and runs one-off jobs (`replicated-job`).
+Dockflow 1.x's own logic around Swarm had weak points:
+- polling every 5 seconds with a fixed 300-second timeout;
+- a stack removed when an update paused;
+- migrations as non-fatal hooks.
 
 ## Decision
 
-### Rollout
+### Rollout strategies
 
-- Each service is updated by the Engine API with its `update_config` and `rollback_config`. A service that doesn't set them gets Dockflow's defaults:
+Each service gets one of three strategies, chosen automatically and overridable with `x-dockflow.rollout`:
 
-  | Setting | Stateless service | Stateful service |
-  |---|---|---|
-  | `parallelism` | 1 | 1 |
-  | `order` | `start-first` | `stop-first` |
-  | `failure_action` | `rollback` | `rollback` |
-  | `monitor` | 30s | 30s |
+| Strategy | Default for | Steps | Downtime |
+|---|---|---|---|
+| `switch` | Services with routes ([ADR-0011](0011-switch-and-edge.md)) | Start the new containers next to the old ones, wait until healthy, switch the traffic, drain the old ones (default 30 s), stop them | None |
+| `start-first` | Other stateless services (workers, consumers) | Start the new containers, wait until healthy, stop the old ones | None. Both versions run briefly: workers must tolerate it |
+| `stop-first` | Stateful services, services with `container_name`, services publishing fixed host ports | Stop the old containers (with their `stop_grace_period`), start the new ones, wait until healthy | Brief. This is what a database or a game server needs |
 
-- **Waiting** follows the event stream until one of these happens:
-  - the update completes and every task is running and healthy;
-  - Swarm rolls back or pauses the update;
-  - the timeout expires.
+`deploy.update_config.order` (`start-first`/`stop-first`) from Compose is honoured when set.
 
-  A paused update is a failure of the run, never a reason to remove anything.
-- **The timeout is computed per service:** `ceil(replicas / parallelism) × (delay + monitor + start period) × 2 + 2 minutes`. It can be overridden per environment (`deploy.timeout`).
-- **Crash loops** are detected by counting failed tasks across the whole wait, a technique kept from 1.x, because Swarm prunes task history.
+### Naming and replicas
+
+- **Names.** A container is named `<stack>-<service>-<seq>-<n>`, so a release's containers never collide with the previous release's.
+- **Compose labels.** Each container carries the Compose labels (project, service, container number) and `dockflow.release=<seq>`.
+- **Replicas.** `deploy.replicas` gives n containers per service.
+- **Service names.** Inside the app's networks, every container also carries its service name as an alias, so other services keep reaching `db` or `api` by name, as with Compose.
 
 ### Health
 
-- **The container `HEALTHCHECK` is the primary signal**, and Swarm gates tasks on it. A routed service without one gets a warning in the plan.
-- **HTTP checks** (`x-dockflow.health.http`) are a post-condition, run after the service has converged. The agent attaches to the app's network and requests the service by its internal name, so the check tests the service itself, not DNS or the proxy.
-- **Public checks** (`health.endpoints` in `dockflow.yml`, as in 1.x) request a full URL, such as `https://shop.example.com/`, after routes are switched. They test the whole path: DNS, Cloudflare, proxy, TLS. Their options are `method`, `expected_status`, `timeout`, `retries`, `retry_delay` and `validate_certs`.
-- A failed check of either kind fails the run. What happens next follows `on_failure` ([ADR-0008](0008-plan-apply-releases.md)). `health.startup_delay` waits before the first check.
+- **The container `HEALTHCHECK` is the primary signal.** It is followed through the Engine API's `health_status` events.
+- **A service without a healthcheck** counts as healthy once its container has been running for `x-dockflow.health.grace` (default 10 s). The plan warns about routed services without a healthcheck.
+- **Internal HTTP checks** (`x-dockflow.health.http`) run from the agent inside the app's network, after the new containers are healthy and before the switch.
+- **Public checks** (`health.endpoints` in `dockflow.yml`, as in 1.x) run after the switch, on full URLs through DNS, the edge and TLS.
+- **The timeout** is computed per service from its healthcheck (`start_period + interval × retries`, plus a margin). It can be overridden per environment with `deploy.timeout`.
+- **Crash loops** are detected by counting restarts during the wait.
+
+### Rollback
+
+- **Old containers are kept until the run commits.** They are stopped after the switch, never removed.
+- **On a failure before the commit**, the agent switches back to them, starts them if they were stopped, and removes the new ones. For `switch` services, that takes about a second.
+- **What a failure triggers** follows `on_failure` ([ADR-0008](0008-plan-apply-releases.md)).
+- **After the commit**, the old containers are removed. Their images are kept for the releases in retention. A later rollback starts containers from the recorded release, with the same strategies.
 
 ### Jobs
 
-- A service with `x-dockflow.run: before` or `after` is a job. It is created as a Swarm `replicated-job` on the new image and forced to run again on every deploy that reaches it. It must exit 0.
-- `before` jobs run after networks, volumes, secrets and configs exist and before any service changes. Their failure stops the run with nothing else changed.
-- `after` jobs run once every service is healthy. Their failure triggers the rollback.
-- Job logs are streamed as events.
-- Database migrations are `before` jobs. The documentation shows the expand/contract pattern, which keeps them safe to roll back.
+- **Before jobs:** a service that other services depend on with `condition: service_completed_successfully` is a job run before them, exactly as `docker compose up` does. That is the Compose-native way to run migrations.
+- **Explicit jobs:** `x-dockflow.run: before` or `after` declares a job without a dependency.
+- **How a job runs:** as a one-off container (`com.docker.compose.oneoff=True`) on the new image, which must exit 0.
+- **On failure:** a failed `before` job stops the run with nothing switched. A failed `after` job triggers the rollback.
+- **Logs:** job output is streamed as events.
+- **Ordering:** `depends_on` with `condition: service_healthy` or `service_started` orders the rollout, as Compose orders startup.
 
 ### Stateful services
 
 `x-dockflow.stateful: true` marks databases and other single-instance services:
-
 - replicas must be 1;
-- the placement constraints must pin exactly one node (or the cluster has one node);
-- `order` is `stop-first`;
-- `restart_policy` is `condition: any` with no limit on attempts.
+- the strategy is `stop-first`;
+- the restart policy is `unless-stopped`.
 
-The planner refuses a stateful service that breaks these rules.
+### Restart and self-healing
+
+- **Restart policies.** Services without a `restart` policy get `unless-stopped`, so they come back after a crash or a reboot. Compose's default, `no`, is never what a server wants.
+- **Unhealthy containers.** Docker restarts a container that exits, but not one that keeps running while unhealthy. An optional watchdog does that:
+  - it is a container named `dockflow-watchdog`, running the Dockflow binary;
+  - `server init` installs it, and `--no-watchdog` leaves it out;
+  - it restarts a Dockflow-managed container that stays unhealthy for `x-dockflow.health.restart_after` (default 2 minutes);
+  - it reports each restart in `dockflow status`.
 
 ### Hooks
 
-Hooks run locally, on hosts or inside running containers ([ADR-0022](0022-hooks.md)). Work that needs the new image runs as a job.
+Hooks run locally, on the server or inside running containers ([ADR-0022](0022-hooks.md)). Work that needs the new image runs as a job.
 
 ## Consequences
 
-- No fixed polling loop, no fixed timeout, no stack removal on a stuck update.
-- Migrations run in the cluster, on the new image, and their exit code gates the deploy.
-- Accessories as a separate stack disappear: a database is a stateful service of the app. It can sit in the same Compose file, or in a second one (`accessories.yml`, as in 1.x) listed under `compose:`. `dockflow deploy --only db` redeploys it alone, as `deploy --accessories` did.
+- Zero downtime for web services, without an orchestrator, and a rollback that is a switch rather than a redeploy.
+- Compose's own `depends_on` conditions drive ordering and migrations, so the same file works with `docker compose up`.
+- Rollout logic is Dockflow's code. It gets the most tests of any part ([ADR-0019](0019-testing.md)).
+- The watchdog is the one permanent Dockflow process besides the switch. It is small, optional and stateless.
