@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"

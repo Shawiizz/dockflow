@@ -9,7 +9,7 @@ type Actual struct {
 	// Networks maps the Docker name of each network that exists to the Compose project it
 	// belongs to (LabelProject), empty for a network of no project.
 	Networks map[string]string `json:"networks"`
-	Volumes  map[string]bool          `json:"volumes"`
+	Volumes  map[string]bool   `json:"volumes"`
 	// Env is the environment's record; nil when the app was never deployed.
 	Env *EnvRecord `json:"env,omitempty"`
 	// Uploads maps each upload destination to the manifest it holds.

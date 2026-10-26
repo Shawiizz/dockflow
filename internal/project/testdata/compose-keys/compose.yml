@@ -1,0 +1,45 @@
+name: ignored
+services:
+  gpu:
+    image: nvidia/cuda:12.4.1-base-ubuntu22.04
+    gpus: all
+    runtime: nvidia
+    cpu_shares: 512
+    cpu_period: 100000
+    cpu_quota: 50000
+    cpuset: "0-1"
+    memswap_limit: 1g
+    mem_swappiness: 10
+    oom_kill_disable: true
+    oom_score_adj: -100
+    userns_mode: host
+    cgroup: private
+    uts: host
+    annotations:
+      com.example.team: ml
+    links: [cache]
+    develop:
+      watch: [{ path: ., action: rebuild }]
+    deploy:
+      mode: global
+      resources:
+        reservations:
+          cpus: "0.5"
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute]
+    volumes:
+      - type: volume
+        source: models
+        target: /models
+        volume: { subpath: llama }
+      - type: bind
+        source: /srv/shared
+        target: /shared
+        bind: { propagation: rslave }
+  cache:
+    image: redis:7
+    pull_policy: daily
+volumes:
+  models: {}

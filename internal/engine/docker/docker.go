@@ -731,6 +731,8 @@ func toDocker(s domain.ContainerSpec, labels map[string]string) (*container.Conf
 		DNSSearch: s.DNSSearch, DNSOptions: s.DNSOptions, Tmpfs: s.Tmpfs, Sysctls: s.Sysctls, GroupAdd: s.GroupAdd,
 		PidMode: container.PidMode(s.Pid), IpcMode: container.IpcMode(s.Ipc), ShmSize: s.ShmSize,
 		RestartPolicy: restartPolicy(s.Restart),
+		Runtime: s.Runtime, UsernsMode: container.UsernsMode(s.UsernsMode), Cgroup: container.CgroupSpec(s.Cgroup),
+		UTSMode: container.UTSMode(s.Uts), OomScoreAdj: s.OomScoreAdj, Annotations: s.Annotations, StorageOpt: s.StorageOpt,
 	}
 	for _, d := range s.DNS {
 		a, err := netip.ParseAddr(d)
@@ -749,6 +751,20 @@ func toDocker(s domain.ContainerSpec, labels map[string]string) (*container.Conf
 	if r.PidsLimit != 0 {
 		p := r.PidsLimit
 		host.PidsLimit = &p
+	}
+	host.CgroupParent = s.CgroupParent
+	host.CPUShares, host.CPUPeriod, host.CPUQuota, host.CpusetCpus = r.CPUShares, r.CPUPeriod, r.CPUQuota, r.CpusetCPUs
+	host.MemorySwap, host.MemorySwappiness = r.MemorySwap, r.MemorySwappiness
+	if r.OomKillDisable {
+		t := true
+		host.OomKillDisable = &t
+	}
+	for _, d := range s.DeviceRequests {
+		dr := container.DeviceRequest{Driver: d.Driver, Count: int(d.Count), DeviceIDs: d.DeviceIDs, Options: d.Options}
+		if len(d.Capabilities) > 0 {
+			dr.Capabilities = [][]string{d.Capabilities}
+		}
+		host.DeviceRequests = append(host.DeviceRequests, dr)
 	}
 	for _, u := range s.Ulimits {
 		host.Ulimits = append(host.Ulimits, &container.Ulimit{Name: u.Name, Soft: u.Soft, Hard: u.Hard})
@@ -800,10 +816,10 @@ func toDocker(s domain.ContainerSpec, labels map[string]string) (*container.Conf
 		dm := mount.Mount{Type: mount.Type(m.Type), Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly}
 		switch m.Type {
 		case "bind":
-			dm.BindOptions = &mount.BindOptions{CreateMountpoint: m.CreateHostPath}
+			dm.BindOptions = &mount.BindOptions{CreateMountpoint: m.CreateHostPath, Propagation: mount.Propagation(m.Propagation)}
 		case "volume":
-			if m.NoCopy {
-				dm.VolumeOptions = &mount.VolumeOptions{NoCopy: true}
+			if m.NoCopy || m.Subpath != "" {
+				dm.VolumeOptions = &mount.VolumeOptions{NoCopy: m.NoCopy, Subpath: m.Subpath}
 			}
 		case "tmpfs":
 			if m.TmpfsSize > 0 {

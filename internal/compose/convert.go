@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/compose-spec/compose-go/v2/types"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/errs"
@@ -39,7 +41,10 @@ var supported = map[string]bool{
 	"mem_limit": true, "mem_reservation": true, "cpus": true, "pids_limit": true,
 	"logging": true, "platform": true, "depends_on": true, "container_name": true,
 	"pull_policy": true, "scale": true, "profiles": true, "env_file": true, "label_file": true,
-	"annotations": false,
+	"annotations": true, "gpus": true, "runtime": true, "userns_mode": true, "cgroup": true,
+	"cgroup_parent": true, "uts": true, "oom_score_adj": true, "oom_kill_disable": true,
+	"storage_opt": true, "cpu_shares": true, "cpu_period": true, "cpu_quota": true, "cpuset": true,
+	"memswap_limit": true, "mem_swappiness": true, "links": true, "develop": true,
 }
 
 // later are keys that arrive in a later milestone.
@@ -52,6 +57,11 @@ var ignoredDeploy = []string{"placement", "endpoint_mode", "rollback_config"}
 func Convert(p *types.Project, app, env string) (*Result, error) {
 	stack := domain.Stack(app, env)
 	r := &Result{App: domain.App{Name: app, Env: env, Stack: stack}}
+	for _, f := range p.ComposeFiles {
+		if topLevelName(f) {
+			r.Warnings = append(r.Warnings, fmt.Sprintf("%s: the top-level name is ignored: the project is always %s", filepath.Base(f), stack))
+		}
+	}
 
 	netKeys := sortedKeys(p.Networks)
 	for _, key := range netKeys {
@@ -314,12 +324,28 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 		spec.Expose = append(spec.Expose, e)
 	}
 
-	switch s.NetworkMode {
-	case "", "host", "none":
-	case "bridge":
+	switch {
+	case s.NetworkMode == "" || s.NetworkMode == "host" || s.NetworkMode == "none":
+	case s.NetworkMode == "bridge":
 		spec.NetworkMode = ""
+	case strings.HasPrefix(s.NetworkMode, "service:") || strings.HasPrefix(s.NetworkMode, "container:"):
+		// each release replaces the containers: a container joined to another's network
+		// namespace would lose it at the other's next deploy
+		return nil, nil, errs.Config("%s: network_mode %q is refused: Dockflow replaces containers at each release, and the other container's network goes with it", at, s.NetworkMode).
+			WithHint("put both services on a network; they reach each other by service name")
 	default:
-		return nil, nil, errs.Config("%s: network_mode %q is not supported yet; use host, none or networks", at, s.NetworkMode)
+		return nil, nil, errs.Config("%s: network_mode %q is not supported; use host, none or networks", at, s.NetworkMode)
+	}
+	if len(s.VolumesFrom) > 0 {
+		return nil, nil, errs.Config("%s: volumes_from is refused: Dockflow replaces containers at each release", at).
+			WithHint("mount the same named volume in both services")
+	}
+	for _, l := range s.Links {
+		// on a network, a service is reached by its name already; an alias needs the network's
+		if name, alias, ok := strings.Cut(l, ":"); ok && alias != name {
+			return nil, nil, errs.Config("%s: links with an alias (%s) are refused", at, l).
+				WithHint("give %s the alias %s under networks.<name>.aliases", name, alias)
+		}
 	}
 
 	// ports
@@ -351,9 +377,7 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 			}
 			if v.Volume != nil {
 				m.NoCopy = v.Volume.NoCopy
-				if v.Volume.Subpath != "" {
-					return nil, nil, errs.Config("%s: volume subpath is not supported yet", at)
-				}
+				m.Subpath = v.Volume.Subpath
 			}
 		case types.VolumeTypeBind:
 			// Compose resolves ./data against the project: a path of this machine, which the
@@ -365,8 +389,11 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 			m.Source = v.Source
 			if v.Bind != nil {
 				m.CreateHostPath = bool(v.Bind.CreateHostPath)
-				if v.Bind.Propagation != "" || v.Bind.SELinux != "" {
-					return nil, nil, errs.Config("%s: bind propagation and selinux options are not supported yet", at)
+				m.Propagation = v.Bind.Propagation
+				if v.Bind.SELinux != "" {
+					// the Engine API's mounts have no SELinux relabelling
+					return nil, nil, errs.Config("%s: the bind option selinux is refused: the Engine API cannot relabel a mount", at).
+						WithHint("label the directory on the server with chcon, once")
 				}
 			} else {
 				m.CreateHostPath = true
@@ -434,16 +461,34 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 	if s.Logging != nil {
 		spec.Logging = &domain.Logging{Driver: s.Logging.Driver, Options: s.Logging.Options}
 	}
+	for _, g := range s.Gpus {
+		spec.DeviceRequests = append(spec.DeviceRequests, deviceRequest(g, true))
+	}
+	spec.Runtime, spec.UsernsMode, spec.Cgroup, spec.CgroupParent, spec.Uts = s.Runtime, s.UserNSMode, s.Cgroup, s.CgroupParent, s.Uts
+	spec.OomScoreAdj = int(s.OomScoreAdj)
+	if len(s.Annotations) > 0 {
+		spec.Annotations = map[string]string(s.Annotations)
+	}
+	if len(s.StorageOpt) > 0 {
+		spec.StorageOpt = s.StorageOpt
+	}
 
 	// resources: deploy.resources wins over the legacy keys, as in Compose
 	spec.Resources = domain.Resources{
 		MemoryLimit: int64(s.MemLimit), MemoryReservation: int64(s.MemReservation),
 		CPUs: float64(s.CPUS), PidsLimit: s.PidsLimit,
+		CPUShares: s.CPUShares, CPUPeriod: s.CPUPeriod, CPUQuota: s.CPUQuota, CpusetCPUs: s.CPUSet,
+		MemorySwap: int64(s.MemSwapLimit), OomKillDisable: s.OomKillDisable,
+	}
+	if s.MemSwappiness != 0 {
+		sw := int64(s.MemSwappiness)
+		spec.Resources.MemorySwappiness = &sw
 	}
 
 	// restart policy: Compose's restart, else deploy.restart_policy, else unless-stopped (ADR-0010)
 	spec.Restart = s.Restart
 	strategy := domain.Strategy("")
+	global := false
 	if d := s.Deploy; d != nil {
 		if d.Resources.Limits != nil {
 			l := d.Resources.Limits
@@ -457,8 +502,16 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 				spec.Resources.PidsLimit = l.Pids
 			}
 		}
-		if d.Resources.Reservations != nil && d.Resources.Reservations.MemoryBytes != 0 {
-			spec.Resources.MemoryReservation = int64(d.Resources.Reservations.MemoryBytes)
+		if rs := d.Resources.Reservations; rs != nil {
+			if rs.MemoryBytes != 0 {
+				spec.Resources.MemoryReservation = int64(rs.MemoryBytes)
+			}
+			if rs.NanoCPUs != 0 {
+				warnings = append(warnings, at+": deploy.resources.reservations.cpus is ignored: Docker reserves no CPU outside Swarm")
+			}
+			for _, dev := range rs.Devices {
+				spec.DeviceRequests = append(spec.DeviceRequests, deviceRequest(dev, false))
+			}
 		}
 		if spec.Restart == "" && d.RestartPolicy != nil {
 			switch d.RestartPolicy.Condition {
@@ -481,8 +534,14 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 				strategy = domain.StrategyStopFirst
 			}
 		}
-		if d.Mode != "" && d.Mode != "replicated" {
-			return nil, nil, errs.Config("%s: deploy.mode %q makes no sense on one server; use replicas", at, d.Mode)
+		switch d.Mode {
+		case "", "replicated":
+		case "global":
+			// one container per node: one, on one server
+			warnings = append(warnings, at+": deploy.mode global runs one container on one server")
+			global = true
+		default:
+			return nil, nil, errs.Config("%s: deploy.mode %q is not supported; use replicated", at, d.Mode)
 		}
 		if len(d.Placement.Constraints) > 0 || len(d.Placement.Preferences) > 0 {
 			warnings = append(warnings, at+": deploy.placement is ignored on one server")
@@ -509,14 +568,26 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 		Drain:         domain.Duration(30 * time.Second),
 		HealthGrace:   domain.Duration(10 * time.Second),
 	}
+	if global {
+		svc.Replicas = 1
+	}
 	switch s.PullPolicy {
 	case "", types.PullPolicyMissing, types.PullPolicyIfNotPresent, types.PullPolicyBuild:
 		// built images are always built, and pulled by digest from the registry
 		svc.PullPolicy = "missing"
 	case types.PullPolicyAlways, types.PullPolicyNever:
 		svc.PullPolicy = s.PullPolicy
+	case "daily", "weekly":
+		// a deploy is when the image may change: these pull at each one
+		svc.PullPolicy = "always"
+		warnings = append(warnings, fmt.Sprintf("%s: pull_policy %s pulls at every deploy", at, s.PullPolicy))
 	default:
-		return nil, nil, errs.Config("%s: pull_policy %q is not supported yet", at, s.PullPolicy)
+		if strings.HasPrefix(s.PullPolicy, "every_") {
+			svc.PullPolicy = "always"
+			warnings = append(warnings, fmt.Sprintf("%s: pull_policy %s pulls at every deploy", at, s.PullPolicy))
+			break
+		}
+		return nil, nil, errs.Config("%s: pull_policy %q is not valid", at, s.PullPolicy)
 	}
 	for _, depName := range sortedKeys(s.DependsOn) {
 		d := s.DependsOn[depName]
@@ -526,9 +597,19 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 		}
 		svc.DependsOn = append(svc.DependsOn, domain.Dependency{Service: depName, Condition: cond})
 	}
+	// links also order the services, as in Compose
+	for _, l := range s.Links {
+		name, _, _ := strings.Cut(l, ":")
+		if _, ok := s.DependsOn[name]; !ok {
+			svc.DependsOn = append(svc.DependsOn, domain.Dependency{Service: name, Condition: types.ServiceConditionStarted})
+		}
+	}
 	switch x.Run {
 	case "":
 	case domain.JobBefore, domain.JobAfter:
+		if x.Health != nil {
+			return nil, nil, errs.Config("%s: a job serves no traffic: x-dockflow.health does not apply", at)
+		}
 		svc.Job = x.Run
 	default:
 		return nil, nil, errs.Config("%s: x-dockflow.run must be before or after, not %q", at, x.Run)
@@ -621,6 +702,33 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 		warnings = append(warnings, fmt.Sprintf("%s: routed without a healthcheck: it counts as healthy after %s running", at, svc.HealthGrace.D()))
 	}
 	return svc, warnings, nil
+}
+
+// topLevelName reports whether a Compose file sets the project's name.
+func topLevelName(path string) bool {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var top map[string]any
+	if yaml.Unmarshal(b, &top) != nil {
+		return false
+	}
+	_, ok := top["name"]
+	return ok
+}
+
+// deviceRequest converts gpus (where capabilities default to gpu) and reservation devices.
+func deviceRequest(d types.DeviceRequest, gpu bool) domain.DeviceRequest {
+	caps := d.Capabilities
+	if len(caps) == 0 && gpu {
+		caps = []string{"gpu"}
+	}
+	r := domain.DeviceRequest{Driver: d.Driver, Count: int64(d.Count), DeviceIDs: d.IDs, Capabilities: caps}
+	if len(d.Options) > 0 {
+		r.Options = map[string]string(d.Options)
+	}
+	return r
 }
 
 func checkKeys(s types.ServiceConfig) error {

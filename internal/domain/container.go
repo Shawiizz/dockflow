@@ -49,6 +49,25 @@ type ContainerSpec struct {
 	Resources   Resources         `json:"resources"`
 	Logging     *Logging          `json:"logging,omitempty"`
 	Platform    string            `json:"platform,omitempty"`
+	// DeviceRequests are gpus and deploy.resources.reservations.devices.
+	DeviceRequests []DeviceRequest   `json:"device_requests,omitempty"`
+	Runtime        string            `json:"runtime,omitempty"`
+	UsernsMode     string            `json:"userns_mode,omitempty"`
+	Cgroup         string            `json:"cgroup,omitempty"`
+	CgroupParent   string            `json:"cgroup_parent,omitempty"`
+	Uts            string            `json:"uts,omitempty"`
+	OomScoreAdj    int               `json:"oom_score_adj,omitempty"`
+	Annotations    map[string]string `json:"annotations,omitempty"`
+	StorageOpt     map[string]string `json:"storage_opt,omitempty"`
+}
+
+// DeviceRequest asks the runtime for devices, GPUs mostly.
+type DeviceRequest struct {
+	Driver       string            `json:"driver,omitempty"`
+	Count        int64             `json:"count,omitempty"` // -1: all
+	DeviceIDs    []string          `json:"device_ids,omitempty"`
+	Capabilities []string          `json:"capabilities,omitempty"`
+	Options      map[string]string `json:"options,omitempty"`
 }
 
 // Port is a published port.
@@ -69,6 +88,9 @@ type Mount struct {
 	CreateHostPath bool  `json:"create_host_path,omitempty"`
 	NoCopy         bool  `json:"nocopy,omitempty"`
 	TmpfsSize      int64 `json:"tmpfs_size,omitempty"`
+	// Subpath mounts a directory of the volume; Propagation is a bind's propagation.
+	Subpath     string `json:"subpath,omitempty"`
+	Propagation string `json:"propagation,omitempty"`
 }
 
 // Attachment connects a container to a network.
@@ -110,6 +132,13 @@ type Resources struct {
 	MemoryReservation int64   `json:"memory_reservation,omitempty"`
 	CPUs              float64 `json:"cpus,omitempty"`
 	PidsLimit         int64   `json:"pids_limit,omitempty"`
+	CPUShares         int64   `json:"cpu_shares,omitempty"`
+	CPUPeriod         int64   `json:"cpu_period,omitempty"`
+	CPUQuota          int64   `json:"cpu_quota,omitempty"`
+	CpusetCPUs        string  `json:"cpuset,omitempty"`
+	MemorySwap        int64   `json:"memswap_limit,omitempty"`
+	MemorySwappiness  *int64  `json:"mem_swappiness,omitempty"`
+	OomKillDisable    bool    `json:"oom_kill_disable,omitempty"`
 }
 
 // Logging is the container's log driver.

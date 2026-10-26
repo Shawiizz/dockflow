@@ -1,0 +1,4 @@
+version: 1
+app: keys
+environments:
+  production: {}

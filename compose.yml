@@ -1,0 +1,6 @@
+services:
+  web:
+    image: nginx
+    healthcheck: {test: ["CMD","true"]}
+    x-dockflow:
+      health: {http: {path: /, status: 200}}

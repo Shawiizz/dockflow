@@ -100,7 +100,7 @@ environments:
 
 | Combination | Why |
 |---|---|
-| `x-dockflow.routes` or `x-dockflow.health.http` on a job | A job serves no traffic |
+| `x-dockflow.routes` or `x-dockflow.health` on a job | A job serves no traffic |
 | `x-dockflow.stateful: true` on a job | A job is not a long-running service |
 | `deploy.replicas` above 1 on a job | A job runs once |
 | A service that waits for an `after` job with `service_completed_successfully` | The `after` job runs after that service |

@@ -176,3 +176,59 @@ func TestPin(t *testing.T) {
 		t.Fatalf("got %s", got)
 	}
 }
+
+// The keys Compose passes to the container reach the Engine: resources, namespaces, annotations
+// and a volume's subpath.
+func TestContainerOptionsReachTheEngine(t *testing.T) {
+	e := newEngine(t)
+	ctx := context.Background()
+	p := project(t)
+	cleanup(t, e, p)
+	img, err := e.ResolveImage(ctx, testImage, "missing", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vol := domain.Volume{Key: "data", Name: p + "_data"}
+	if err := e.CreateVolume(ctx, vol, p); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { e.c.VolumeRemove(context.Background(), vol.Name, client.VolumeRemoveOptions{Force: true}) })
+	// the subpath must exist in the volume
+	seed := domain.ContainerSpec{Image: img, Command: []string{"mkdir", "-p", "/v/sub"}, Restart: "no",
+		Mounts: []domain.Mount{{Type: "volume", Source: vol.Name, Target: "/v"}}}
+	sid, err := e.Create(ctx, p+"-seed", seed, map[string]string{domain.LabelProject: p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Start(ctx, sid); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second)
+
+	swappiness := int64(10)
+	spec := domain.ContainerSpec{
+		Image: img, Command: []string{"sleep", "300"}, Restart: "no",
+		Mounts:      []domain.Mount{{Type: "volume", Source: vol.Name, Target: "/sub", Subpath: "sub"}},
+		OomScoreAdj: 100, Annotations: map[string]string{"com.example.team": "ml"}, Uts: "host",
+		Resources: domain.Resources{CPUShares: 512, CpusetCPUs: "0", MemoryLimit: 64 << 20, MemorySwap: 128 << 20, MemorySwappiness: &swappiness},
+	}
+	id, err := e.Create(ctx, p+"-opts", spec, map[string]string{domain.LabelProject: p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := e.c.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := r.Container.HostConfig
+	if h.CPUShares != 512 || h.CpusetCpus != "0" || h.MemorySwap != 128<<20 || h.OomScoreAdj != 100 ||
+		h.Annotations["com.example.team"] != "ml" || string(h.UTSMode) != "host" {
+		t.Fatalf("options not applied: %+v", h)
+	}
+	if len(h.Mounts) != 1 || h.Mounts[0].VolumeOptions == nil || h.Mounts[0].VolumeOptions.Subpath != "sub" {
+		t.Fatalf("subpath not applied: %+v", h.Mounts)
+	}
+	if err := e.Start(ctx, id); err != nil {
+		t.Fatalf("a container with a subpath must start: %v", err)
+	}
+}

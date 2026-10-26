@@ -238,7 +238,7 @@ These combinations are refused:
 
 ## Compose support
 
-Docker runs Compose on one host, and so does Dockflow ([ADR-0003](../adr/0003-single-host-docker.md)): every key `docker compose up` supports is supported, with these specifics.
+Docker runs Compose on one host, and so does Dockflow ([ADR-0003](../adr/0003-single-host-docker.md)): every key `docker compose up` supports is supported, with these specifics. Keys that would break when a release replaces the containers are refused, with the reason; the few keys not supported yet are listed at the end of the table.
 
 | Key | Handling |
 |---|---|
@@ -247,7 +247,10 @@ Docker runs Compose on one host, and so does Dockflow ([ADR-0003](../adr/0003-si
 | `deploy.replicas` | n containers per service |
 | `deploy.resources`, `deploy.restart_policy` | Container limits and restart policy, as Compose applies them |
 | `deploy.update_config.order` | `start-first` or `stop-first` strategy ([ADR-0010](../adr/0010-rollout-health-jobs.md)) |
-| `deploy.placement`, `deploy.mode: global`, `deploy.endpoint_mode` | Ignored with a warning: one server |
+| `deploy.placement`, `deploy.endpoint_mode`, `deploy.rollback_config` | Ignored with a warning: one server, and Dockflow rolls back the whole app |
+| `deploy.mode: global` | One container, with a warning |
+| `deploy.resources.reservations` | `memory` applied; `devices` as device requests; `cpus` ignored with a warning, since Docker reserves no CPU outside Swarm |
+| `pull_policy` | `missing`, `if_not_present`, `build`, `always`, `never`; `daily`, `weekly` and `every_<duration>` pull at every deploy, with a warning |
 | `restart` | Honoured. A service without `restart` or `deploy.restart_policy` gets `unless-stopped` |
 | `depends_on` | Honoured, with its conditions: ordering, and jobs for `service_completed_successfully` |
 | `healthcheck` | Gates every strategy |
@@ -256,13 +259,16 @@ Docker runs Compose on one host, and so does Dockflow ([ADR-0003](../adr/0003-si
 | `secrets` | Files on a tmpfs mounted at `/run/secrets/<name>`, with `environment:` or `file:` sources ([ADR-0012](../adr/0012-secrets-sops.md)) |
 | `configs` | Files mounted read-only, with `file:`, `content:` or `environment:` sources |
 | `networks` | Bridge networks, aliases included. `external: true` for the server's shared networks ([ADR-0018](../adr/0018-shared-servers.md)) |
-| `network_mode` | Honoured (`host`, `service:…`). A service on the host network cannot be routed by the switch and uses `stop-first` |
-| `volumes` | Named volumes, `driver` and `driver_opts` for volume plugins, bind mounts of an absolute path on the server. A relative bind source (`./data`) is a path of the machine running the CLI and is refused: use a named volume or `uploads` |
+| `network_mode` | `host`, `none`, `bridge`. A service on the host network cannot be routed by the switch and uses `stop-first`. `service:…` and `container:…` are refused: each release replaces the containers, and a container joined to another's network namespace would lose it at the other's next deploy |
+| `volumes_from` | Refused, for the same reason |
+| `links` | Orders the services, as `depends_on`; a link with an alias is refused (aliases go under `networks`) |
+| `volumes` | Named volumes (`nocopy`, `subpath`), `driver` and `driver_opts` for volume plugins, bind mounts of an absolute path on the server (`create_host_path`, `propagation`; `selinux` is refused, since the Engine API's mounts cannot relabel). A relative bind source (`./data`) is a path of the machine running the CLI and is refused: use a named volume or `uploads` |
 | `environment`, `env_file` | `env_file` paths are read by the CLI, relative to the Compose file |
 | `profiles`, `extends`, `include`, several files merged | Resolved by compose-go |
-| `privileged`, `devices`, `cap_add`, `cap_drop`, `pid`, `ipc`, `sysctls`, `ulimits`, `tmpfs`, `init`, `user`, `working_dir`, `hostname`, `extra_hosts`, `dns`, `logging`, `labels`, `stop_grace_period`, `stop_signal`, `command`, `entrypoint`, `read_only`, `shm_size`, `gpus` | Passed to the container, as Compose does |
+| `privileged`, `devices`, `cap_add`, `cap_drop`, `pid`, `ipc`, `sysctls`, `ulimits`, `tmpfs`, `init`, `user`, `working_dir`, `hostname`, `extra_hosts`, `dns`, `logging`, `labels`, `stop_grace_period`, `stop_signal`, `command`, `entrypoint`, `read_only`, `shm_size`, `gpus`, `cpu_shares`, `cpu_period`, `cpu_quota`, `cpuset`, `memswap_limit`, `mem_swappiness`, `oom_kill_disable`, `oom_score_adj`, `runtime`, `userns_mode`, `cgroup`, `cgroup_parent`, `uts`, `annotations`, `storage_opt` | Passed to the container, as Compose does |
 | `name` | Ignored with a warning: the project name is always `<app>-<env>` |
 | `develop`, `x-*` other than `x-dockflow` | Ignored |
+| `blkio_config`, `cpu_count`, `cpu_percent`, `cpu_rt_period`, `cpu_rt_runtime`, `device_cgroup_rules`, `mac_address`, `external_links`, `post_start`, `pre_stop`, `credential_spec`, `isolation`, `use_api_socket`, `models`, `provider` | Not supported yet: refused |
 
 ## Migrating a 1.x project by hand
 

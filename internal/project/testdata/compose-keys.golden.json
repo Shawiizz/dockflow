@@ -1,0 +1,122 @@
+{
+  "App": {
+    "name": "keys",
+    "env": "production",
+    "stack": "keys-production",
+    "services": [
+      {
+        "name": "cache",
+        "strategy": "start-first",
+        "replicas": 1,
+        "spec": {
+          "image": "redis:7",
+          "networks": [
+            {
+              "network": "keys-production_default",
+              "aliases": [
+                "cache"
+              ]
+            }
+          ],
+          "restart": "unless-stopped",
+          "resources": {}
+        },
+        "pull_policy": "always",
+        "drain": "30s",
+        "health_grace": "10s"
+      },
+      {
+        "name": "gpu",
+        "strategy": "start-first",
+        "replicas": 1,
+        "spec": {
+          "image": "nvidia/cuda:12.4.1-base-ubuntu22.04",
+          "mounts": [
+            {
+              "type": "volume",
+              "source": "keys-production_models",
+              "target": "/models",
+              "subpath": "llama"
+            },
+            {
+              "type": "bind",
+              "source": "/srv/shared",
+              "target": "/shared",
+              "create_host_path": true,
+              "propagation": "rslave"
+            }
+          ],
+          "networks": [
+            {
+              "network": "keys-production_default",
+              "aliases": [
+                "gpu"
+              ]
+            }
+          ],
+          "restart": "unless-stopped",
+          "resources": {
+            "cpu_shares": 512,
+            "cpu_period": 100000,
+            "cpu_quota": 50000,
+            "cpuset": "0-1",
+            "memswap_limit": 1073741824,
+            "mem_swappiness": 10,
+            "oom_kill_disable": true
+          },
+          "device_requests": [
+            {
+              "count": -1,
+              "capabilities": [
+                "gpu"
+              ]
+            },
+            {
+              "driver": "nvidia",
+              "count": 1,
+              "capabilities": [
+                "gpu",
+                "compute"
+              ]
+            }
+          ],
+          "runtime": "nvidia",
+          "userns_mode": "host",
+          "cgroup": "private",
+          "uts": "host",
+          "oom_score_adj": -100,
+          "annotations": {
+            "com.example.team": "ml"
+          }
+        },
+        "pull_policy": "missing",
+        "depends_on": [
+          {
+            "service": "cache",
+            "condition": "service_started"
+          }
+        ],
+        "drain": "30s",
+        "health_grace": "10s"
+      }
+    ],
+    "networks": [
+      {
+        "key": "default",
+        "name": "keys-production_default"
+      }
+    ],
+    "volumes": [
+      {
+        "key": "models",
+        "name": "keys-production_models"
+      }
+    ]
+  },
+  "Warnings": [
+    "compose.yml: the top-level name is ignored: the project is always keys-production",
+    "service cache: pull_policy daily pulls at every deploy",
+    "service gpu: deploy.resources.reservations.cpus is ignored: Docker reserves no CPU outside Swarm",
+    "service gpu: deploy.mode global runs one container on one server"
+  ]
+}

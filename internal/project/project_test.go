@@ -2,6 +2,7 @@ package project
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -115,5 +116,38 @@ func TestReadWithoutEnvironmentKeepsTheFile(t *testing.T) {
 	raw, _, err := Read("testdata/basic", "")
 	if raw == nil || len(raw.EnvNames()) < 2 {
 		t.Fatalf("the file must be read even when no environment is picked: %v", err)
+	}
+}
+
+// Compose keys that docker compose up passes to the container are passed too; the ones a
+// release's new containers would break are refused with the reason.
+func TestComposeKeys(t *testing.T) {
+	l, err := load(t, "compose-keys", "production")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.Golden(t, "compose-keys", struct {
+		App      any
+		Warnings []string
+	}{l.App, l.Warnings})
+}
+
+func TestComposeKeysRefused(t *testing.T) {
+	for name, service := range map[string]string{
+		"network_mode service": "web: {image: nginx, network_mode: \"service:db\"}\n  db: {image: postgres}",
+		"volumes_from":         "web: {image: nginx, volumes_from: [db]}\n  db: {image: postgres}",
+		"link alias":           "web: {image: nginx, links: [\"db:database\"]}\n  db: {image: postgres}",
+		"selinux":              "web: {image: nginx, volumes: [{type: bind, source: /srv, target: /srv, bind: {selinux: z}}]}",
+		"job health":           "m: {image: alpine, x-dockflow: {run: before, health: {grace: 2s}}}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			os.WriteFile(filepath.Join(dir, "dockflow.yml"), []byte("version: 1\napp: keys\nenvironments:\n  production: {}\n"), 0o644)
+			os.WriteFile(filepath.Join(dir, "compose.yml"), []byte("services:\n  "+service+"\n"), 0o644)
+			_, err := Load(context.Background(), Options{Dir: dir, Env: "production"})
+			if e, ok := errs.As(err); !ok || e.Exit != errs.ExitConfig {
+				t.Fatalf("want a config error, got %v", err)
+			}
+		})
 	}
 }
