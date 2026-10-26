@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // builtApp builds its web service from a Dockerfile: whoami, named MESSAGE at build time.
@@ -145,6 +146,69 @@ func TestDeploySkipBuild(t *testing.T) {
 	missing := dockflow(t, dir, "deploy", "--skip-build", "--version", "never-built")
 	if missing.code != 7 || !strings.Contains(missing.out, "build.not_pushed") {
 		t.Fatalf("a version that was never pushed must fail with build.not_pushed, got %d:\n%s", missing.code, missing.out)
+	}
+}
+
+// plan --out, then deploy --plan applies exactly that plan, once; deploy --detach returns while
+// the run goes on, and attach follows it; --branch is what the release records.
+func TestSavedPlanDetachAndBranch(t *testing.T) {
+	app := "journey24"
+	host := app + ".test"
+	dir := filepath.Join(workDir, app)
+	commit := func(message string) {
+		builtApp(t, dir, app, message)
+		if out, err := exec.Command("sh", "-c", "cd "+dir+" && (git init -q 2>/dev/null; true) && git add -A && git -c user.name=e2e -c user.email=e2e@example.com commit -qm "+message).CombinedOutput(); err != nil {
+			t.Fatalf("git: %v: %s", err, out)
+		}
+	}
+	commit("planned")
+	planFile := filepath.Join(dir, "plan.json")
+	mustSucceed(t, dockflow(t, dir, "plan", "--out", planFile), "plan --out")
+	if fi, err := os.Stat(planFile); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("the plan must be written for its owner only: %v %v", fi, err)
+	}
+
+	applied := dockflow(t, dir, "deploy", "--plan", planFile)
+	mustSucceed(t, applied, "deploy --plan")
+	if applied.has("build.started") || len(pushes(applied)) != 0 {
+		t.Fatalf("a saved plan must not build again:\n%s", applied.out)
+	}
+	waitServing(t, host)
+	if got := served(t, host); got != "planned" {
+		t.Fatalf("served %q, want planned", got)
+	}
+	// the server changed since: the same plan no longer applies
+	if again := dockflow(t, dir, "deploy", "--plan", planFile); again.code != 6 || !strings.Contains(again.out, "plan.stale") {
+		t.Fatalf("a stale plan must be refused with exit code 6, got %d:\n%s", again.code, again.out)
+	}
+
+	commit("detached")
+	start := time.Now()
+	det := dockflow(t, dir, "deploy", "--detach", "--branch", "release-x")
+	mustSucceed(t, det, "deploy --detach")
+	if det.has("run.finished") {
+		t.Fatalf("a detached deploy must return before the run ends:\n%s", det.out)
+	}
+	var run string
+	for _, e := range det.events {
+		var d struct {
+			Run string `json:"run"`
+		}
+		if json.Unmarshal(e.Data, &d) == nil && d.Run != "" {
+			run = d.Run
+		}
+	}
+	if run == "" {
+		t.Fatalf("a detached deploy must say which run to attach to:\n%s", det.out)
+	}
+	mustSucceed(t, dockflow(t, dir, "attach", "production", run), "attach")
+	if got := served(t, host); got != "detached" {
+		t.Fatalf("served %q after the detached deploy (started %s ago), want detached", got, time.Since(start))
+	}
+	rels := dockflow(t, dir, "releases")
+	mustSucceed(t, rels, "releases")
+	if !strings.Contains(strings.ReplaceAll(rels.out, " ", ""), `"branch":"release-x"`) {
+		t.Fatalf("the release must record --branch:\n%s", rels.out)
 	}
 }
 

@@ -45,6 +45,8 @@ type session struct {
 	info     engine.Info
 	launcher *launcher.Launcher
 	run      string
+	// detach returns from the next agent run once it has its input.
+	detach bool
 
 	ws *render.Workspace
 	// manifests and blobs are the uploads' manifests and where each blob is read.
@@ -58,6 +60,9 @@ type session struct {
 func (a *app) load(ctx context.Context, env, versionFlag string) (*project.Loaded, error) {
 	dir := a.dir
 	git := project.ReadGit(dir)
+	if a.branch != "" {
+		git.Branch = a.branch
+	}
 	// CI checkouts are often detached and shallow: the provider knows the branch and commit
 	if run := ci.Detect(os.Getenv); run.Provider != "" {
 		if git.Branch == "" {
@@ -272,10 +277,15 @@ func (s *session) runAgent(ctx context.Context, req agent.Request) (*launcher.Re
 	s.app.agentRunning.Store(true)
 	payload := s.payload
 	s.payload = nil
-	res, err := s.launcher.Run(ctx, req, s.app.interrupts, payload)
+	res, err := s.launcher.Run(ctx, req, s.app.interrupts, payload, s.detach)
 	s.app.agentRunning.Store(false)
 	if err != nil {
 		return nil, err
+	}
+	if res.Detached {
+		s.app.emitter.Info(events.Log, fmt.Sprintf("run %s goes on on the server: follow it with `dockflow attach %s %s`", req.Run, req.Env, req.Run),
+			map[string]any{"line": "detached " + req.Run, "run": req.Run})
+		return res, nil
 	}
 	if !s.app.json {
 		s.app.human.finish(res.RunFinishedData)

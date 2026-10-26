@@ -18,7 +18,7 @@ v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no featu
 |---|---|---|---|
 | `deploy [env] [version]` | `deploy [<env>] [--version]`; environment and version still detected from CI | better: plan, agent, whole-app rollback | M1–M2 |
 | `deploy --dry-run [--render]` | `plan [--render]` | better | M1 |
-| `deploy --only`, `--skip-build`, `--force`, `--no-wait`, `--branch`, `-s/--server`, `--no-failover` | Same options on `deploy` (`--force` takes over a manual lock) | same | M2 |
+| `deploy --only`, `--skip-build`, `--force`, `--branch`, `-s/--server`, `--no-failover`, `--dry-run`, `--render` | `deploy --only`, `--skip-build`, `--force` (takes over a manual lock), `--branch`; `--dry-run` and `--render` are `plan` and `plan --render`; `-s` and `--no-failover` have no use with one server per environment ([ADR-0023](adr/0023-several-servers-later.md)) | same | M2 |
 | `deploy --accessories`, `--all`, `--skip-accessories` | `deploy --only <services>`: accessories are services ([ADR-0010](adr/0010-rollout-health-jobs.md)) | replaced | M2 |
 | `build [env] [--only] [--push] [--skip-hooks]` | `build` with the same options | same | M2 |
 | `init` (scaffolding, CI workflows for GitHub and GitLab) | `init`, same, plus scheduled backups in the workflow | same | M3 |

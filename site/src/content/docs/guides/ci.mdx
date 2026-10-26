@@ -118,6 +118,24 @@ dockflow build production
 
 A runner that builds needs Docker with buildx (or Podman, with `build.engine: podman`). A runner that only deploys services with public images needs no Docker at all: Dockflow reaches the server's Docker over SSH.
 
+## Build in one job, deploy in another
+
+With `--push`, `dockflow build` sends the images where a deploy would. A later job deploys them with `--skip-build`, without building again; both jobs must check out the same commit, which gives the version label and so the image tag.
+
+```sh
+dockflow build production --push        # job 1
+dockflow deploy production --skip-build # job 2, same commit
+```
+
+To have a person review the plan before it is applied, save it in one job and apply it in another, after an approval step:
+
+```sh
+dockflow plan production --out plan.json   # job 1: keep plan.json as an artifact
+dockflow deploy --plan plan.json           # job 2, once approved
+```
+
+The second job builds nothing and applies exactly the reviewed plan. If anything changed in between, on the server or in the project, it fails with `plan.stale` (exit code 6) and changes nothing.
+
 ## Complete workflows
 
 Each workflow builds on branches and deploys on tags, with the CLI pinned to a version. Replace `production` with your environment, and add the secrets your Compose files use (`PRODUCTION_DB_PASSWORD` here) as CI variables.

@@ -22,6 +22,7 @@ var timeNow = time.Now
 func (a *app) planCmd() *cobra.Command {
 	var render, noBuild bool
 	var only []string
+	var out string
 	cmd := &cobra.Command{
 		Use:   "plan [<env>]",
 		Short: "Print what a deploy would change",
@@ -36,6 +37,9 @@ func (a *app) planCmd() *cobra.Command {
 			if err := checkOnly(s, only); err != nil {
 				return err
 			}
+			if out != "" && noBuild {
+				return errs.Usage("--out needs the images built: a saved plan pins them")
+			}
 			if !noBuild {
 				if err := s.deliver(cmd.Context(), only, false); err != nil {
 					return err
@@ -47,8 +51,14 @@ func (a *app) planCmd() *cobra.Command {
 			req := s.request(agent.OpPlan)
 			req.Desired = &s.loaded.App
 			req.Only = only
-			if _, err = s.runAgent(cmd.Context(), req); err != nil {
+			res, err := s.runAgent(cmd.Context(), req)
+			if err != nil {
 				return err
+			}
+			if out != "" {
+				if err := s.savePlan(out, res.Plan, only); err != nil {
+					return err
+				}
 			}
 			if render {
 				// the services as they will be sent to the server, before images are pinned
@@ -61,6 +71,7 @@ func (a *app) planCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&render, "render", false, "also print the service specs that would be sent")
 	cmd.Flags().BoolVar(&noBuild, "no-build", false, "plan without building: built services show as changed")
 	cmd.Flags().StringSliceVar(&only, "only", nil, "plan these services only: the others stay as the current release has them")
+	cmd.Flags().StringVar(&out, "out", "", "also write the plan to this file, for `dockflow deploy --plan`")
 	return cmd
 }
 
@@ -72,15 +83,34 @@ func (a *app) warnings(s *session) {
 
 func (a *app) deployCmd() *cobra.Command {
 	var versionFlag string
-	var noRollback, force, skipBuild bool
+	var noRollback, force, skipBuild, detach bool
 	var waitLock time.Duration
 	var only []string
+	var planFile, branch string
 	cmd := &cobra.Command{
 		Use:   "deploy [<env>]",
 		Short: "Plan, confirm and apply",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := envArg(args)
+			var sp *savedPlan
+			if planFile != "" {
+				var err error
+				if sp, err = readPlan(planFile); err != nil {
+					return err
+				}
+				if len(only) > 0 || skipBuild {
+					return errs.Usage("--plan applies the saved plan as it is: --only and --skip-build come from the plan")
+				}
+				if versionFlag != "" && versionFlag != sp.Version {
+					return errs.Usage("the plan is for version %s, not %s", sp.Version, versionFlag)
+				}
+				versionFlag, only = sp.Version, sp.Only
+				if env == "" {
+					env = sp.Env
+				}
+			}
+			a.branch = branch
 			if env == "" {
 				var err error
 				if env, err = a.envFromTag(); err != nil {
@@ -101,15 +131,29 @@ func (a *app) deployCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if detach {
+				if err := detachable(s, hookList); err != nil {
+					return err
+				}
+			}
 			hk := s.hookRunner()
+			// a saved plan has its images: nothing is built
+			skipBuild = skipBuild || sp != nil
+			if sp != nil {
+				if err := s.usePlan(sp); err != nil {
+					return err
+				}
+			}
 			// with --skip-build nothing is built: the build hooks do not run either
 			if !skipBuild {
 				if err := hk.Run(ctx, domain.HookBeforeBuild, hookList); err != nil {
 					return err
 				}
 			}
-			if err := s.deliver(ctx, only, skipBuild); err != nil {
-				return err
+			if sp == nil {
+				if err := s.deliver(ctx, only, skipBuild); err != nil {
+					return err
+				}
 			}
 			if !skipBuild {
 				if err := hk.Run(ctx, domain.HookAfterBuild, hookList); err != nil {
@@ -125,7 +169,10 @@ func (a *app) deployCmd() *cobra.Command {
 				return err
 			}
 			fingerprint := ""
-			if a.interactive() {
+			if sp != nil {
+				// reviewed already: applied as it is, or refused if anything changed
+				fingerprint = sp.Fingerprint
+			} else if a.interactive() {
 				// show the plan, then apply exactly that plan once confirmed
 				planReq := s.request(agent.OpPlan)
 				planReq.Desired = &s.loaded.App
@@ -154,6 +201,7 @@ func (a *app) deployCmd() *cobra.Command {
 			if err := s.sendUploads(ctx, &req); err != nil {
 				return err
 			}
+			s.detach = detach
 			res, err := s.runAgent(ctx, req)
 			if err != nil {
 				if res != nil && res.ExitCode != errs.ExitLocked {
@@ -163,7 +211,7 @@ func (a *app) deployCmd() *cobra.Command {
 				}
 				return err
 			}
-			if res.ReleaseSeq == 0 {
+			if res.Detached || res.ReleaseSeq == 0 {
 				return nil
 			}
 			if herr := hk.Run(ctx, domain.HookAfterDeploy, hookList); herr != nil {
@@ -186,7 +234,25 @@ func (a *app) deployCmd() *cobra.Command {
 	f.DurationVar(&waitLock, "wait-lock", 0, "wait up to this long for another run's lock instead of failing")
 	f.StringSliceVar(&only, "only", nil, "deploy these services only: the others stay as the current release has them")
 	f.BoolVar(&skipBuild, "skip-build", false, "use the images `dockflow build --push` pushed for this version instead of building")
+	f.StringVar(&planFile, "plan", "", "apply this plan, written by `dockflow plan --out`, or fail if anything changed since")
+	f.BoolVar(&detach, "detach", false, "return once the run started on the server; follow it with `dockflow attach`")
+	f.StringVar(&branch, "branch", "", "the git branch recorded in the release (default: from git or the CI)")
 	return cmd
+}
+
+// detachable refuses --detach when what follows the run happens on this machine: local and host
+// hooks after the deploy, which the CLI runs once the agent is done.
+func detachable(s *session, hooks []domain.Hook) error {
+	for _, h := range hooks {
+		if h.Kind != domain.HookExec && (h.Phase == domain.HookAfterDeploy || h.Phase == domain.HookAfterFailure) {
+			return errs.Usage("--detach: the %s hook %s runs on this machine once the run ends", h.Phase, h.Name).
+				WithHint("deploy without --detach")
+		}
+	}
+	if len(s.loaded.Config.Notify) > 0 {
+		s.app.emitter.Warn(events.Warning, "a detached run sends no webhook: the CLI sends them when the run ends", map[string]any{"code": "notify.detached"})
+	}
+	return nil
 }
 
 // checkOnly refuses an --only that names a service the app does not have, before anything is

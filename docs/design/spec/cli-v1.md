@@ -33,7 +33,7 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 | `dockflow plugins list` | Built-in and project plugins, with their inputs ([ADR-0017](../adr/0017-plugins.md)) |
 | `dockflow build [<env>] [--only <services>] [--push] [--platform <os/arch>] [--skip-hooks]` | Builds images, without deploying. Without `--push`, for `--platform` (default: this machine's architecture); with it, for the server's, and pushes them where a deploy would. With `build.builder: remote`, the build runs on the server and `--push` is implied |
 | `dockflow plan [<env>] [--out <file>] [--no-build] [--render] [--only <services>]` | Prints the plan. `--render` prints the service specs that would be sent; `--only` plans as `deploy --only` |
-| `dockflow deploy [<env>] [--plan <file>] [--version <label>] [--only <services>] [--skip-build] [--no-rollback] [--detach] [--force] [--wait-lock [<duration>]] [--no-wait] [--branch <name>]` | Plans, confirms, applies. `--wait-lock` queues behind a running deploy instead of failing with code 5, for CI runs that may overlap (a push to `main` and a release). `--only` moves those services to the new version and keeps every other service as the current release has it (the release still records the whole app; jobs come from the new version). `--skip-build` builds nothing and uses the images `build --push` pushed for the same version |
+| `dockflow deploy [<env>] [--plan <file>] [--version <label>] [--only <services>] [--skip-build] [--no-rollback] [--detach] [--force] [--wait-lock [<duration>]] [--branch <name>]` | Plans, confirms, applies. `--wait-lock` queues behind a running deploy instead of failing with code 5, for CI runs that may overlap (a push to `main` and a release). `--only` moves those services to the new version and keeps every other service as the current release has it (the release still records the whole app; jobs come from the new version). `--skip-build` builds nothing and uses the images `build --push` pushed for the same version. `--plan` applies a saved plan (below) or fails with `plan.stale`. `--detach` returns once the run started; `attach` follows it. `--branch` replaces the branch recorded in the release |
 | `dockflow rollback [<env>] [--to <seq\|version>] [--service <name>]` | Re-applies a recorded release, by default the previous one. `--to` takes a release number, or a version label for the newest release of it that went live. `--service` restores one service only, the others staying as they are |
 | `dockflow attach [<env>] [<run-id>]` | Follows a run in progress, or replays a finished one |
 | `dockflow cancel [<env>]` | Asks the running agent to stop and roll back |
@@ -102,6 +102,22 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 | `dockflow help [<command>]` | Help, also as `-h` on every command |
 
 Internal commands are hidden from help: `agent`, `provision` and `filter apply`.
+
+## Saved plans
+
+`dockflow plan --out <file>` writes the plan as JSON, mode 0600, for `dockflow deploy --plan <file>`:
+
+| Field | Description |
+|---|---|
+| `schema` | `1` |
+| `app`, `env`, `server`, `version` | What the plan is for; `deploy --plan` uses this version label and refuses another environment |
+| `only` | The plan's `--only`, applied again by the deploy |
+| `images` | The built services' images, pinned by digest: the deploy builds nothing |
+| `fingerprint` | The plan's fingerprint ([ADR-0008](../adr/0008-plan-apply-releases.md)): the desired state, secrets included, and the actual state it was computed from. The agent refuses the deploy with `plan.stale` when the plan it computes has another one |
+| `plan` | The plan itself, for review, masked as every output is |
+| `created_at`, `dockflow_version` | When and by which CLI |
+
+The file holds no secret value: a changed secret changes the fingerprint, so the plan goes stale.
 
 ## Exit codes
 

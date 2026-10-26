@@ -40,11 +40,14 @@ type Result struct {
 	Results []json.RawMessage
 	// Plan is the plan the agent computed, if any.
 	Plan *domain.Plan
+	// Detached is set when Run returned once the agent had its input, without waiting for it.
+	Detached bool
 }
 
 // Run starts an agent for req and relays its events until it finishes. interrupts delivers
-// Ctrl+C: the first asks the agent to stop and roll back, the second detaches.
-func (l *Launcher) Run(ctx context.Context, req agent.Request, interrupts <-chan struct{}, payload func(io.Writer) error) (*Result, error) {
+// Ctrl+C: the first asks the agent to stop and roll back, the second detaches. With detach, it
+// returns as soon as the agent has its input: the run goes on, on the server.
+func (l *Launcher) Run(ctx context.Context, req agent.Request, interrupts <-chan struct{}, payload func(io.Writer) error, detach bool) (*Result, error) {
 	image, err := l.ensureImage(ctx)
 	if err != nil {
 		return nil, err
@@ -94,6 +97,9 @@ func (l *Launcher) Run(ctx context.Context, req agent.Request, interrupts <-chan
 		}
 	}
 	att.Stdin.Close()
+	if detach {
+		return &Result{Detached: true}, nil
+	}
 
 	done := make(chan *Result, 1)
 	go func() { done <- l.relay(att.Stdout) }()

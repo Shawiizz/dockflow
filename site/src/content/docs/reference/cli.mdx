@@ -113,6 +113,7 @@ Print what a deploy would change, without changing any container. The plan is co
 |---|---|---|
 | `--no-build` | `false` | Plan without building: built services show as changed. |
 | `--only strings` | all | Plan these services only, as `deploy --only` would deploy them. |
+| `--out string` | none | Also write the plan to this file, for `dockflow deploy --plan`. Not with `--no-build`. |
 | `--render` | `false` | Also print the service specs that would be sent. |
 
 ## deploy
@@ -127,13 +128,20 @@ With `--only web,worker`, only those services move to the new version; every oth
 
 With `--skip-build`, nothing is built: each built service uses the image `dockflow build --push` pushed for the same version, so a CI pipeline can build in one job and deploy in another. The build hooks do not run. A version that was never pushed fails with `build.not_pushed` (exit code 7). Images built on the server (`build.builder: remote`) without an external registry are named after their content, so `--skip-build` cannot find them.
 
+With `--plan plan.json`, the deploy applies a plan written by `dockflow plan --out plan.json`, as it was reviewed: it builds nothing (the plan pins the built images), asks for no confirmation, and is refused with `plan.stale` (exit code 6) if anything changed since, on the server or in the project, secrets included. The file holds no secret value; it is written for its owner only.
+
+With `--detach`, the command returns as soon as the run started on the server, and prints its run ID: `dockflow attach <env> <run>` follows it. `after_deploy` and `after_failure` hooks that run on your machine or over SSH need the CLI until the end, so `--detach` refuses them; webhooks, sent by the CLI, are not sent for a detached run.
+
 Exit codes: 5 when another run holds the lock, 7 when the build fails, 8 when the run failed and was rolled back, 9 when it failed and was left in place, 11 when a fatal `before_*` hook failed. See [exit codes](/reference/exit-codes/).
 
 | Option | Default | Description |
 |---|---|---|
+| `--branch string` | from git or the CI | The git branch recorded in the release and given to hooks as `DOCKFLOW_GIT_BRANCH`. |
+| `--detach` | `false` | Return once the run started on the server; follow it with `dockflow attach`. |
 | `--force` | `false` | Deploy despite a manual lock. |
 | `--no-rollback` | `false` | Leave a failed deploy in place instead of rolling back. It applies to failed HTTP checks; a failed rollout always rolls back. |
 | `--only strings` | all | Deploy these services only: the others stay as the current release has them. |
+| `--plan string` | none | Apply this plan, written by `dockflow plan --out`, or fail if anything changed since. |
 | `--skip-build` | `false` | Use the images `dockflow build --push` pushed for this version instead of building. |
 | `--version string` | the git commit | The version label of the release. In CI, a tag's version is used. |
 | `--wait-lock duration` | `0` | Wait up to this long for another run's lock instead of failing, like `--wait-lock 10m`. For CI runs that may overlap. |

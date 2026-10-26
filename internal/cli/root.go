@@ -27,6 +27,8 @@ type app struct {
 	noColor    bool
 	yes        bool
 	connection string
+	// branch replaces the branch git or the CI reports (deploy --branch).
+	branch string
 
 	stdout, stderr io.Writer
 	stdin          *os.File
