@@ -11,7 +11,7 @@ The same `dockflow` binary runs on your laptop and on a CI runner. In CI, Dockfl
 
 ```yaml
 # .github/workflows/deploy.yml (the deploy job)
-- run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.3
+- run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.4
 - run: dockflow deploy --wait-lock 10m
   env:
     DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
@@ -143,7 +143,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dockflow
-        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.3
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.4
       - name: Build
         run: dockflow build production
         env:
@@ -155,7 +155,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dockflow
-        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.3
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.4
       - name: Deploy
         run: dockflow deploy --wait-lock 10m
         env:
@@ -177,7 +177,7 @@ default:
     - docker:27-dind
   before_script:
     - apk add --no-cache curl
-    - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.3
+    - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.4
 
 variables:
   DOCKER_TLS_CERTDIR: "/certs"
@@ -213,7 +213,7 @@ pipeline {
   stages {
     stage('Install dockflow') {
       steps {
-        sh 'curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.3 --dir "$HOME/.local/bin"'
+        sh 'curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.4 --dir "$HOME/.local/bin"'
       }
     }
     stage('Build') {
@@ -252,14 +252,14 @@ steps:
   - label: "Build"
     if: build.tag == null
     command: |
-      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.3 --dir ~/.local/bin
+      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.4 --dir ~/.local/bin
       export PRODUCTION_DB_PASSWORD="$$(buildkite-agent secret get PRODUCTION_DB_PASSWORD)"
       ~/.local/bin/dockflow build production
 
   - label: "Deploy"
     if: build.tag != null
     command: |
-      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.3 --dir ~/.local/bin
+      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.4 --dir ~/.local/bin
       export PRODUCTION_CONNECTION="$$(buildkite-agent secret get PRODUCTION_CONNECTION)"
       export PRODUCTION_DB_PASSWORD="$$(buildkite-agent secret get PRODUCTION_DB_PASSWORD)"
       ~/.local/bin/dockflow deploy --wait-lock 10m
@@ -283,7 +283,7 @@ pipelines:
           name: Build
           services: [docker]
           script:
-            - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.3
+            - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.4
             - dockflow build production
   tags:
     "*":
@@ -292,7 +292,7 @@ pipelines:
           deployment: production
           services: [docker]
           script:
-            - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.3
+            - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.4
             - dockflow deploy --wait-lock 10m
 ```
 
