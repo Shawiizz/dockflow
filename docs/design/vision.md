@@ -57,4 +57,4 @@ Dockflow v2 will not:
 - Every interaction with the outside world goes through a port with one adapter in v1.
 - No shell strings in the deploy path. Docker is reached through its API; shell is used only to provision servers and to run the `host` hooks the user writes.
 - Output is events, rendered by the interface. No package prints.
-- Budget: the core (everything except tests, the web UI and the MCP server) stays under **15,000 lines of Go** up to v1.0. Going over it requires an ADR that says what was worth it.
+- No line budget: completeness and parity with 1.x come first. Code stays simple because each concern is delegated to the tool that already does it well, not because of a count.

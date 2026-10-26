@@ -1,6 +1,6 @@
 # Parity with Dockflow 1.x
 
-v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no feature ([vision, goal 9](vision.md#goals)). This table maps every feature of 1.x (its last release, 2.5.x) to its v2 equivalent. It was built from 1.x's CLI reference, its configuration schema and seven real projects (MohistMC, ValientRP, shawiizz.dev).
+v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no feature ([vision, goal 9](vision.md#goals)). This table maps every feature of 1.x (its last release, 2.5.x) to its v2 equivalent. It was built from 1.x's CLI reference, its configuration schema, its e2e fixtures and eight real projects: MohistMC (maven, frontend, backend), ValientRP (frontend, backend, minecraft-server), shawiizz.dev and Dockflow's own docs.
 
 **Status** says how v2 provides it:
 
@@ -23,7 +23,8 @@ v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no featu
 | `init` (scaffolding, CI workflows for GitHub and GitLab) | `init`, same, plus scheduled backups in the workflow | same | M3 |
 | `config`, `config show/validate/check/path`, `validate [env]` | `config show [--json]`, `validate [<env>]` | same | M1 |
 | `ui` | `ui` (local web UI, token-protected) | better ([ADR-0016](adr/0016-interfaces.md)) | M5 |
-| `completion` | `completion` | same | M1 |
+| `completion`, `help` | `completion`, `help` | same | M1 |
+| Environment prefixes (`pr` for `production`) | Same on the command line; never for CI tags | same | M1 |
 | `logs` (`-f`, `-n`, `--since`, `--timestamps`, `--all-tasks`, `--pick`, `--no-prefix`) | `logs` with the same options | same | M2 |
 | `exec`/`shell` (`-e`, `-u`, `-w`, `--sh`, `-T`, `--pick`) | `exec` with the same options, on any node without SSH to workers | better | M2 |
 | `cp` (files to and from containers) | `cp` | same | M2 |
@@ -60,9 +61,10 @@ v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no featu
 | `servers.yml`: servers, roles, tags (environments), `defaults` | `environments.<env>` with `nodes` or a connection string | replaced |
 | `servers.yml` `env` per tag | `environments.<env>.vars` | same |
 | `servers.yml` `env` per server (`PRODUCTION_MANAGER_X`) | `vars` per environment. Per-server values were only ever rendered for the manager | replaced |
-| Connection string per server (`<ENV>_<SERVER>_CONNECTION`) | Connection string per environment (`<ENV>_CONNECTION`), with host keys | better |
+| Connection string per server (`<ENV>_<SERVER>_CONNECTION`) or shared (`<ENV>_CONNECTION`), with `privateKey` or `password` | Connection string per environment (`<ENV>_CONNECTION`), with host keys, key or password | better |
+| `servers.yml` `private_host` (Swarm on a private network) | `cluster init/join --advertise-addr` | same |
 | `DOCKFLOW_SECRETS`, `.env.dockflow`, `<ENV>_<VAR>` overrides | Same, plus an optional SOPS file ([ADR-0012](adr/0012-secrets-sops.md)) | same |
-| Nunjucks in every `.dockflow/` file, `templates:` | `${VAR}` interpolation in Compose, `dockflow.yml`, listed templates and hooks ([ADR-0006](adr/0006-compose-as-written.md)) | replaced: conditions and loops are gone, unused in real projects |
+| Nunjucks in every `.dockflow/` file, `templates:` (including files baked into images, as the docs do) | `${VAR}` interpolation in Compose, `dockflow.yml`, listed templates (rendered in a copy that bake builds from) and hooks ([ADR-0006](adr/0006-compose-as-written.md)) | replaced: conditions and loops are gone, unused in real projects; a missing template is now an error |
 | `container_engine: podman` | `build.engine: podman` | same |
 | `registry` (`type`, `url`, `username`, `password`, `token`, `namespace`, `additional_tags`, `enabled`) | `registry` (`url`, `username`, `password`, `additional_tags`); none means the cluster registry | same |
 | `options.remote_build` | `build.builder: remote` | same |
@@ -89,6 +91,9 @@ v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no featu
 | 1.x | v2 | Status |
 |---|---|---|
 | Single binary, npm wrapper, install scripts | Same, signed ([ADR-0020](adr/0020-releasing-dockflow.md)) | better |
+| Secrets kept out of the CLI's output and the nodes' process lists (checked by 1.x's e2e suite) | Same, plus masking of every output, hooks and builds included ([ADR-0012](adr/0012-secrets-sops.md)) | better |
+| BuildKit features (`# syntax`, `RUN --mount=type=cache`, multi-stage) | All of BuildKit through bake; `cache_from`/`cache_to` in Compose keep the cache across CI runs | better |
+| A held lock fails the deploy | Same by default; `deploy --wait-lock` queues instead | better |
 | CI detection: GitHub Actions, GitLab CI, Jenkins, Buildkite, Bitbucket; environment and version from the tag | Same providers. A tag suffix selects an environment only when it names one exactly, so `1.0.0-pre-prod` can no longer reach production | better |
 | Multi-manager failover | Any manager: state in Raft | better |
 | Image distribution by `docker save \| load` or registry | Registry only: the cluster registry by default ([ADR-0009](adr/0009-images.md)) | better |

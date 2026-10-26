@@ -37,4 +37,4 @@ The first draft of this ADR replaced the web UI with a terminal UI. That would l
 
 - The CLI, the UI, the MCP server and the Action call the same functions and cannot drift apart.
 - Agents and scripts get a stable, versioned JSON contract.
-- The UI is the largest piece outside the core. It is excluded from the core's line budget but has its own tests.
+- The UI is the largest piece outside the core, and has its own tests.

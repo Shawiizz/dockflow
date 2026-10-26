@@ -28,6 +28,10 @@ Every operation reports its progress as a stream of events ([ADR-0016](../adr/00
 | `msg` | A human-readable sentence. Renderers may show it as is |
 | `data` | The fields of the type |
 
+## Secrets
+
+No event carries a secret value. Text fields (`msg`, `line`, `error.message`) are masked by the emitter before they are written: every occurrence of a secret's value becomes `***`.
+
 ## Compatibility rules
 
 - Within version 1, fields and types are only added, never renamed or removed, and their meaning doesn't change.

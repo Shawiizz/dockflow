@@ -4,10 +4,10 @@ Each milestone ends with a usable tool, and its exit criteria are checked by tes
 
 ## M0: Design (this branch, now)
 
-- [x] Vision, non-goals, budget
+- [x] Vision, non-goals, principles
 - [x] ADR-0001 to ADR-0022
 - [x] Specifications: configuration, cluster state, events, CLI
-- [x] Parity table with 1.x, from its CLI reference, its schema and seven real projects
+- [x] Parity table with 1.x, from its CLI reference, its schema, its e2e fixtures and eight real projects
 - [ ] Review by the project owner. Any change of mind becomes an edit before M1 starts, while nothing depends on it yet.
 
 ## M1: Walking skeleton
@@ -58,7 +58,7 @@ Exit criteria: the e2e journeys of [ADR-0019](adr/0019-testing.md) that don't in
 - `init` with CI workflows
 - Real-cluster tests on fresh DigitalOcean droplets: provisioning, cloud-init, Let's Encrypt staging, Cloudflare edge, the filter on real interfaces
 
-Exit criteria: a new DigitalOcean droplet goes from blank to serving an app over HTTPS with `server init`, `cluster init` and `deploy` only, and a second project deploys next to it without touching the first. **Each of the seven real projects (MohistMC ×3, ValientRP ×3, shawiizz.dev) has a working v2 configuration in the e2e fixtures**, the Minecraft server included (TCP and UDP ports, graceful stop through an `exec` hook).
+Exit criteria: a new DigitalOcean droplet goes from blank to serving an app over HTTPS with `server init`, `cluster init` and `deploy` only, and a second project deploys next to it without touching the first. **Each of the eight real projects (MohistMC ×3, ValientRP ×3, shawiizz.dev, Dockflow's own docs) has a working v2 configuration in the e2e fixtures**, the Minecraft server included (TCP and UDP ports, graceful stop through an `exec` hook).
 
 ## M4: Data
 

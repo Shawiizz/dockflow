@@ -42,6 +42,7 @@ An environment's connection string is the base64 of a JSON document:
 - **Where it lives:** the `<ENV>_CONNECTION` secret (`PRODUCTION_CONNECTION`), read like any other secret ([ADR-0012](0012-secrets-sops.md)): a CI variable, `DOCKFLOW_SECRETS`, `.env.dockflow` or the SOPS file.
 - **What it holds:** one value per environment, for all its servers. Managers are tried in order, and workers are used only by the commands that need a node directly: `ssh`, host hooks and node-specific `exec`.
 - **Host keys:** it carries every node's host key fingerprint, and every connection verifies it. Nothing is ever trusted on first use.
+- **Passwords:** a `password` field may replace `private_key` for servers that only accept password authentication, as 1.x allowed. `server init` warns that keys are safer.
 - **How it is produced:** `dockflow server init` prints it at the end. `dockflow server connection <env>` rebuilds it, for example after `cluster join` adds a node.
 - **The alternative:** listing the nodes in `dockflow.yml` (`nodes:`) and authenticating with `ssh-agent`, `~/.ssh/config` or `DOCKFLOW_SSH_KEY`, for teams that prefer it. When both are present, the connection string wins.
 

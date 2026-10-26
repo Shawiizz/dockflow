@@ -53,7 +53,7 @@ A variable with no value and no default is an error.
 
 ### `templates:`
 
-Files outside Compose are rendered only when listed under `templates:` (as `src` → `dest`, or in place in a temporary copy of the build context). A template is rendered before the build, so a rendered file can be part of an image, or before an upload, so it can be sent to servers ([ADR-0021](0021-uploads-and-templates.md)). Nothing is rendered implicitly.
+Files outside Compose are rendered only when listed under `templates:` (as `src` → `dest`, or in place). Rendering happens in a temporary copy of the project, and bake builds from that copy, so a rendered file can be part of an image: Dockflow's own docs render a page and a build script this way. Templates are also rendered before uploads ([ADR-0021](0021-uploads-and-templates.md)). The source tree is never modified. A listed template that does not exist is an error. In 1.x it was skipped silently, which shipped an unrendered page of the docs. Nothing is rendered implicitly.
 
 ## Consequences
 

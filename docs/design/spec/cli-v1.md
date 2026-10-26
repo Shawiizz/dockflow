@@ -7,6 +7,7 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 - **`<env>`** is required, except in three cases:
   - `dockflow.yml` defines exactly one environment;
   - in CI, `deploy` and `build` derive it from the tag, as in 1.x. A tag `1.2.0` selects the environment whose `ci.tag_suffix` is empty (production by default), and `1.2.0-staging` the one whose suffix is `staging`. A suffix that names no environment is an error.
+- **Prefixes:** typed on the command line, an environment may be abbreviated to a unique prefix (`pr` for `production`), as in 1.x. An ambiguous prefix lists the candidates. Prefixes never apply to environments derived from CI tags.
 - **Version:** in CI, `deploy` takes it from the tag, or from the branch and commit, unless `--version` is given.
 - **Global options:**
 
@@ -31,7 +32,7 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 | `dockflow config show [<env>] [--json]` | The resolved configuration, secrets masked |
 | `dockflow build [<env>] [--only <services>] [--push] [--skip-hooks]` | Builds images, without deploying |
 | `dockflow plan [<env>] [--out <file>] [--no-build] [--render] [--only <services>]` | Prints the plan. `--render` prints the service specs that would be sent |
-| `dockflow deploy [<env>] [--plan <file>] [--version <label>] [--only <services>] [--skip-build] [--no-rollback] [--detach] [--force] [--no-wait] [--branch <name>] [--manager <node>]` | Plans, confirms, applies |
+| `dockflow deploy [<env>] [--plan <file>] [--version <label>] [--only <services>] [--skip-build] [--no-rollback] [--detach] [--force] [--wait-lock [<duration>]] [--no-wait] [--branch <name>] [--manager <node>]` | Plans, confirms, applies. `--wait-lock` queues behind a running deploy instead of failing with code 5, for CI runs that may overlap (a push to `main` and a release) |
 | `dockflow rollback [<env>] [--to <seq\|version>] [--service <name>]` | Re-applies a recorded release, by default the previous one. `--service` restores one service only |
 | `dockflow attach [<env>] [<run-id>]` | Follows a run in progress, or replays a finished one |
 | `dockflow cancel [<env>]` | Asks the running agent to stop and roll back |
@@ -83,8 +84,8 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 | `dockflow server cloud-init [--deploy-key <file.pub>] [--from <cidr>…]` | Prints cloud-init user-data that does the same on first boot |
 | `dockflow server check [<target>]` | Checks a server's prerequisites: OS, Docker, user, filter, ports |
 | `dockflow server connection [<env>]` | Prints the environment's connection string, rebuilt from the cluster's nodes |
-| `dockflow cluster init <target> [--acme-email <email>] [--edge direct\|cloudflare\|proxy] [--trusted-proxy <cidr>…] [--private-cidr <cidr>…] [--no-overlay-encryption] [--no-proxy]` | Creates the Swarm and its system services |
-| `dockflow cluster join <target> <user@new-host> --role manager\|worker` | Adds a provisioned server |
+| `dockflow cluster init <target> [--advertise-addr <ip>] [--acme-email <email>] [--edge direct\|cloudflare\|proxy] [--trusted-proxy <cidr>…] [--private-cidr <cidr>…] [--no-overlay-encryption] [--no-proxy]` | Creates the Swarm and its system services. `--advertise-addr` keeps Swarm traffic on a private network, like 1.x's `private_host` |
+| `dockflow cluster join <target> <user@new-host> --role manager\|worker [--advertise-addr <ip>]` | Adds a provisioned server |
 | `dockflow cluster label <target> <node> <key>=<value>…` | Sets node labels |
 | `dockflow cluster network create\|list\|remove <target> [<name>]` | Shared networks between apps |
 | `dockflow cluster plugin install\|list\|remove <target> [<plugin>] [--alias <name>] [<key>=<value>…]` | Volume plugins on every node |
@@ -99,6 +100,7 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 | `dockflow ui [-p <port>] [--no-open]` | The local web UI ([ADR-0016](../adr/0016-interfaces.md)) |
 | `dockflow mcp [--allow-apply]` | MCP server over stdio |
 | `dockflow completion <shell>` | Shell completion script |
+| `dockflow help [<command>]` | Help, also as `-h` on every command |
 
 Internal commands are hidden from help: `agent`, `provision` and `filter apply`.
 

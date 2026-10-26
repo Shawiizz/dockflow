@@ -51,6 +51,10 @@ There are two ways to hand a secret to a container:
 
 **At build time**, Compose `build.secrets` (handled by bake) pass a secret to a build without leaving it in the image history. `build.args` still work, as in 1.x.
 
+### Masking
+
+Every output Dockflow shows or stores masks the values of the environment's secrets, as GitHub Actions does: events, build and hook output, job logs, errors and `config show`. This covers the cases 1.x's e2e suite checks (no secret in the CLI's output or in the nodes' process lists), plus everything the agent emits. Secrets never appear in a command line.
+
 ### Rotation
 
 Changing a secret used through Compose `secrets:` changes its hash: a new Swarm secret is created, the services move to it in the normal rollout, and the old one is removed once no retained release references it. `dockflow secrets revoke <env> <KEY>` removes old versions at once.

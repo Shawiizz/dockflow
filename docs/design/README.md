@@ -4,7 +4,7 @@ The design of Dockflow v2, written before any code ([roadmap, M0](roadmap.md#m0-
 
 | Document | Contents |
 |---|---|
-| [vision.md](vision.md) | The one-sentence pitch, who it is for, goals, non-goals, the code budget |
+| [vision.md](vision.md) | The one-sentence pitch, who it is for, goals, non-goals, principles |
 | [adr/](adr/README.md) | Twenty-two architecture decisions, each with its context, consequences and rejected alternatives |
 | [roadmap.md](roadmap.md) | Milestones M1 to M5 and v1.0, with exit criteria |
 | [parity.md](parity.md) | Every 1.x feature and its v2 equivalent: nothing is lost |
