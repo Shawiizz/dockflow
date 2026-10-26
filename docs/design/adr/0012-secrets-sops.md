@@ -63,6 +63,17 @@ Changing a secret used through Compose `secrets:` changes its hash: a new secret
 
 `dockflow secrets list <env>` lists keys with their source, never their values. `dockflow secrets set` and `dockflow secrets edit` work on the SOPS file when the environment uses one.
 
+### Implementation (M3)
+
+The CLI reads and writes the SOPS format itself, for age recipients, on age's library (`filippo.io/age`), instead of linking the SOPS library: with its key services for AWS, GCP, Azure, Vault and PGP, the library takes the binary from 28 MB to 64 MB and adds 341 modules, and the same binary is the agent every server downloads ([ADR-0002](0002-go.md), [ADR-0020](0020-releasing-dockflow.md)). The files stay those of the `sops` command, which reads what Dockflow writes and the reverse (checked against `sops` 3.13 in `internal/sopsfile`):
+
+- a flat map of scalar values: the values are AES-256-GCM `ENC[…]` strings with the key's path as additional data, the data key is age-encrypted for each recipient, and the MAC (SHA-512 over the values, encrypted with `lastmodified`) is checked on every read; `unencrypted_suffix`, `encrypted_suffix` and the two regexes are honoured;
+- refused: nested values, key groups (Shamir) and files without an age recipient;
+- the age keys are those `sops` uses: `SOPS_AGE_KEY`, `SOPS_AGE_KEY_FILE`, then the user's `sops/age/keys.txt`;
+- a new file's recipients come from `--age` or `.sops.yaml`'s `creation_rules`; `secrets set` and `secrets edit` drop the file's comments.
+
+`dockflow secrets revoke <env> <name>` names a Compose secret: it deletes the files of that secret that the current release does not use.
+
 ## Consequences
 
 - The 1.x workflow is unchanged: `DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}` in CI, `.env.dockflow` locally, `${KEY}` in Compose.

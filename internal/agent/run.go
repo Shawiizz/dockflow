@@ -105,6 +105,8 @@ func (r *runner) dispatch(ctx context.Context) events.RunFinishedData {
 		return r.destroy(ctx)
 	case OpPrune:
 		return r.prune(ctx)
+	case OpRevoke:
+		return r.revoke(ctx)
 	case OpDetails:
 		return r.details()
 	case OpUploadHave:

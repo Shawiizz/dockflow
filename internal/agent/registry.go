@@ -85,6 +85,10 @@ func (r *runner) collectRegistry(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if code != 0 && strings.Contains(string(out), "Path not found: /docker/registry/v2/repositories") {
+		// a registry that never received an image has nothing to collect
+		return nil
+	}
 	if code != 0 {
 		return errs.Newf("prune.registry", errs.ExitInternal, "the registry's garbage collection failed: %s", lastLine(string(out)))
 	}

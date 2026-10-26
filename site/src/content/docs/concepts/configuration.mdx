@@ -147,6 +147,7 @@ For the environment `production`, the key `X` is looked up as `PRODUCTION_X`, th
 
 1. **The process environment and `DOCKFLOW_SECRETS`.** From the process environment, only variables prefixed with the environment's name are read (`PRODUCTION_DB_PASSWORD`); `PATH`, `HOME` and the rest are never used. `DOCKFLOW_SECRETS` holds a JSON object of keys and values, prefixed or not; in GitHub Actions, `DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}` passes every secret of the repository at once.
 2. **`.env.dockflow`**, at the project root, for deploys from your machine.
+3. **The environment's SOPS file**, `secrets/<env>.sops.yaml` (or `secrets_file`), encrypted with age and kept in git. See [Secrets in a SOPS file](/guides/secrets/#secrets-in-a-sops-file).
 
 ```sh
 # .env.dockflow
@@ -161,7 +162,7 @@ The file has one `KEY=value` per line. Lines starting with `#` are comments, and
 `.env.dockflow` holds secrets and, often, the connection string, which gives root on the server. Add it to `.gitignore`.
 </Aside>
 
-To hand a secret to a container as a file rather than an environment variable, use Compose `secrets:`: see [Secrets and configs](/guides/secrets/). <Badge text="Coming in M3" variant="caution" /> SOPS-encrypted secrets files (`secrets_file`).
+To hand a secret to a container as a file rather than an environment variable, use Compose `secrets:`: see [Secrets and configs](/guides/secrets/).
 
 ### 3. The environment's vars
 

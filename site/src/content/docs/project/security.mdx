@@ -89,7 +89,7 @@ Secrets come from your CI's variables (`PRODUCTION_*`, or `DOCKFLOW_SECRETS`) an
 
 - **Secret files.** Compose `secrets:` are written to `/run/dockflow/secrets/<app>-<env>/`, on a tmpfs (never on disk; Dockflow refuses to write them elsewhere), in a `0700` directory, and mounted read-only. They appear neither in `docker inspect` nor in release records, which keep only their hash. See [Secrets and configs](/guides/secrets/).
 
-Encrypted secrets files with SOPS are planned. <Badge text="Coming in M3" variant="caution" />
+- **SOPS files.** Secrets can be kept in git in a SOPS file encrypted with age. The CLI decrypts it in memory and never writes it in clear, except for `secrets edit`, in a temporary file it deletes.
 
 ## State on the server
 

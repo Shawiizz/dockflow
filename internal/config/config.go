@@ -211,7 +211,7 @@ type Resolved struct {
 // laterKeys are spec keys not available yet, with the milestone that brings them.
 var laterKeys = map[string]string{
 	"firewall": "M3", "routes": "M3", "plugins": "M3",
-	"backups": "M4", "secrets_file": "M3",
+	"backups": "M4",
 }
 
 // Find returns the project directory: dir, or the closest parent that holds dockflow.yml.
@@ -272,6 +272,19 @@ func (r *Raw) EnvNames() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// SecretsFile returns the SOPS file of an environment, relative to the project: secrets_file, or
+// secrets/<env>.sops.yaml when it exists; empty without one (ADR-0012).
+func (r *Raw) SecretsFile(env string) string {
+	if e := r.file.Environments[env]; e != nil && e.SecretsFile != "" {
+		return e.SecretsFile
+	}
+	def := filepath.Join("secrets", env+".sops.yaml")
+	if _, err := os.Stat(filepath.Join(r.Dir, def)); err == nil {
+		return def
+	}
+	return ""
 }
 
 // Vars returns the vars of an environment, before interpolation (vars are literal).
@@ -729,7 +742,7 @@ func checkLater(root *yaml.Node, env string) error {
 	}
 	for i := 0; i+1 < len(doc.Content); i += 2 {
 		key := doc.Content[i].Value
-		if ms, ok := laterKeys[key]; ok && key != "secrets_file" {
+		if ms, ok := laterKeys[key]; ok {
 			return notYet(key, ms)
 		}
 		if key != "environments" || doc.Content[i+1].Kind != yaml.MappingNode {

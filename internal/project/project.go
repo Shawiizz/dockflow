@@ -8,14 +8,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/Shawiizz/dockflow/internal/compose"
 	"github.com/Shawiizz/dockflow/internal/config"
 	"github.com/Shawiizz/dockflow/internal/domain"
+	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/image"
 	"github.com/Shawiizz/dockflow/internal/secrets"
+	"github.com/Shawiizz/dockflow/internal/sopsfile"
 )
 
 // Git describes the working tree a deploy is made from.
@@ -92,6 +95,43 @@ type Loaded struct {
 	FileSecrets  []string
 }
 
+// ReadSecretsFile decrypts an environment's SOPS file, in memory, with the age keys sops would
+// use (SOPS_AGE_KEY, SOPS_AGE_KEY_FILE, the user's keys file).
+func ReadSecretsFile(dir, file string, environ []string) (map[string]string, error) {
+	data, err := os.ReadFile(filepath.Join(dir, file))
+	if err != nil {
+		return nil, errs.Config("cannot read the secrets file %s", file).WithCause(err)
+	}
+	ids, err := sopsfile.Identities(lookupIn(environ))
+	if err != nil {
+		return nil, errs.Config("the age key: %v", err)
+	}
+	f, err := sopsfile.Decrypt(data, ids)
+	if err != nil {
+		return nil, errs.Newf("secrets.file", errs.ExitConfig, "cannot decrypt %s: %v", file, err).
+			WithHint("give the age key with SOPS_AGE_KEY in CI, or in %s on your machine", sopsfile.DefaultKeyFile())
+	}
+	for _, k := range f.Keys {
+		if !keyName.MatchString(k) {
+			return nil, errs.Config("%s: the key %q must match %s", file, k, keyName)
+		}
+	}
+	return f.Values, nil
+}
+
+var keyName = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+
+func lookupIn(environ []string) func(string) string {
+	return func(key string) string {
+		for _, kv := range environ {
+			if k, v, ok := strings.Cut(kv, "="); ok && k == key {
+				return v
+			}
+		}
+		return ""
+	}
+}
+
 // Read parses dockflow.yml and picks the environment, without loading Compose or secrets.
 func Read(dir, env string) (*config.Raw, string, error) {
 	raw, err := config.Read(dir)
@@ -115,6 +155,13 @@ func Load(ctx context.Context, o Options) (*Loaded, error) {
 	store, err := secrets.Load(env, o.Dir, o.Environ)
 	if err != nil {
 		return nil, err
+	}
+	if file := raw.SecretsFile(env); file != "" {
+		values, err := ReadSecretsFile(o.Dir, file, o.Environ)
+		if err != nil {
+			return nil, err
+		}
+		store.AddFile(file, values)
 	}
 	version := o.Version
 	if version == "" {

@@ -1,6 +1,7 @@
 // Package secrets reads an environment's secrets (ADR-0012): process variables prefixed with
-// the environment's name, the JSON object in DOCKFLOW_SECRETS, and the local .env.dockflow file.
-// For environment production, a key X resolves to PRODUCTION_X, then X, in each source in turn.
+// the environment's name, the JSON object in DOCKFLOW_SECRETS, the local .env.dockflow file, and
+// the environment's SOPS file. For environment production, a key X resolves to PRODUCTION_X,
+// then X, in each source in turn.
 package secrets
 
 import (
@@ -73,6 +74,11 @@ func Load(env, projectDir string, environ []string) (*Store, error) {
 		s.sources = append(s.sources, source{name: LocalFile, values: values})
 	}
 	return s, nil
+}
+
+// AddFile adds a source of lower priority than the others: the SOPS file, named by its path.
+func (s *Store) AddFile(name string, values map[string]string) {
+	s.sources = append(s.sources, source{name: name, values: values})
 }
 
 // FromMap returns a store over fixed values, for tests.

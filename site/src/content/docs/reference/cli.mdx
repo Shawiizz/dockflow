@@ -395,6 +395,40 @@ Hold an environment's lock by hand, for a maintenance window. `acquire` sets a m
 | `--force` | `false` | Take over (`acquire`) or release (`release`) someone else's manual lock. |
 | `-m, --message string` | none | Why the environment is locked. |
 
+## secrets
+
+### secrets list
+
+```sh
+dockflow secrets list [<env>]
+```
+
+Every secret key the environment sees, with its source: `CI` (the process environment and `DOCKFLOW_SECRETS`), `.env.dockflow`, or the SOPS file. Never the values. It needs no server, and lists the keys even when a Compose file uses one that is missing.
+
+### secrets set
+
+```sh
+echo -n "$VALUE" | dockflow secrets set [<env>] <KEY> [--age <recipient>…]
+```
+
+Sets `KEY` in the environment's SOPS file (`secrets_file`, default `secrets/<env>.sops.yaml`), and encrypts the file again for the same recipients. The value is read from stdin; on a terminal, it is asked without echo. A file that does not exist yet is created for the `--age` recipients, or those `.sops.yaml`'s `creation_rules` give its path. Commit the file: it is encrypted.
+
+### secrets edit
+
+```sh
+dockflow secrets edit [<env>] [--age <recipient>…]
+```
+
+Opens the environment's secrets, decrypted, as `KEY: value` lines in `$VISUAL` or `$EDITOR` (default `vi`), from a temporary file readable by you only and deleted afterwards, then encrypts the result. Comments of the file are not kept.
+
+### secrets revoke
+
+```sh
+dockflow secrets revoke [<env>] <name>
+```
+
+Deletes from the server every file of the Compose secret `<name>` that the current release does not use: the old values of a leaked secret leave the server at once. Releases that used them can no longer be rolled back to: their rollback fails with `secret.missing`.
+
 ## server
 
 ### server init
@@ -538,4 +572,4 @@ Help about any command, the same as `dockflow <command> --help`.
 
 ## Not available yet
 
-These commands are part of the design but not of this version: `init`, `secrets` and `plugins list` <Badge text="Coming in M3" variant="caution" />, `backup` <Badge text="Coming in M4" variant="caution" />, `ui` and `mcp` <Badge text="Coming in M5" variant="caution" />. See the [roadmap](/project/roadmap/).
+These commands are part of the design but not of this version: `init` and `plugins list` <Badge text="Coming in M3" variant="caution" />, `backup` <Badge text="Coming in M4" variant="caution" />, `ui` and `mcp` <Badge text="Coming in M5" variant="caution" />. See the [roadmap](/project/roadmap/).

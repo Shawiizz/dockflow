@@ -1,12 +1,15 @@
 package agent
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/errs"
+	"github.com/Shawiizz/dockflow/internal/events"
 )
 
 // existingFiles reports which of the app's secret and config files are on the server.
@@ -100,4 +103,41 @@ func (r *runner) pruneFiles(kept []*domain.Release) {
 // removeFiles deletes every secret and config file of the app (destroy).
 func (r *runner) removeFiles() {
 	os.RemoveAll(filepath.Join(domain.SecretsRoot, r.stack))
+}
+
+// revoke removes the files of a secret that the current release does not use, at once: the old
+// values of a leaked secret leave the server, and the releases that used them can no longer be
+// rolled back to without their value (ADR-0012).
+func (r *runner) revoke(ctx context.Context) events.RunFinishedData {
+	l, err := r.lock(ctx)
+	if err != nil {
+		return failed(err)
+	}
+	defer r.unlock(l)
+	keep := map[string]bool{}
+	if env, err := r.app.Env(); err == nil && env != nil && env.Current != 0 {
+		cur, err := r.currentRelease()
+		if err != nil {
+			return failed(err)
+		}
+		for _, f := range cur.Desired.Files {
+			keep[f.Path] = true
+		}
+	}
+	dir := filepath.Join(domain.SecretsRoot, r.stack)
+	entries, _ := os.ReadDir(dir)
+	removed := []string{}
+	for _, e := range entries {
+		p := filepath.Join(dir, e.Name())
+		if keep[p] || !strings.HasPrefix(e.Name(), r.req.Name+"-") || len(e.Name()) != len(r.req.Name)+13 {
+			continue
+		}
+		if err := os.Remove(p); err != nil {
+			return failed(errs.Internal("remove %s: %v", p, err))
+		}
+		removed = append(removed, e.Name())
+	}
+	r.ev.Info(events.Log, fmt.Sprintf("%d old files of the secret %s removed", len(removed), r.req.Name), map[string]any{"line": "revoke " + r.req.Name})
+	r.result(map[string]any{"secret": r.req.Name, "removed": removed})
+	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
 }

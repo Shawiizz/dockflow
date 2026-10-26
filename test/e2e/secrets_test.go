@@ -4,9 +4,12 @@ package e2e
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"filippo.io/age"
 )
 
 func secretsApp(app string) string {
@@ -101,5 +104,72 @@ func TestComposeSecretsAndConfigs(t *testing.T) {
 	mustSucceed(t, dockflowEnv(t, dir, env("second-s3cret-value"), "-y", "destroy", "production"), "destroy")
 	if left, _ := inServer("ls /run/dockflow/secrets/ 2>&1"); strings.Contains(left, app) {
 		t.Fatalf("destroy must remove the secret files: %s", left)
+	}
+}
+
+// A SOPS file in the project holds the secrets: `secrets set` writes it, deploys read it with
+// the age key, and `secrets revoke` removes a secret's old files from the server.
+func TestSOPSFileAndRevoke(t *testing.T) {
+	app := "journey28"
+	dir := filepath.Join(workDir, app)
+	writeProject(t, dir, app, secretsApp(app))
+	key, _ := filepath.Abs("../../internal/sopsfile/testdata/test-key.txt")
+	b, _ := os.ReadFile(key)
+	ids, err := age.ParseIdentities(strings.NewReader(string(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	recipient := ids[0].(*age.X25519Identity).Recipient().String()
+	withKey := []string{"SOPS_AGE_KEY_FILE=" + key}
+	set := func(value string) {
+		t.Helper()
+		cmd := dockflowCmd(dir, "secrets", "set", "production", "TOKEN", "--age", recipient)
+		cmd.Env = append(cmd.Env, withKey...)
+		cmd.Stdin = strings.NewReader(value + "\n")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("secrets set: %v\n%s", err, out)
+		}
+	}
+	set("sops-one")
+	if enc, _ := os.ReadFile(filepath.Join(dir, "secrets", "production.sops.yaml")); strings.Contains(string(enc), "sops-one") {
+		t.Fatal("the SOPS file must be encrypted")
+	}
+	list := dockflowEnv(t, dir, withKey, "secrets", "list", "production")
+	if !strings.Contains(list.out, `"source":"secrets/production.sops.yaml"`) {
+		t.Fatalf("secrets list must name the SOPS file:\n%s", list.out)
+	}
+	read := func() string {
+		r := dockflowEnv(t, dir, withKey, "exec", "production", "worker", "-T", "--", "cat", "/run/secrets/token")
+		return r.out
+	}
+	mustSucceed(t, dockflowEnv(t, dir, withKey, "deploy"), "deploy from the SOPS file")
+	if got := read(); !strings.Contains(got, "sops-one") {
+		t.Fatalf("the value of the SOPS file must reach the service: %q", got)
+	}
+	if r := dockflow(t, dir, "deploy"); r.code != 3 || !strings.Contains(r.out, "secrets.file") {
+		t.Fatalf("without the age key, the deploy must fail with secrets.file, got %d:\n%s", r.code, r.out)
+	}
+
+	set("sops-two")
+	mustSucceed(t, dockflowEnv(t, dir, withKey, "deploy"), "deploy a new value")
+	if got := read(); !strings.Contains(got, "sops-two") {
+		t.Fatalf("the new value must reach the service: %q", got)
+	}
+	count := func() int {
+		out, _ := inServer("ls /run/dockflow/secrets/" + app + "-production/ | grep -c ^token-")
+		n := 0
+		fmt.Sscan(out, &n)
+		return n
+	}
+	if n := count(); n != 4 {
+		t.Fatalf("the previous release keeps its files: %d token files, want 4", n)
+	}
+	mustSucceed(t, dockflowEnv(t, dir, withKey, "secrets", "revoke", "production", "token"), "secrets revoke")
+	if n := count(); n != 2 {
+		t.Fatalf("revoke must leave only the current release's files: %d", n)
+	}
+	if r := dockflowEnv(t, dir, withKey, "rollback"); r.code == 0 || !strings.Contains(r.out, "secret.missing") {
+		t.Fatalf("a rollback to a revoked value must fail with secret.missing, got %d:\n%s", r.code, r.out)
 	}
 }

@@ -40,6 +40,7 @@ const (
 	OpPrune       = "prune"
 	OpDetails     = "details"
 	OpUploadHave  = "upload.have"
+	OpRevoke      = "secrets.revoke"
 )
 
 // Request is the agent's input. Secret values reach the agent only here, on stdin, never in its
@@ -95,6 +96,8 @@ type Request struct {
 	// Services are the services restart, stop, scale, destroy and rollback act on; none means
 	// all.
 	Services []string `json:"services,omitempty"`
+	// Name is the Compose secret secrets.revoke removes the old files of.
+	Name string `json:"name,omitempty"`
 	// Replicas is scale's count.
 	Replicas int `json:"replicas,omitempty"`
 	// Volumes also deletes the app's volumes (destroy).

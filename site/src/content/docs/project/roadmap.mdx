@@ -56,7 +56,7 @@ Take a blank server to a hardened production host, and cover the needs of larger
 - **Edges and routes:** the `cloudflare` edge; route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks.
 - **Plugins:** project plugins and the built-in `nginx` and `systemd` plugins, with `plugins list`.
 - **Firewall:** the published-port filter, with `firewall.public_ports` and per-port source ranges, and Cloudflare's ranges refreshed automatically.
-- **Secrets:** Compose `secrets:` and `configs:` delivered as files on a tmpfs, encrypted secrets files with SOPS, and the `secrets` commands.
+- **Secrets** <Badge text="Done" variant="success" />: Compose `secrets:` and `configs:` delivered as files on a tmpfs, build secrets, encrypted secrets files with SOPS, and the `secrets` commands.
 - **Self-healing:** the watchdog, which restarts a container that stays unhealthy for too long (`x-dockflow.health.restart_after`).
 - **Shared servers:** networks shared between apps, and Docker volume plugins.
 - **`dockflow init`**, which writes a starting configuration and CI workflows.

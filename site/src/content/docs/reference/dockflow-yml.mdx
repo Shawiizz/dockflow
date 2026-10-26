@@ -172,6 +172,7 @@ A map from environment name to its settings. At least one environment is require
 | `compose` | list of paths | the top-level `compose` | Replaces the top-level list for this environment. |
 | `profiles` | list of strings | none | Compose profiles to enable. Services with a profile not listed here are left out. |
 | `vars` | map of strings | none | Plain values for interpolation and templates. Keys follow the [key rule](#naming-rules); values are taken literally, never interpolated. |
+| `secrets_file` | path | `secrets/<env>.sops.yaml` when it exists | The environment's SOPS file, encrypted with age: a flat map of secrets, after CI variables and `.env.dockflow`. See [Secrets in a SOPS file](/guides/secrets/#secrets-in-a-sops-file). |
 | `deploy.timeout` | duration | computed | Replaces the computed time every service is given to become healthy, and the time a job is given to finish (`30m` by default). |
 | `ci.tag_suffix` | string | `""` for `production`, the environment's name for the others | The tag suffix that selects this environment in CI: `""` means bare versions (`1.2.0`), `staging` means `1.2.0-staging`. |
 
@@ -204,7 +205,6 @@ These keys are part of the format, but this version refuses them with "not avail
 | `firewall` | top level or environment | <Badge text="Coming in M3" variant="caution" /> |
 | `routes` (routes that target no service) | top level or environment | <Badge text="Coming in M3" variant="caution" /> |
 | `plugins` | top level or environment | <Badge text="Coming in M3" variant="caution" /> |
-| `secrets_file` (SOPS) | environment | <Badge text="Coming in M3" variant="caution" /> |
 | `backups` | top level or environment | <Badge text="Coming in M4" variant="caution" /> |
 
 See the [roadmap](/project/roadmap/).

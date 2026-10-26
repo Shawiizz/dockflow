@@ -68,8 +68,8 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 | Command | What it does |
 |---|---|
 | `dockflow secrets list [<env>]` | Keys and where each comes from (CI variable, `.env.dockflow`, SOPS), never values |
-| `dockflow secrets set\|edit [<env>] [<KEY>]` | Changes the SOPS file, when the environment uses one; the value is read from stdin |
-| `dockflow secrets revoke [<env>] <KEY>` | Removes every old secret file of that key at once |
+| `dockflow secrets set\|edit [<env>] [<KEY>] [--age <recipient>…]` | Changes the environment's SOPS file (`secrets_file`, default `secrets/<env>.sops.yaml`), creating it for `--age` or `.sops.yaml`'s recipients; `set` reads the value from stdin (without echo on a terminal), `edit` opens the decrypted values in `$VISUAL` or `$EDITOR` |
+| `dockflow secrets revoke [<env>] <name>` | Removes from the server every file of the Compose secret `<name>` that the current release does not use |
 | `dockflow backup run [<env>] [<service>]` | Backs up the services that declare `backup` |
 | `dockflow backup list [<env>] [<service>]` | Lists snapshots |
 | `dockflow backup restore [<env>] <service> [--snapshot <id or date>] [--from <env>]` | Restores a snapshot |

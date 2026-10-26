@@ -344,8 +344,8 @@ func (a *app) diagnoseCmd() *cobra.Command {
 						Detail: fmt.Sprintf("%d of %d containers run", svc.Running, svc.Desired)})
 				}
 			}
-			// low in absolute terms, or a small share of a small disk
-			if st.DiskTotal > 0 && (st.DiskFree < 2<<30 || st.DiskFree*20 < st.DiskTotal) {
+			// low in absolute terms, or a small share of a small disk: 12 GiB free of 250 is room
+			if st.DiskTotal > 0 && (st.DiskFree < 2<<30 || (st.DiskFree*20 < st.DiskTotal && st.DiskFree < 10<<30)) {
 				findings = append(findings, finding{Problem: "disk_space",
 					Detail: fmt.Sprintf("%s free of %s; `dockflow prune` removes unused images", humanBytes(st.DiskFree), humanBytes(st.DiskTotal))})
 			}

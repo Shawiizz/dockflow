@@ -83,7 +83,7 @@ dockflow ssh production -- df -h
 | `crash loop` | A container restarting, or restarted more than twice |
 | `unhealthy` | A failing health check, with the check's last output |
 | `missing containers` | A service running fewer containers than it should |
-| `disk space` | Less than 2 GiB free, or less than 5% of the disk free, on the filesystem that holds Dockflow's state |
+| `disk space` | Less than 2 GiB free, or less than 5% of the disk and less than 10 GiB free, on the filesystem that holds Dockflow's state |
 
 ```sh
 dockflow diagnose production

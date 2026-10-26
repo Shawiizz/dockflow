@@ -126,7 +126,7 @@ func (a *app) root() *cobra.Command {
 		a.restartCmd(), a.stopCmd(), a.scaleCmd(), a.destroyCmd(), a.pruneCmd(), a.cancelCmd(),
 		a.detailsCmd(), a.diagnoseCmd(),
 		a.statusCmd(), a.releasesCmd(), a.versionCmd(), a.lockCmd(),
-		a.validateCmd(), a.configCmd(), a.listCmd(), a.serverCmd(), a.agentCmd(), a.uploadHelperCmd(),
+		a.validateCmd(), a.configCmd(), a.listCmd(), a.serverCmd(), a.agentCmd(), a.uploadHelperCmd(), a.secretsCmd(),
 	)
 	root.CompletionOptions.HiddenDefaultCmd = false
 	return root
