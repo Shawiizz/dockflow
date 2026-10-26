@@ -22,9 +22,13 @@ Dockflow keeps no database and no service of its own besides the switch and the 
     ├── manual-lock.json              present while a manual lock is held
     ├── env.json                      current and previous release
     ├── releases/<seq>.json.gz        one record per release
+    ├── configs/<name>-<hash12>       Compose configs, by content
     └── uploads/
         ├── blobs/<sha256>            uploaded files, and the files uploads replaced
         └── manifests/<digest>.json   what each upload and its replaced files contain
+
+/run/dockflow/secrets/<stack>/        on a tmpfs, 0700
+└── <name>-<hash12>                   Compose secrets, by content and permissions
 ```
 
 `<stack>` is `<app>-<env>`, for example `shop-production`. `<seq>` is the release number, written with 6 digits in file names (`000042.json.gz`).

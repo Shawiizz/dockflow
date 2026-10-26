@@ -29,6 +29,36 @@ type App struct {
 	Networks []Network `json:"networks"`
 	Volumes  []Volume  `json:"volumes"`
 	Uploads  []Upload  `json:"uploads,omitempty"`
+	// Files are the Compose secrets and configs, by content; their values are never here.
+	Files []File `json:"files,omitempty"`
+}
+
+// File is a Compose secret or config written on the server (ADR-0012): named after the hash of
+// its content and permissions, so a new value is a new file and the services that mount it are
+// redeployed. Secrets are on a tmpfs.
+type File struct {
+	Name   string `json:"name"`
+	Secret bool   `json:"secret,omitempty"`
+	// Hash is the sha256 of the content, uid, gid and mode.
+	Hash string `json:"hash"`
+	// Path is where the file is on the server.
+	Path string `json:"path"`
+	UID  int    `json:"uid"`
+	GID  int    `json:"gid"`
+	Mode uint32 `json:"mode"`
+}
+
+// SecretsRoot and configs are where Compose secrets and configs are written on the server.
+const SecretsRoot = "/run/dockflow/secrets"
+
+// SecretPath is the server path of a secret's file.
+func SecretPath(stack, name, hash string) string {
+	return SecretsRoot + "/" + stack + "/" + name + "-" + hash[:12]
+}
+
+// ConfigPath is the server path of a config's file, in the app's state directory.
+func ConfigPath(stack, name, hash string) string {
+	return "/var/lib/dockflow/apps/" + stack + "/configs/" + name + "-" + hash[:12]
 }
 
 // Upload sends files to a volume of the app or a path on the server (ADR-0021).

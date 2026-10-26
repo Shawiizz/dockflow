@@ -66,6 +66,8 @@ func (l *Launcher) Run(ctx context.Context, req agent.Request, interrupts <-chan
 		Mounts: []domain.Mount{
 			{Type: "bind", Source: "/var/run/docker.sock", Target: "/var/run/docker.sock"},
 			{Type: "bind", Source: state.Root, Target: state.Root, CreateHostPath: true},
+			// Compose secrets, on the host's tmpfs (ADR-0012)
+			{Type: "bind", Source: "/run/dockflow", Target: "/run/dockflow", CreateHostPath: true},
 			{Type: "volume", Source: agent.SwitchAdminVolume, Target: agent.SwitchAdminDir},
 		},
 		Logging: &domain.Logging{Driver: "json-file", Options: map[string]string{"max-size": "20m"}},

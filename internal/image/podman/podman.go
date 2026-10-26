@@ -76,6 +76,10 @@ func BuildArgs(b image.Build, platform, iidfile, file string) []string {
 	for _, s := range b.SSH {
 		args = append(args, "--ssh", s)
 	}
+	flags, _ := b.SecretFlags()
+	for _, s := range flags {
+		args = append(args, "--secret", s)
+	}
 	if b.ShmSize > 0 {
 		args = append(args, "--shm-size", strconv.FormatInt(b.ShmSize, 10)+"b")
 	}
@@ -103,7 +107,8 @@ func (p *Builder) Build(ctx context.Context, builds []image.Build, platform, dir
 				return nil, errs.Internal("write the Dockerfile of %s: %v", b.Service, err)
 			}
 		}
-		if err := p.run(ctx, b.Service, BuildArgs(b, platform, iid, file), log); err != nil {
+		_, secretEnv := b.SecretFlags()
+		if err := p.run(ctx, b.Service, BuildArgs(b, platform, iid, file), log, secretEnv...); err != nil {
 			return nil, failure(ctx, err)
 		}
 		id, err := os.ReadFile(iid)
@@ -130,13 +135,14 @@ func failure(ctx context.Context, err error) error {
 		WithHint("the build output above says why; nothing was changed on the server")
 }
 
-func (p *Builder) run(ctx context.Context, service string, args []string, log func(service, line string)) error {
+func (p *Builder) run(ctx context.Context, service string, args []string, log func(service, line string), env ...string) error {
 	bin := p.Podman
 	if bin == "" {
 		bin = "podman"
 	}
 	cmd := exec.CommandContext(ctx, bin, append(append([]string(nil), p.Args...), args...)...)
-	cmd.Env = append(os.Environ(), p.Env...)
+	// build secrets travel in the environment, never on the command line
+	cmd.Env = append(append(os.Environ(), p.Env...), env...)
 	pr, pw := io.Pipe()
 	cmd.Stdout, cmd.Stderr = pw, pw
 	var wg sync.WaitGroup

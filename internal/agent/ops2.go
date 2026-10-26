@@ -159,6 +159,8 @@ func (r *runner) destroy(ctx context.Context) events.RunFinishedData {
 			}
 		}
 	}
+	// configs live in the app's directory; secrets on the tmpfs
+	r.removeFiles()
 	if err := r.app.Delete(); err != nil {
 		return failed(err)
 	}

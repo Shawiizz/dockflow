@@ -123,8 +123,8 @@ worker    shop/worker         1         start-first
 | `profiles` | See [Files, profiles and variables](#files-profiles-and-variables). |
 | `command`, `entrypoint`, `user`, `working_dir`, `hostname`, `domainname`, `labels`, `label_file`, `stop_signal`, `stop_grace_period`, `privileged`, `read_only`, `init`, `tty`, `stdin_open`, `cap_add`, `cap_drop`, `security_opt`, `extra_hosts`, `dns`, `dns_search`, `dns_opt`, `tmpfs`, `sysctls`, `ulimits`, `devices`, `group_add`, `pid`, `ipc`, `shm_size`, `mem_limit`, `mem_reservation`, `cpus`, `pids_limit`, `logging`, `platform`, `cpu_shares`, `cpu_period`, `cpu_quota`, `cpuset`, `memswap_limit`, `mem_swappiness`, `oom_kill_disable`, `oom_score_adj`, `runtime`, `userns_mode`, `cgroup`, `cgroup_parent`, `uts`, `annotations`, `storage_opt` | Passed to the container, as Compose does. |
 | `develop` | Ignored: it describes a development loop on your machine. |
-| `secrets` | <Badge text="Coming in M3" variant="caution" /> Refused for now. |
-| `configs` | <Badge text="Coming in M3" variant="caution" /> Refused for now. |
+| `secrets` | Files on a tmpfs of the server, mounted read-only at `/run/secrets/<name>` or `target`, with `uid`, `gid` and `mode`. Sources: `environment:` and `file:`. See [Secrets and configs](/guides/secrets/). |
+| `configs` | Files mounted read-only at `/<name>` or `target`. Sources: `file:`, `content:` and `environment:`. External secrets and configs, and their `driver`, belong to Swarm and are refused. |
 | `name` (top level) | Ignored with a warning: the project is always `<app>-<env>`. |
 | Any other key | Refused with "not supported yet": `blkio_config`, `cpu_count`, `cpu_percent`, `cpu_rt_period`, `cpu_rt_runtime`, `device_cgroup_rules`, `mac_address`, `external_links`, `post_start`, `pre_stop`, `credential_spec`, `isolation`, `use_api_socket`, `models` and `provider`. |
 
@@ -141,7 +141,7 @@ Services with `build` are built with `docker buildx bake` (or Podman, with `buil
 | `context`, `dockerfile`, `dockerfile_inline`, `args`, `labels`, `additional_contexts`, `target`, `cache_from`, `cache_to`, `no_cache`, `no_cache_filter`, `pull`, `network`, `extra_hosts`, `ssh`, `shm_size`, `entitlements` | Passed to bake. `dockerfile` is relative to `context`, as in Compose. |
 | `privileged` | Adds the `security.insecure` entitlement. |
 | `platforms`, `tags` | Ignored with a warning: images are built for the server's platform and tagged by Dockflow. |
-| `secrets` | <Badge text="Coming in M3" variant="caution" /> Refused for now. |
+| `secrets` | Mounted in the build with `RUN --mount=type=secret`; the value reaches the builder through its environment. See [Secrets in builds](/guides/secrets/#secrets-in-builds). |
 | `isolation`, `ulimits`, `provenance`, `sbom` | Refused. |
 
 Podman builds use `context`, `dockerfile`, `dockerfile_inline`, `args`, `labels`, `additional_contexts`, `target`, `cache_from`, `cache_to`, `no_cache`, `pull`, `network`, `extra_hosts`, `ssh` and `shm_size`.

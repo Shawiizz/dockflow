@@ -22,6 +22,7 @@ All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/000
 │   ├── manual-lock.json            present while a manual lock is held
 │   ├── env.json                    last_seq, current, previous, degraded
 │   ├── releases/<seq>.json.gz      one immutable release record per release
+│   ├── configs/<name>-<hash12>     Compose configs, named after their content and permissions
 │   └── uploads/
 │       ├── blobs/<sha256>          the uploaded files, and those uploads overwrote, by content
 │       └── manifests/<digest>.json the manifests of uploads, and of what they replaced
@@ -60,7 +61,7 @@ Dockflow's own labels:
 
 A service with `container_name` keeps that name and uses the `stop-first` strategy.
 
-**Secrets** used through Compose `secrets:` are files on a tmpfs, `/run/dockflow/secrets/<stack>/<name>-<hash12>`, mode `0400`, mounted read-only at `/run/secrets/<name>` ([ADR-0012](../adr/0012-secrets-sops.md)).
+**Secrets** used through Compose `secrets:` are files on a tmpfs, `/run/dockflow/secrets/<stack>/<name>-<hash12>`, in a `0700` directory, with the `uid`, `gid` and `mode` the service asks for (`0:0`, `0444` by default), mounted read-only at `/run/secrets/<name>` or the reference's `target` ([ADR-0012](../adr/0012-secrets-sops.md)). `<hash12>` is the start of the sha256 of the uid, gid, mode and content: a new value is a new file. The agent refuses to write a secret when `/run/dockflow` is not a tmpfs (`secret.not_tmpfs`). **Configs** are the same files, under the app's state directory. The agent mounts `/run/dockflow` from the host.
 
 ## Lock
 
@@ -159,4 +160,4 @@ It deletes the other release files, then the images, registry manifests, secret 
 - **Interpolated values.** Values interpolated into environment variables are part of the spec, as they are of `docker inspect`. The file is readable by root only.
 - **Jobs** are services of `desired` with `"job": "before"` or `"after"`; they have no containers once the run is over.
 - **Uploads** are in `desired.uploads`: each destination with the digest of its manifest.
-- **A later milestone** adds `secrets` to the record: the hash of each secret's value, never the value (M3).
+- **Secrets and configs** are in `desired.files`: `name`, `secret`, `hash`, `path`, `uid`, `gid`, `mode`, never the value. The CLI sends the values with each run, on the agent's stdin; a rollback to a release whose file is gone (a reboot empties the tmpfs) and whose value the run does not have fails with `secret.missing`.

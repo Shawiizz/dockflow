@@ -247,7 +247,7 @@ Docker runs Compose on one host, and so does Dockflow ([ADR-0003](../adr/0003-si
 | Key | Handling |
 |---|---|
 | `image` | Required unless `build` is set. Built services get `<app>/<service>` (or the external registry's name), and the plan pins the digest |
-| `build` | buildx bake, every key bake supports, interpolated by Dockflow. `secrets` arrives with secrets (M3); `isolation`, `ulimits`, `provenance` and `sbom` are refused; `platforms` and `tags` are ignored with a warning, because images are built for the server and tagged by Dockflow. Podman builds use `context`, `dockerfile`, `dockerfile_inline`, `args`, `labels`, `additional_contexts`, `target`, `cache_from`, `cache_to`, `no_cache`, `pull`, `network`, `extra_hosts`, `ssh` and `shm_size` ([ADR-0009](../adr/0009-images.md)) |
+| `build` | buildx bake, every key bake supports, interpolated by Dockflow. `secrets` are mounted with `RUN --mount=type=secret`, their values handed to the builder through its environment; `isolation`, `ulimits`, `provenance` and `sbom` are refused; `platforms` and `tags` are ignored with a warning, because images are built for the server and tagged by Dockflow. Podman builds use `context`, `dockerfile`, `dockerfile_inline`, `args`, `labels`, `additional_contexts`, `target`, `cache_from`, `cache_to`, `no_cache`, `pull`, `network`, `extra_hosts`, `ssh` and `shm_size` ([ADR-0009](../adr/0009-images.md)) |
 | `deploy.replicas` | n containers per service |
 | `deploy.resources`, `deploy.restart_policy` | Container limits and restart policy, as Compose applies them |
 | `deploy.update_config.order` | `start-first` or `stop-first` strategy ([ADR-0010](../adr/0010-rollout-health-jobs.md)) |
@@ -260,8 +260,8 @@ Docker runs Compose on one host, and so does Dockflow ([ADR-0003](../adr/0003-si
 | `healthcheck` | Gates every strategy |
 | `container_name` | Honoured; forces `stop-first` and a single replica |
 | `ports` | Honoured, host IP included (`127.0.0.1:5432:5432`). Open to the internet only when listed in `firewall.public_ports` ([ADR-0014](../adr/0014-networking-port-filter.md)). A service publishing fixed host ports uses `stop-first`, since two containers cannot hold the same port |
-| `secrets` | Files on a tmpfs mounted at `/run/secrets/<name>`, with `environment:` or `file:` sources ([ADR-0012](../adr/0012-secrets-sops.md)) |
-| `configs` | Files mounted read-only, with `file:`, `content:` or `environment:` sources |
+| `secrets` | Files on a tmpfs mounted at `/run/secrets/<name>` (or `target`, with `uid`, `gid`, `mode`), with `environment:` or `file:` sources ([ADR-0012](../adr/0012-secrets-sops.md), [state-v1](state-v1.md)). External secrets and drivers belong to Swarm: refused |
+| `configs` | Files mounted read-only at `/<name>` (or `target`), with `file:`, `content:` or `environment:` sources |
 | `networks` | Bridge networks, aliases included. `external: true` for the server's shared networks ([ADR-0018](../adr/0018-shared-servers.md)) |
 | `network_mode` | `host`, `none`, `bridge`. A service on the host network cannot be routed by the switch and uses `stop-first`. `service:…` and `container:…` are refused: each release replaces the containers, and a container joined to another's network namespace would lose it at the other's next deploy |
 | `volumes_from` | Refused, for the same reason |

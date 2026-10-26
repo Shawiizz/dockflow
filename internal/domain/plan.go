@@ -10,6 +10,8 @@ const (
 	ActionRoutes        = "routes.apply"
 	ActionJob           = "job.run"
 	ActionUpload        = "upload.apply"
+	ActionCreateSecret  = "secret.create"
+	ActionCreateConfig  = "config.create"
 )
 
 // Plan is the ordered list of changes that turns the actual state into the desired one

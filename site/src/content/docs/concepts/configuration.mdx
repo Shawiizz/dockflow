@@ -161,7 +161,7 @@ The file has one `KEY=value` per line. Lines starting with `#` are comments, and
 `.env.dockflow` holds secrets and, often, the connection string, which gives root on the server. Add it to `.gitignore`.
 </Aside>
 
-<Badge text="Coming in M3" variant="caution" /> SOPS-encrypted secrets files (`secrets_file`) and Compose `secrets:` and `configs:`.
+To hand a secret to a container as a file rather than an environment variable, use Compose `secrets:`: see [Secrets and configs](/guides/secrets/). <Badge text="Coming in M3" variant="caution" /> SOPS-encrypted secrets files (`secrets_file`).
 
 ### 3. The environment's vars
 

@@ -87,7 +87,9 @@ Secrets come from your CI's variables (`PRODUCTION_*`, or `DOCKFLOW_SECRETS`) an
 - **Files.** A secret you render into a template or an upload is written into that file on the server.
 - **Interactive commands.** `dockflow exec`, `dockflow run` and `dockflow ssh` connect your terminal to the command. Their output is the command's own and is not masked.
 
-Compose `secrets:`, delivered as files on a tmpfs that never appear in `docker inspect`, and encrypted secrets files with SOPS are planned. <Badge text="Coming in M3" variant="caution" />
+- **Secret files.** Compose `secrets:` are written to `/run/dockflow/secrets/<app>-<env>/`, on a tmpfs (never on disk; Dockflow refuses to write them elsewhere), in a `0700` directory, and mounted read-only. They appear neither in `docker inspect` nor in release records, which keep only their hash. See [Secrets and configs](/guides/secrets/).
+
+Encrypted secrets files with SOPS are planned. <Badge text="Coming in M3" variant="caution" />
 
 ## State on the server
 

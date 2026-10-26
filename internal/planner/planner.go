@@ -58,6 +58,18 @@ func Plan(desired domain.App, actual domain.Actual, restart ...string) (*domain.
 		add(domain.ActionCreateVolume, v.Name, "does not exist", "")
 	}
 
+	// content-addressed: a file that exists has the right content
+	for _, f := range desired.Files {
+		if actual.Files[f.Path] {
+			continue
+		}
+		kind := domain.ActionCreateConfig
+		if f.Secret {
+			kind = domain.ActionCreateSecret
+		}
+		add(kind, f.Path, f.Name+": new content", "")
+	}
+
 	for _, u := range desired.Uploads {
 		if actual.Uploads[u.Dest] == u.Manifest {
 			continue

@@ -14,6 +14,8 @@ type Actual struct {
 	Env *EnvRecord `json:"env,omitempty"`
 	// Uploads maps each upload destination to the manifest it holds.
 	Uploads map[string]string `json:"uploads,omitempty"`
+	// Files are the paths of the secret and config files that exist.
+	Files map[string]bool `json:"files,omitempty"`
 }
 
 // ActualService is a service as it runs.

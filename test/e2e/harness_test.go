@@ -101,7 +101,9 @@ func setup() (int, error) {
 	}
 
 	dind = fmt.Sprintf("dockflow-e2e-%d", time.Now().UnixNano()%1000000)
-	if _, err := sh("docker", "run", "-d", "--privileged", "--name", dind, "-e", "DOCKER_TLS_CERTDIR=", dindImage); err != nil {
+	if _, err := sh("docker", "run", "-d", "--privileged", "--name", dind, "-e", "DOCKER_TLS_CERTDIR=",
+		// as systemd mounts a tmpfs on /run: Compose secrets live there (ADR-0012)
+		"--tmpfs", "/run/dockflow", dindImage); err != nil {
 		return 1, err
 	}
 	deadline := time.Now().Add(60 * time.Second)

@@ -392,6 +392,7 @@ func (a *app) configCmd() *cobra.Command {
 				"app": l.Config.App, "env": l.Config.Env, "version": l.Version,
 				"settings": map[string]any{"releases": map[string]int{"keep": l.Config.Keep}, "on_failure": l.Config.OnFailure},
 				"secrets":  l.Secrets.Describe(), "services": l.App.Services, "networks": l.App.Networks, "volumes": l.App.Volumes,
+				"files": l.App.Files,
 			}
 			b, _ := json.MarshalIndent(doc, "", "  ")
 			if !a.json {

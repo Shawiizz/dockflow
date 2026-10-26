@@ -119,6 +119,9 @@ type Request struct {
 
 	// Mask lists the secret values to mask in every event.
 	Mask []string `json:"mask,omitempty"`
+	// Files are the contents of the Compose secrets and configs, by server path: written when
+	// missing, never recorded.
+	Files map[string]string `json:"files,omitempty"`
 }
 
 // Status is the result of the status operation.

@@ -212,6 +212,42 @@ func TestSavedPlanDetachAndBranch(t *testing.T) {
 	}
 }
 
+// build.secrets mount a secret in the build, from the environment, without a command line.
+func TestBuildSecret(t *testing.T) {
+	app := "journey27"
+	dir := filepath.Join(workDir, app)
+	writeProject(t, dir, app, `services:
+  web:
+    build:
+      context: .
+      secrets: [token]
+      no_cache: true
+    x-dockflow:
+      routes:
+        - domains: ["`+app+`.test"]
+          port: 80
+          tls: false
+      health:
+        grace: 1s
+secrets:
+  token:
+    environment: TOKEN
+`)
+	dockerfile := fmt.Sprintf("FROM %s\nRUN --mount=type=secret,id=token test \"$(cat /run/secrets/token)\" = build-s3cret\n", alpineImage)
+	if err := os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// BuildKit does not key its cache on secrets: no_cache makes each build use the value
+	if bad := dockflowEnv(t, dir, []string{"PRODUCTION_TOKEN=wrong"}, "build", "production"); bad.code != 7 {
+		t.Fatalf("the build must see the secret's value: exit %d", bad.code)
+	}
+	r := dockflowEnv(t, dir, []string{"PRODUCTION_TOKEN=build-s3cret"}, "build", "production")
+	mustSucceed(t, r, "build with a secret")
+	if strings.Contains(r.out, "build-s3cret") {
+		t.Fatalf("the build secret must be masked:\n%s", r.out)
+	}
+}
+
 // The Dockerfile is a template: rendered with the environment's vars in a temporary copy, the
 // project left untouched.
 func TestTemplatedBuild(t *testing.T) {

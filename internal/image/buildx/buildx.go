@@ -57,6 +57,7 @@ type target struct {
 	SSH              []string          `json:"ssh,omitempty"`
 	ShmSize          string            `json:"shm-size,omitempty"`
 	Entitlements     []string          `json:"entitlements,omitempty"`
+	Secret           []string          `json:"secret,omitempty"`
 	Platforms        []string          `json:"platforms"`
 	Output           []string          `json:"output"`
 }
@@ -84,6 +85,7 @@ func Definition(builds []image.Build, platform, dir string, load func(service st
 		if b.ShmSize > 0 {
 			t.ShmSize = strconv.FormatInt(b.ShmSize, 10) + "b"
 		}
+		t.Secret, _ = b.SecretFlags()
 		if len(b.ExtraHosts) > 0 {
 			t.ExtraHosts = map[string]string{}
 			for _, h := range b.ExtraHosts {
@@ -113,20 +115,23 @@ func (bx *Builder) Build(ctx context.Context, builds []image.Build, platform, di
 		return nil, errs.Internal("write the bake definition: %v", err)
 	}
 	services := make([]string, 0, len(builds))
+	var secretEnv []string
 	for _, b := range builds {
 		services = append(services, b.Service)
+		_, env := b.SecretFlags()
+		secretEnv = append(secretEnv, env...)
 	}
 	builder := ""
 	if bx.Load != nil {
 		// the builder of the daemon DOCKER_HOST names, whatever builder this machine uses
 		builder = "default"
 	}
-	out, err := bx.bake(ctx, file, builder, services, log)
+	out, err := bx.bake(ctx, file, builder, services, secretEnv, log)
 	if err != nil && bx.Load == nil && unsupportedExporter(out) {
 		if err := bx.ensureBuilder(ctx); err != nil {
 			return nil, err
 		}
-		_, err = bx.bake(ctx, file, builderName, services, log)
+		_, err = bx.bake(ctx, file, builderName, services, secretEnv, log)
 	}
 	if err != nil {
 		if ctx.Err() != nil {
@@ -161,7 +166,7 @@ func (bx *Builder) docker() string {
 // vertex matches bake's plain progress lines that name a target: "#7 [web 2/4] RUN …".
 var vertex = regexp.MustCompile(`^#\d+ \[([a-z][a-z0-9-]*)[ \]]`)
 
-func (bx *Builder) bake(ctx context.Context, file, builder string, services []string, log func(service, line string)) (string, error) {
+func (bx *Builder) bake(ctx context.Context, file, builder string, services []string, secretEnv []string, log func(service, line string)) (string, error) {
 	args := []string{"buildx", "bake", "-f", file, "--progress=plain"}
 	if builder != "" {
 		args = append(args, "--builder", builder)
@@ -174,6 +179,8 @@ func (bx *Builder) bake(ctx context.Context, file, builder string, services []st
 	// a provenance attestation records when the image was built: the same code would make a new
 	// image, and a deploy that changes nothing would replace the containers
 	cmd.Env = append(cmd.Env, "BUILDX_NO_DEFAULT_ATTESTATIONS=1")
+	// build secrets travel in the environment, never on the command line
+	cmd.Env = append(cmd.Env, secretEnv...)
 	pr, pw := io.Pipe()
 	cmd.Stdout, cmd.Stderr = pw, pw
 	known := map[string]bool{}

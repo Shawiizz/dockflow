@@ -49,7 +49,7 @@ The build keys bake receives are `context`, `dockerfile`, `dockerfile_inline`, `
 | Build key | Handling |
 |---|---|
 | `platforms`, `tags` | Ignored with a warning: images are built for the server and tagged by Dockflow |
-| `secrets` | Refused for now: build secrets arrive with Compose secrets <Badge text="Coming in M3" variant="caution" /> |
+| `secrets` | Mounted with `RUN --mount=type=secret`, never kept in the image. See [Secrets in builds](/guides/secrets/#secrets-in-builds) |
 | `isolation`, `ulimits`, `provenance`, `sbom` | Refused |
 
 A built service's image is named after the app and the service. An `image:` key on a service that also has `build:` is replaced by that name.

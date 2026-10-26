@@ -25,6 +25,10 @@ type Result struct {
 	// Builds are the images to build, one per service with `build`.
 	Builds   []image.Build
 	Warnings []string
+	// Contents are the contents of App.Files, by path: they go to the agent, never in a release.
+	Contents map[string]string
+	// Secrets are the contents of the secret files, to mask.
+	Secrets []string
 }
 
 // supported are the Compose service keys Dockflow handles in this version. Any other key with
@@ -41,6 +45,7 @@ var supported = map[string]bool{
 	"mem_limit": true, "mem_reservation": true, "cpus": true, "pids_limit": true,
 	"logging": true, "platform": true, "depends_on": true, "container_name": true,
 	"pull_policy": true, "scale": true, "profiles": true, "env_file": true, "label_file": true,
+	"secrets": true, "configs": true,
 	"annotations": true, "gpus": true, "runtime": true, "userns_mode": true, "cgroup": true,
 	"cgroup_parent": true, "uts": true, "oom_score_adj": true, "oom_kill_disable": true,
 	"storage_opt": true, "cpu_shares": true, "cpu_period": true, "cpu_quota": true, "cpuset": true,
@@ -48,7 +53,7 @@ var supported = map[string]bool{
 }
 
 // later are keys that arrive in a later milestone.
-var later = map[string]string{"secrets": "M3", "configs": "M3"}
+var later = map[string]string{}
 
 // ignored are keys with no effect on one server, reported as warnings.
 var ignoredDeploy = []string{"placement", "endpoint_mode", "rollback_config"}
@@ -85,9 +90,12 @@ func Convert(p *types.Project, app, env string) (*Result, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := mountFiles(p, stack, svc, &s.Spec, r); err != nil {
+			return nil, err
+		}
 		r.Warnings = append(r.Warnings, warnings...)
 		if svc.Build != nil {
-			b, warnings, err := convertBuild(svc)
+			b, warnings, err := convertBuild(p, svc, r)
 			if err != nil {
 				return nil, err
 			}
@@ -207,14 +215,11 @@ func httpCheck(at string, h *HTTPExt, routes []RouteExt) (*domain.HTTPCheck, err
 }
 
 // convertBuild maps the Compose build keys to a bake target (ADR-0009).
-func convertBuild(s types.ServiceConfig) (*image.Build, []string, error) {
+func convertBuild(p *types.Project, s types.ServiceConfig, r *Result) (*image.Build, []string, error) {
 	at := "service " + s.Name + ": build"
 	b := s.Build
 	var warnings []string
 	switch {
-	case len(b.Secrets) > 0:
-		return nil, nil, errs.Config("%s.secrets is not available yet in this version of Dockflow", at).
-			WithHint("it arrives with secrets, in milestone M3 (docs/design/roadmap.md)")
 	case b.Isolation != "":
 		return nil, nil, errs.Config("%s.isolation is for Windows containers, which Dockflow does not deploy", at)
 	case len(b.Ulimits) > 0:
@@ -257,6 +262,31 @@ func convertBuild(s types.ServiceConfig) (*image.Build, []string, error) {
 		} else {
 			out.SSH = append(out.SSH, k.ID+"="+k.Path)
 		}
+	}
+	// the build mounts them at /run/secrets/<id> with RUN --mount=type=secret
+	for _, ref := range b.Secrets {
+		def, ok := p.Secrets[ref.Source]
+		if !ok {
+			return nil, nil, errs.Config("%s.secrets: secret %q is not declared under secrets", at, ref.Source)
+		}
+		id := ref.Target
+		if id == "" {
+			id = ref.Source
+		}
+		bs := image.BuildSecret{ID: id}
+		switch {
+		case def.File != "":
+			bs.File = def.File
+		case def.Environment != "" && def.Content != "":
+			bs.Value = def.Content
+			r.Secrets = append(r.Secrets, def.Content)
+		case def.Environment != "":
+			return nil, nil, errs.Config("%s.secrets: the secret %s reads %s, which is not set", at, ref.Source, def.Environment).
+				WithHint("define it as a secret or under environments.<env>.vars")
+		default:
+			return nil, nil, errs.Config("%s.secrets: the secret %s needs a file or environment source", at, ref.Source)
+		}
+		out.Secrets = append(out.Secrets, bs)
 	}
 	return out, warnings, nil
 }

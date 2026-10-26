@@ -2,6 +2,7 @@ package project
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -150,4 +151,27 @@ func TestComposeKeysRefused(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Secrets and configs become files named after their content: the app records their paths and
+// hashes, never their values, which the run carries apart and the masker knows.
+func TestSecretsAndConfigs(t *testing.T) {
+	l, err := load(t, "secrets", "production",
+		"PRODUCTION_DB_PASSWORD=pg-s3cret", "PRODUCTION_API_TOKEN=api-s3cret", "PRODUCTION_NPM_TOKEN=npm-s3cret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(l.App)
+	for _, v := range []string{"pg-s3cret", "api-s3cret", "npm-s3cret"} {
+		if strings.Contains(string(b), v) {
+			t.Fatalf("the app must not hold the value %s", v)
+		}
+		if !contains(append(l.FileSecrets, l.Secrets.Values()...), v) {
+			t.Fatalf("%s must be masked", v)
+		}
+	}
+	if len(l.FileContents) != 3 {
+		t.Fatalf("two secrets and a config: %v", len(l.FileContents))
+	}
+	testutil.Golden(t, "secrets", l.App)
 }

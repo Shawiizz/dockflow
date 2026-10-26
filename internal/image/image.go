@@ -2,6 +2,11 @@
 // (ADR-0009). The buildx adapter lives in image/buildx, the registry client in image/oci.
 package image
 
+import (
+	"fmt"
+	"strings"
+)
+
 import "context"
 
 // Build is how to build the image of one service: the Compose build keys, interpolated.
@@ -24,6 +29,31 @@ type Build struct {
 	SSH                []string          `json:"ssh,omitempty"` // id=path, or default
 	ShmSize            int64             `json:"shm_size,omitempty"`
 	Entitlements       []string          `json:"entitlements,omitempty"`
+	// Secrets reach the build without staying in the image (ADR-0012).
+	Secrets []BuildSecret `json:"secrets,omitempty"`
+}
+
+// BuildSecret is a secret a build mounts: a file, or a value handed to the builder through its
+// environment, never its command line.
+type BuildSecret struct {
+	ID    string `json:"id"`
+	File  string `json:"file,omitempty"`
+	Value string `json:"-"`
+}
+
+// SecretFlags returns the builder's secret flags (id=…,src=… or id=…,env=…) and the environment
+// that carries the values.
+func (b Build) SecretFlags() (flags, env []string) {
+	for i, s := range b.Secrets {
+		if s.File != "" {
+			flags = append(flags, "id="+s.ID+",src="+s.File)
+			continue
+		}
+		name := fmt.Sprintf("DOCKFLOW_BUILD_SECRET_%d_%s", i, strings.ToUpper(strings.NewReplacer("-", "_", ".", "_").Replace(b.Service)))
+		flags = append(flags, "id="+s.ID+",env="+name)
+		env = append(env, name+"="+s.Value)
+	}
+	return flags, env
 }
 
 // Built is a built image: an OCI image layout on the local disk, or an image loaded into the

@@ -81,6 +81,7 @@ func (a *app) load(ctx context.Context, env, versionFlag string) (*project.Loade
 		return nil, err
 	}
 	a.emitter.Masker().Add(l.Secrets.Values()...)
+	a.emitter.Masker().Add(l.FileSecrets...)
 	return l, nil
 }
 
@@ -287,7 +288,8 @@ func (s *session) request(op string) agent.Request {
 		Server: s.target.Server.Name, Author: author(), Version: l.Version,
 		Source:          domain.Source{GitSHA: l.Git.SHA, Branch: l.Git.Branch, Dirty: l.Git.Dirty},
 		DockflowVersion: version.Version, Keep: l.Config.Keep, OnFailure: l.Config.OnFailure,
-		Timeout: domain.Duration(l.Config.Timeout), Mask: l.Secrets.Values(), RegistryAuth: registryAuth(l),
+		Timeout: domain.Duration(l.Config.Timeout), Mask: append(l.Secrets.Values(), l.FileSecrets...), RegistryAuth: registryAuth(l),
+		Files:     l.FileContents,
 		Endpoints: l.Config.Endpoints, StartupDelay: domain.Duration(l.Config.StartupDelay),
 	}
 	return req

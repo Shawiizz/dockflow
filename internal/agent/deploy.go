@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,6 +36,7 @@ func (r *runner) plan(ctx context.Context) events.RunFinishedData {
 	if err != nil {
 		return failed(err)
 	}
+	o.actual.Files = existingFiles(&desired)
 	if err := r.checkSwitch(ctx, &desired); err != nil {
 		return failed(err)
 	}
@@ -127,6 +129,7 @@ func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
 	if err != nil {
 		return failed(err)
 	}
+	o.actual.Files = existingFiles(&desired)
 	p, err := planner.Plan(desired, o.actual, restart...)
 	if err != nil {
 		return failed(err)
@@ -429,6 +432,10 @@ func actionMessage(a domain.Action) string {
 		return "running job " + a.Target
 	case domain.ActionUpload:
 		return "uploading to " + a.Target
+	case domain.ActionCreateSecret:
+		return "writing the secret " + filepath.Base(a.Target)
+	case domain.ActionCreateConfig:
+		return "writing the config " + filepath.Base(a.Target)
 	}
 	return a.Kind + " " + a.Target
 }
@@ -465,6 +472,8 @@ func (r *runner) action(ctx context.Context, a domain.Action, desired *domain.Ap
 		return r.runJob(ctx, s, seq)
 	case domain.ActionUpload:
 		return r.upload(ctx, desired, a.Target)
+	case domain.ActionCreateSecret, domain.ActionCreateConfig:
+		return r.writeFile(desired, a.Target)
 	}
 	return nil
 }
@@ -841,6 +850,7 @@ func (r *runner) pruneReleases(ctx context.Context) {
 		return
 	}
 	r.pruneUploads(kept)
+	r.pruneFiles(kept)
 	used := map[string]bool{}
 	for _, rel := range kept {
 		for _, s := range rel.Desired.Services {
