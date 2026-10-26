@@ -12,6 +12,7 @@ import (
 
 	"github.com/Shawiizz/dockflow/internal/connection"
 	"github.com/Shawiizz/dockflow/internal/errs"
+	"github.com/Shawiizz/dockflow/internal/provision"
 )
 
 // connectionCmd prints the connection string of a server, once it has reached it: the host key it
@@ -30,12 +31,11 @@ func (a *app) connectionCmd() *cobra.Command {
 			a.quiet()
 			var t *connection.Target
 			if len(args) == 1 {
-				srv, err := parseTarget(args[0])
-				if err != nil {
+				var err error
+				if t, err = parseTarget(args[0], provision.DefaultUser); err != nil {
 					return err
 				}
-				srv.HostKey, srv.Name = hostKey, name
-				t = &connection.Target{Server: srv}
+				t.Server.HostKey, t.Server.Name = hostKey, name
 			} else {
 				l, err := a.load(ctx, env, "")
 				if err != nil {
@@ -90,7 +90,9 @@ func (a *app) connectionCmd() *cobra.Command {
 }
 
 // parseTarget reads user@host[:port].
-func parseTarget(s string) (connection.Server, error) {
+// parseTarget reads user@host[:port], where host may be an alias of ~/.ssh/config: its HostName,
+// Port, User and IdentityFile apply where the target sets none, then 22 and defaultUser.
+func parseTarget(s, defaultUser string) (*connection.Target, error) {
 	srv := connection.Server{}
 	if user, rest, ok := strings.Cut(s, "@"); ok {
 		srv.User, s = user, rest
@@ -99,18 +101,20 @@ func parseTarget(s string) (connection.Server, error) {
 	if h, p, err := net.SplitHostPort(s); err == nil {
 		port, err := strconv.Atoi(p)
 		if err != nil || port < 1 || port > 65535 {
-			return srv, errs.Usage("%q is not a valid port", p)
+			return nil, errs.Usage("%q is not a valid port", p)
 		}
 		srv.Host, srv.Port = h, port
 	}
-	if srv.Host == "" {
-		return srv, errs.Usage("the target is user@host[:port]")
+	if srv.Host == "" || (strings.Contains(s, "@") && srv.User == "") {
+		return nil, errs.Usage("the target is user@host[:port]")
 	}
-	if srv.Port == 0 {
-		srv.Port = 22
+	t := &connection.Target{Server: srv}
+	t.UseSSHConfig(srv.Port != 0, srv.User != "")
+	if t.Server.Port == 0 {
+		t.Server.Port = 22
 	}
-	if srv.User == "" {
-		srv.User = "dockflow"
+	if t.Server.User == "" {
+		t.Server.User = defaultUser
 	}
-	return srv, nil
+	return t, nil
 }

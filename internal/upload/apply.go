@@ -44,6 +44,14 @@ type Options struct {
 	Mode fs.FileMode
 	// UID and GID own the written files, when not negative.
 	UID, GID int
+	// Stats, when set, counts what Apply changed.
+	Stats *Stats
+}
+
+// Stats count the files an Apply wrote and deleted.
+type Stats struct {
+	Changed int `json:"files_changed"`
+	Deleted int `json:"files_deleted"`
 }
 
 // Apply makes target match m: each changed file is replaced atomically, after the file it
@@ -90,7 +98,15 @@ func Apply(target string, m *Manifest, store Store, o Options) (*Manifest, error
 		if err := copyAtomic(store.Path(f.SHA256), path, mode); err != nil {
 			return err
 		}
+		if o.Stats != nil {
+			o.Stats.Changed++
+		}
 		return own(path, o)
+	}
+	deleted := func() {
+		if o.Stats != nil {
+			o.Stats.Deleted++
+		}
 	}
 
 	if !m.Single {
@@ -121,12 +137,14 @@ func Apply(target string, m *Manifest, store Store, o Options) (*Manifest, error
 		if err := save(rel, path); err != nil {
 			return before, err
 		}
-		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if err := os.Remove(path); err == nil {
+			deleted()
+		} else if !errors.Is(err, fs.ErrNotExist) {
 			return before, err
 		}
 	}
 	if o.Mirror && !m.Single {
-		if err := mirror(target, m, save); err != nil {
+		if err := mirror(target, m, save, deleted); err != nil {
 			return before, err
 		}
 	}
@@ -135,7 +153,7 @@ func Apply(target string, m *Manifest, store Store, o Options) (*Manifest, error
 }
 
 // mirror deletes the files and empty directories of target that m does not list.
-func mirror(target string, m *Manifest, save func(rel, path string) error) error {
+func mirror(target string, m *Manifest, save func(rel, path string) error, deleted func()) error {
 	dirs := map[string]bool{}
 	for _, d := range m.Dirs {
 		dirs[d] = true
@@ -164,7 +182,11 @@ func mirror(target string, m *Manifest, save func(rel, path string) error) error
 				return err
 			}
 		}
-		return os.Remove(p)
+		if err := os.Remove(p); err != nil {
+			return err
+		}
+		deleted()
+		return nil
 	})
 	if err != nil {
 		return err

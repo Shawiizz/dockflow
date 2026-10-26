@@ -54,6 +54,9 @@ type Runner struct {
 	Dir    string
 	Events *events.Emitter
 	Host   Host
+	// Render returns a script listed under templates:, rendered now so it sees what earlier
+	// hooks wrote, and the mode of its template; ok is false for a script that is no template.
+	Render func(script string) (content []byte, mode os.FileMode, ok bool, err error)
 }
 
 // Failed is the error of a fatal hook.
@@ -124,10 +127,12 @@ func (r *Runner) one(ctx context.Context, h domain.Hook) (int, error) {
 func (r *Runner) local(ctx context.Context, h domain.Hook, out io.Writer) (int, error) {
 	var cmd *exec.Cmd
 	if h.Script != "" {
-		path := filepath.Join(r.Dir, h.Script)
-		if st, err := os.Stat(path); err != nil {
-			return -1, fmt.Errorf("%s does not exist", h.Script)
-		} else if st.Mode()&0o111 != 0 {
+		path, cleanup, err := r.script(h.Script)
+		if err != nil {
+			return -1, err
+		}
+		defer cleanup()
+		if st, err := os.Stat(path); err == nil && st.Mode()&0o111 != 0 {
 			cmd = exec.CommandContext(ctx, path)
 		} else {
 			cmd = exec.CommandContext(ctx, "sh", path)
@@ -147,6 +152,48 @@ func (r *Runner) local(ctx context.Context, h domain.Hook, out io.Writer) (int, 
 		return -1, err
 	}
 	return 0, nil
+}
+
+// script returns the file to run for a script hook: the project's, or a temporary copy rendered
+// from templates:, with the project's file mode.
+func (r *Runner) script(name string) (string, func(), error) {
+	none := func() {}
+	if r.Render != nil {
+		content, mode, ok, err := r.Render(name)
+		if err != nil {
+			return "", none, err
+		}
+		if ok {
+			return temporary(content, 0o600|mode&0o100)
+		}
+	}
+	path := filepath.Join(r.Dir, name)
+	if _, err := os.Stat(path); err != nil {
+		return "", none, fmt.Errorf("%s does not exist", name)
+	}
+	return path, none, nil
+}
+
+// temporary writes content to a temporary file with mode; the project is never modified
+// (ADR-0006).
+func temporary(content []byte, mode os.FileMode) (string, func(), error) {
+	f, err := os.CreateTemp("", "dockflow-hook-")
+	if err != nil {
+		return "", func() {}, err
+	}
+	cleanup := func() { os.Remove(f.Name()) }
+	_, err = f.Write(content)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(f.Name(), mode)
+	}
+	if err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	return f.Name(), cleanup, nil
 }
 
 // lines turns a hook's output into hook.log events, one per line.

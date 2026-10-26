@@ -30,6 +30,9 @@ type Target struct {
 	FromString bool
 	// Verified is the host key fingerprint SSH verified, once connected.
 	Verified string
+	// IdentityFiles are the keys ~/.ssh/config names for the host, tried after ssh-agent in
+	// place of the default ones.
+	IdentityFiles []string
 }
 
 // Lookup reads a secret of the environment (PRODUCTION_X, then X).
@@ -60,6 +63,14 @@ func Resolve(env string, cfg *config.Resolved, secret Lookup, flag string, geten
 		Name: cfg.Server.Name, Host: cfg.Server.Host, Port: cfg.Server.Port,
 		User: cfg.Server.User, HostKey: cfg.Server.HostKey,
 	}}
+	// dockflow.yml wins over ~/.ssh/config, which wins over the defaults, as OpenSSH's command line
+	t.UseSSHConfig(cfg.Server.Port != 0, cfg.Server.User != "")
+	if t.Server.Port == 0 {
+		t.Server.Port = 22
+	}
+	if t.Server.User == "" {
+		t.Server.User = "dockflow"
+	}
 	for _, k := range []string{"DOCKFLOW_SSH_KEY_" + strings.ToUpper(env), "DOCKFLOW_SSH_KEY"} {
 		if v := getenv(k); v != "" {
 			t.PrivateKey = v
@@ -156,9 +167,15 @@ func authMethods(t *Target) ([]ssh.AuthMethod, func(), error) {
 				methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
 			}
 		}
-		home, _ := os.UserHomeDir()
-		for _, name := range []string{"id_ed25519", "id_ecdsa", "id_rsa"} {
-			b, err := os.ReadFile(filepath.Join(home, ".ssh", name))
+		files := t.IdentityFiles
+		if len(files) == 0 {
+			home, _ := os.UserHomeDir()
+			for _, name := range []string{"id_ed25519", "id_ecdsa", "id_rsa"} {
+				files = append(files, filepath.Join(home, ".ssh", name))
+			}
+		}
+		for _, file := range files {
+			b, err := os.ReadFile(file)
 			if err != nil {
 				continue
 			}

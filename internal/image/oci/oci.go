@@ -24,6 +24,8 @@ import (
 // server-local registry.
 type Pusher struct {
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
+	// Progress, when set, receives the image, the bytes sent so far and the bytes to send.
+	Progress func(image string, sent, total int64)
 }
 
 var _ image.Pusher = (*Pusher)(nil)
@@ -74,7 +76,24 @@ func (p *Pusher) Push(ctx context.Context, b image.Built, d image.Destination) (
 			return nil, errs.Config("%s:%s is not a valid image name", d.Repository, tag).WithCause(err)
 		}
 		if i == 0 {
-			err = remote.Write(ref, img, ropts...)
+			opts := ropts
+			var done chan struct{}
+			if p.Progress != nil {
+				updates := make(chan v1.Update, 64)
+				done = make(chan struct{})
+				go func() {
+					defer close(done)
+					for u := range updates {
+						p.Progress(ref.String(), u.Complete, u.Total)
+					}
+				}()
+				opts = append(append([]remote.Option(nil), ropts...), remote.WithProgress(updates))
+			}
+			err = remote.Write(ref, img, opts...)
+			if done != nil {
+				// the library closes the channel when the write ends
+				<-done
+			}
 		} else {
 			err = remote.Tag(ref, img, ropts...)
 		}

@@ -86,7 +86,7 @@ func (r *runner) recover(ctx context.Context) error {
 		routes = routesFor(r.stack, &o.current.Desired, serving)
 		// an interrupted upload may have changed some files: put the current ones back
 		for _, u := range o.current.Desired.Uploads {
-			if _, err := r.applyUpload(ctx, u, u.Manifest, u.Mirror); err != nil {
+			if _, _, err := r.applyUpload(ctx, u, u.Manifest, u.Mirror); err != nil {
 				return err
 			}
 		}

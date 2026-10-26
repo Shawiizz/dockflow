@@ -37,6 +37,10 @@ func Open(root, run string) (*Store, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, ioErr("create "+root, err)
 	}
+	// Docker creates a missing bind source 0755: the state is root's only (state-v1.md)
+	if err := os.Chmod(root, 0o700); err != nil {
+		return nil, ioErr("protect "+root, err)
+	}
 	return &Store{root: root, run: run}, nil
 }
 

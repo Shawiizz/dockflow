@@ -679,12 +679,7 @@ func (s *Server) validate(env string) error {
 	if !domain.ServerName.MatchString(s.Name) {
 		return errs.Config("%s.name %q must match %s", at, s.Name, domain.ServerName)
 	}
-	if s.Port == 0 {
-		s.Port = 22
-	}
-	if s.User == "" {
-		s.User = "dockflow"
-	}
+	// port and user default once ~/.ssh/config is read (connection.Resolve)
 	return nil
 }
 

@@ -37,15 +37,12 @@ type provisionFlags struct {
 // connection string, which holds the deploy key: the key is generated here and never stored on
 // the server.
 func (a *app) provisionServer(ctx context.Context, target string, f provisionFlags, init func(*agent.Request)) error {
-	srv, err := parseTarget(target)
+	admin, err := parseTarget(target, "root")
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(target, "@") {
-		srv.User = "root"
-	}
-	srv.HostKey, srv.Name = f.hostKey, f.name
-	admin := &connection.Target{Server: srv}
+	admin.Server.HostKey, admin.Server.Name = f.hostKey, f.name
+	srv := admin.Server
 	if f.key != "" {
 		b, err := os.ReadFile(f.key)
 		if err != nil {

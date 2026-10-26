@@ -1,6 +1,8 @@
 package state
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
@@ -72,5 +74,19 @@ func TestReleasesAndPrune(t *testing.T) {
 	env, _ := a.Env()
 	if env.Current != 6 || env.Schema != 1 {
 		t.Fatalf("env: %+v", env)
+	}
+}
+
+// The state is root's only, even when Docker created the directory as a bind source.
+func TestRootIsPrivate(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "dockflow")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(root, "r1"); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := os.Stat(root); st.Mode().Perm() != 0o700 {
+		t.Fatalf("the state directory is %o, want 700", st.Mode().Perm())
 	}
 }

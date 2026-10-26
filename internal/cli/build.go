@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -185,6 +187,7 @@ func (s *session) ship(ctx context.Context, only []string) error {
 		return err
 	}
 	pusher := s.pusher()
+	pusher.Progress = s.app.pushProgress()
 	for _, b := range built {
 		d := destination(l, b.Service)
 		p, err := pusher.Push(ctx, b, d)
@@ -197,6 +200,23 @@ func (s *session) ship(ctx context.Context, only []string) error {
 		svc.Spec.Image = p.Ref
 	}
 	return nil
+}
+
+// pushProgress emits push.progress, at most once a second per image, and once at the end.
+func (a *app) pushProgress() func(image string, sent, total int64) {
+	var mu sync.Mutex
+	last := map[string]time.Time{}
+	return func(image string, sent, total int64) {
+		mu.Lock()
+		defer mu.Unlock()
+		now := timeNow()
+		if sent < total && now.Sub(last[image]) < time.Second {
+			return
+		}
+		last[image] = now
+		a.emitter.Debug(events.PushProgress, fmt.Sprintf("%s: %s of %s sent", image, humanBytes(uint64(sent)), humanBytes(uint64(total))),
+			map[string]any{"image": image, "bytes_sent": sent, "bytes_total": total})
+	}
 }
 
 // pusher reaches the environment's registry: the server's own, through the SSH connection, or

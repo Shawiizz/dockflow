@@ -57,7 +57,7 @@ Secrets override the environment's `vars` of the same name. Their values are mas
 | `DOCKFLOW_SSH_KEY` | The same, for every environment without its own `DOCKFLOW_SSH_KEY_<ENV>`. Also the default key file of `dockflow server connection` when `-k` is not given. |
 | `SSH_AUTH_SOCK` | The ssh-agent socket. Used when no key and no password were given in any other way. |
 
-When the server comes from `dockflow.yml`, Dockflow uses the key in `DOCKFLOW_SSH_KEY_<ENV>`, else the one in `DOCKFLOW_SSH_KEY`. With neither, it tries the keys of ssh-agent and the files `~/.ssh/id_ed25519`, `~/.ssh/id_ecdsa` and `~/.ssh/id_rsa`. The host key is checked against `host_key:` or `~/.ssh/known_hosts`. A key protected by a passphrase must be loaded in ssh-agent.
+When the server comes from `dockflow.yml`, Dockflow uses the key in `DOCKFLOW_SSH_KEY_<ENV>`, else the one in `DOCKFLOW_SSH_KEY`. With neither, it tries the keys of ssh-agent, then the `IdentityFile` keys `~/.ssh/config` gives the host, or, when it gives none, the files `~/.ssh/id_ed25519`, `~/.ssh/id_ecdsa` and `~/.ssh/id_rsa`. The host key is checked against `host_key:` or `~/.ssh/known_hosts`. A key protected by a passphrase must be loaded in ssh-agent.
 
 ## The agent binary
 

@@ -183,13 +183,15 @@ How Dockflow finds the server of an environment, first match wins:
 
 1. the `--connection` option;
 2. the `<ENV>_CONNECTION` secret (`PRODUCTION_CONNECTION`), printed by [`dockflow server connection`](/reference/cli/#server-connection);
-3. the `server` block, with the private key from `DOCKFLOW_SSH_KEY_<ENV>`, `DOCKFLOW_SSH_KEY` (the key itself, or a path to it) or ssh-agent.
+3. the `server` block, with the private key from `DOCKFLOW_SSH_KEY_<ENV>`, `DOCKFLOW_SSH_KEY` (the key itself, or a path to it), ssh-agent, or the `IdentityFile` your `~/.ssh/config` gives the host.
+
+Dockflow reads `~/.ssh/config` as OpenSSH does for `HostName`, `Port`, `User` and `IdentityFile`: `Host` patterns (with `*`, `?` and `!`), `Include`, and the first value of each keyword. `Match` blocks are skipped. What `server:` sets wins over the file.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `host` | string | required | The server's address. |
-| `port` | integer | `22` | The SSH port. |
-| `user` | string | `dockflow` | The SSH user. It must be able to use Docker. |
+| `host` | string | required | The server's address, or a `Host` alias of your `~/.ssh/config`. |
+| `port` | integer | `Port` of `~/.ssh/config`, else `22` | The SSH port. |
+| `user` | string | `User` of `~/.ssh/config`, else `dockflow` | The SSH user. It must be able to use Docker. |
 | `host_key` | string | none | The server's host key fingerprint, `SHA256:…`. Without it, the key must be in `~/.ssh/known_hosts`. A key that is neither pinned nor known is refused. |
 | `name` | string | `main` | The server's name, available as `DOCKFLOW_SERVER`. Matches `^[a-z][a-z0-9_-]{0,31}$`. |
 

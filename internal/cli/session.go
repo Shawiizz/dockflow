@@ -102,6 +102,11 @@ func (a *app) connect(ctx context.Context, env, versionFlag string) (*session, e
 		}
 	}
 	a.emitter.Masker().Add(t.PrivateKey, t.Password)
+	names := make([]string, 0, len(l.App.Services))
+	for _, svc := range l.App.Services {
+		names = append(names, svc.Name)
+	}
+	a.emitter.Debug(events.ConfigLoaded, fmt.Sprintf("%s: %d services", l.Config.Env, len(names)), map[string]any{"files": l.Files, "services": names})
 	s, err := a.dial(ctx, t)
 	if err != nil {
 		return nil, err
@@ -224,15 +229,31 @@ func (s *session) sendUploads(ctx context.Context, req *agent.Request) error {
 	req.Run = s.run
 	req.Manifests, req.Blobs = s.manifests, len(have.Missing)
 	missing := have.Missing
+	var total int64
+	for _, sum := range missing {
+		if st, err := os.Stat(s.blobs[sum]); err == nil {
+			total += st.Size()
+		}
+	}
 	s.payload = func(w io.Writer) error {
 		tw := tar.NewWriter(w)
-		for _, sum := range missing {
+		var sent int64
+		last := time.Time{}
+		for i, sum := range missing {
 			path, ok := s.blobs[sum]
 			if !ok {
 				return fmt.Errorf("no local file for %s", sum)
 			}
-			if err := addFile(tw, path, sum); err != nil {
+			n, err := addFile(tw, path, sum)
+			if err != nil {
 				return err
+			}
+			sent += n
+			// every destination's files go together: at most once a second, and at the end
+			if now := timeNow(); now.Sub(last) >= time.Second || i == len(missing)-1 {
+				last = now
+				s.app.emitter.Debug(events.UploadProgress, fmt.Sprintf("%d of %d files sent (%s of %s)", i+1, len(missing), humanBytes(uint64(sent)), humanBytes(uint64(total))),
+					map[string]any{"files_sent": i + 1, "files_total": len(missing), "bytes_sent": sent, "bytes_total": total})
 			}
 		}
 		return tw.Close()
@@ -241,21 +262,21 @@ func (s *session) sendUploads(ctx context.Context, req *agent.Request) error {
 	return nil
 }
 
-func addFile(tw *tar.Writer, path, name string) error {
+// addFile writes the file at path into tw under name, and returns its size.
+func addFile(tw *tar.Writer, path, name string) (int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer f.Close()
 	st, err := f.Stat()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: st.Size(), Typeflag: tar.TypeReg}); err != nil {
-		return err
+		return 0, err
 	}
-	_, err = io.Copy(tw, f)
-	return err
+	return io.Copy(tw, f)
 }
 
 // request returns an agent request for the session's environment.
@@ -405,7 +426,28 @@ func (s *session) hooks() ([]domain.Hook, error) {
 }
 
 func (s *session) hookRunner() *hooks.Runner {
-	return &hooks.Runner{Dir: s.loaded.Config.Dir, Events: s.app.emitter, Host: s.hostScript}
+	return &hooks.Runner{Dir: s.loaded.Config.Dir, Events: s.app.emitter, Host: s.hostScript, Render: s.renderScript}
+}
+
+// renderScript renders a hook script that templates: lists (ADR-0022).
+func (s *session) renderScript(script string) ([]byte, os.FileMode, bool, error) {
+	l := s.loaded
+	for _, t := range l.Config.Templates {
+		if filepath.Clean(t.Dest) != filepath.Clean(script) {
+			continue
+		}
+		src := filepath.Join(l.Config.Dir, t.Src)
+		st, err := os.Stat(src)
+		if err != nil {
+			return nil, 0, false, errs.Config("template %s: %v", t.Src, err)
+		}
+		b, err := render.File(src, l.Values)
+		if err != nil {
+			return nil, 0, false, errs.Config("template %s: %v", t.Src, err)
+		}
+		return b, st.Mode().Perm(), true, nil
+	}
+	return nil, 0, false, nil
 }
 
 // hostScript runs a script on the server with `sh -s`, feeding it on stdin.

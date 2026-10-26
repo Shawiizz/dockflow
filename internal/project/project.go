@@ -5,7 +5,9 @@ package project
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -82,6 +84,8 @@ type Loaded struct {
 	Warnings []string
 	Version  string
 	Git      Git
+	// Files are the files read: dockflow.yml, the Compose files and the local secrets file.
+	Files []string
 }
 
 // Read parses dockflow.yml and picks the environment, without loading Compose or secrets.
@@ -167,8 +171,18 @@ func Load(ctx context.Context, o Options) (*Loaded, error) {
 	if err != nil {
 		return nil, err
 	}
+	files := []string{config.FileName}
+	for _, f := range proj.ComposeFiles {
+		if rel, err := filepath.Rel(o.Dir, f); err == nil {
+			f = rel
+		}
+		files = append(files, f)
+	}
+	if _, err := os.Stat(filepath.Join(o.Dir, secrets.LocalFile)); err == nil {
+		files = append(files, secrets.LocalFile)
+	}
 	return &Loaded{
 		Raw: raw, Config: cfg, Secrets: store, App: res.App, Builds: res.Builds, Builtins: builtins, Values: all,
-		Warnings: res.Warnings, Version: version, Git: o.Git,
+		Warnings: res.Warnings, Version: version, Git: o.Git, Files: files,
 	}, nil
 }

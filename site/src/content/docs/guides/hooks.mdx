@@ -124,6 +124,17 @@ Local hooks also inherit the environment of the CLI process itself. `host` hooks
 
 Hook commands (`run`, `host`, `exec`) are neither interpolated nor rendered as templates: `$NAME` reaches the shell as you wrote it, and the shell expands it from the environment the hook gets.
 
+A `script:` that needs a real template is listed under [`templates:`](/guides/templates/): it then runs rendered, from a temporary copy made when the hook starts, so it sees what earlier hooks wrote. Your project's file is not modified.
+
+```yaml
+# dockflow.yml (fragment)
+templates:
+  - scripts/notify.sh
+hooks:
+  after_deploy:
+    - script: scripts/notify.sh   # runs with {{ DOCKFLOW_VERSION }} and the vars rendered
+```
+
 ```yaml
 # dockflow.yml (fragment)
 hooks:

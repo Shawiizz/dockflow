@@ -136,7 +136,8 @@ hooks:                              # ADR-0022; commands (run, host, exec) are n
       timeout: 10m
     - host: sudo systemctl daemon-reload
   after_build: []                    # also: name, timeout (default 5m), fatal (default true for before_*),
-  after_deploy: []                   # script: <file> instead of run, sent to sh -s for a host hook
+  after_deploy: []                   # script: <file> instead of run, run locally; rendered first when
+                                     # templates: lists it
   after_failure: []
 
 notify:                             # webhooks, signed with HMAC-SHA256
@@ -158,6 +159,9 @@ environments:                       # required; at least one
     # The server: the PRODUCTION_CONNECTION secret (ADR-0013), or described here
     server:                         # optional when the connection string exists
       { name: main, host: 203.0.113.10, port: 22, user: dockflow, host_key: "SHA256:Xq…" }
+                                    # host may be a Host alias of ~/.ssh/config: its HostName, and
+                                    # its Port, User and IdentityFile where server: sets none;
+                                    # then port 22 and user dockflow
     compose: [compose.yml, compose.prod.yml]   # optional; replaces the top-level list
     profiles: [web]                 # optional Compose profiles
     vars:

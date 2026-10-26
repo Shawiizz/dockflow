@@ -137,9 +137,9 @@ type appliedUpload struct {
 // applyUpload makes the destination of u match its manifest, through a helper container from
 // the agent's own image, which mounts the destination (ADR-0021). It returns the digest of the
 // manifest that restores the destination.
-func (r *runner) applyUpload(ctx context.Context, u domain.Upload, manifest string, mirror bool) (string, error) {
+func (r *runner) applyUpload(ctx context.Context, u domain.Upload, manifest string, mirror bool) (string, upload.Stats, error) {
 	if r.req.AgentImage == "" {
-		return "", errs.Internal("the agent does not know its own image")
+		return "", upload.Stats{}, errs.Internal("the agent does not know its own image")
 	}
 	blobs, manifests := uploadDirs(r.app)
 	hr := HelperRequest{
@@ -151,7 +151,7 @@ func (r *runner) applyUpload(ctx context.Context, u domain.Upload, manifest stri
 	}
 	var err error
 	if hr.UID, hr.GID, err = upload.ParseOwner(u.Owner); err != nil {
-		return "", errs.Config("%s", err.Error())
+		return "", upload.Stats{}, errs.Config("%s", err.Error())
 	}
 	mounts := []domain.Mount{{Type: "bind", Source: state.Root, Target: state.Root}}
 	if u.Volume != "" {
@@ -172,15 +172,15 @@ func (r *runner) applyUpload(ctx context.Context, u domain.Upload, manifest stri
 	}
 	id, err := r.Engine.Create(ctx, "dockflow-upload-"+r.req.Run+"-"+strconv.Itoa(len(r.uploads)), spec, labels)
 	if err != nil {
-		return "", err
+		return "", upload.Stats{}, err
 	}
 	defer func() { _ = r.Engine.Remove(context.WithoutCancel(ctx), id) }()
 	if err := r.Engine.Start(ctx, id); err != nil {
-		return "", err
+		return "", upload.Stats{}, err
 	}
 	code, err := r.Engine.Wait(ctx, id)
 	if err != nil {
-		return "", err
+		return "", upload.Stats{}, err
 	}
 	logs, _ := r.Engine.Logs(context.WithoutCancel(ctx), id, engine.LogOptions{Stderr: true})
 	var out []byte
@@ -189,13 +189,15 @@ func (r *runner) applyUpload(ctx context.Context, u domain.Upload, manifest stri
 		logs.Close()
 	}
 	if code != 0 {
-		return "", errs.Newf("upload.failed", errs.ExitRolledBack, "cannot write %s: %s", u.Dest, strings.TrimSpace(string(out)))
+		return "", upload.Stats{}, errs.Newf("upload.failed", errs.ExitRolledBack, "cannot write %s: %s", u.Dest, strings.TrimSpace(string(out)))
 	}
-	baseline := strings.TrimSpace(string(out))
-	if i := strings.LastIndex(baseline, "\n"); i >= 0 {
-		baseline = baseline[i+1:]
+	// the helper prints its counts, then the restore manifest's digest
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	var stats upload.Stats
+	if len(lines) > 1 {
+		_ = json.Unmarshal([]byte(lines[len(lines)-2]), &stats)
 	}
-	return baseline, nil
+	return lines[len(lines)-1], stats, nil
 }
 
 // upload applies one upload of the plan.
@@ -204,12 +206,13 @@ func (r *runner) upload(ctx context.Context, desired *domain.App, dest string) e
 		if u.Dest != dest {
 			continue
 		}
-		baseline, err := r.applyUpload(ctx, u, u.Manifest, u.Mirror)
+		baseline, stats, err := r.applyUpload(ctx, u, u.Manifest, u.Mirror)
 		if err != nil {
 			return err
 		}
 		r.uploads = append(r.uploads, appliedUpload{upload: u, baseline: baseline})
-		r.ev.Info(events.UploadFinished, "uploaded to "+dest, map[string]any{"dest": dest})
+		r.ev.Info(events.UploadFinished, fmt.Sprintf("uploaded to %s (%d changed, %d deleted)", dest, stats.Changed, stats.Deleted),
+			map[string]any{"dest": dest, "files_changed": stats.Changed, "files_deleted": stats.Deleted})
 		return nil
 	}
 	return errs.Internal("no upload to %s", dest)
@@ -220,7 +223,7 @@ func (r *runner) undoUploads(ctx context.Context) error {
 	var failed []string
 	for i := len(r.uploads) - 1; i >= 0; i-- {
 		a := r.uploads[i]
-		if _, err := r.applyUpload(ctx, a.upload, a.baseline, false); err != nil {
+		if _, _, err := r.applyUpload(ctx, a.upload, a.baseline, false); err != nil {
 			failed = append(failed, err.Error())
 		}
 	}

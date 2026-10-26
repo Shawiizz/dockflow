@@ -213,6 +213,8 @@ func (r *runner) manualLock() events.RunFinishedData {
 			return failed(err)
 		} else if m != nil && !r.req.Force {
 			return failed(errs.Newf("lock.manual", errs.ExitLocked, "%s already locked this environment: %s", m.By, m.Message))
+		} else if m != nil && m.By != by(r.req.Author) {
+			r.ev.Warn(events.LockTakenOver, "took over the lock of "+m.By, map[string]any{"scope": "manual", "previous_holder": m.By})
 		}
 		info := domain.LockInfo{Op: "manual", By: by(r.req.Author), CI: r.req.Author.CI, Since: r.Now().UTC()}
 		if r.req.Lock != nil {

@@ -411,7 +411,7 @@ With `<admin>@<host>`, prepares a server from an administrator's account (`root`
 2. creates the deploy user (`dockflow`), adds it to the `docker` group, and installs a key generated on this machine, with `restrict,port-forwarding,pty`;
 3. reconnects as the deploy user and installs the switch and the server-local registry.
 
-The server's host key must be known: in your `~/.ssh/known_hosts`, or given with `--host-key`. Every step can be run again; a new run adds a new key.
+The server's host key must be known: in your `~/.ssh/known_hosts`, or given with `--host-key`. Every step can be run again; a new run adds a new key. `<host>` may be a `Host` alias of your `~/.ssh/config`, whose `HostName`, `Port`, `User` and `IdentityFile` apply where the target sets none; the connection string gets the real address.
 
 Without an argument, in a directory without `dockflow.yml`, prepares the server it runs on, which must be Linux, as root: the same steps, with the key generated in memory and never written to disk. The connection string gives the server's public address (the source address of its route to the internet; a private address is refused, give `--host`), the SSH port of `sshd_config` (following its `Include` lines; 22 when it has none) and the fingerprint of `/etc/ssh/ssh_host_ed25519_key.pub` (`ecdsa`, then `rsa`, when there is no ed25519 key). The deploy user is then checked through the SSH server on `127.0.0.1`, as the CI will reach it.
 

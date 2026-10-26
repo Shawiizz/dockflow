@@ -34,8 +34,9 @@ func (a *app) uploadHelperCmd() *cobra.Command {
 			if err := json.Unmarshal(b, &m); err != nil {
 				return errs.Internal("the manifest is not valid: %v", err)
 			}
+			var stats upload.Stats
 			before, err := upload.Apply(hr.Target, &m, upload.Store(hr.Blobs), upload.Options{
-				Mirror: hr.Mirror, Mode: fs.FileMode(hr.Mode), UID: hr.UID, GID: hr.GID,
+				Mirror: hr.Mirror, Mode: fs.FileMode(hr.Mode), UID: hr.UID, GID: hr.GID, Stats: &stats,
 			})
 			if err != nil {
 				fmt.Fprintln(a.stderr, err)
@@ -46,6 +47,9 @@ func (a *app) uploadHelperCmd() *cobra.Command {
 			if err := os.WriteFile(name, out, 0o600); err != nil {
 				return errs.Internal("write the restore manifest: %v", err)
 			}
+			// the counts, then the restore manifest's digest, last
+			st, _ := json.Marshal(stats)
+			fmt.Fprintln(a.stdout, string(st))
 			fmt.Fprintln(a.stdout, before.Digest())
 			return nil
 		},

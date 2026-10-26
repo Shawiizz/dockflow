@@ -43,17 +43,17 @@ No event carries a secret value. Text fields (`msg`, `line`, `error.message`) ar
 | Type | `data` |
 |---|---|
 | `run.started` | `app`, `env`, `op` (`deploy`, `rollback`, `restart`, `backup`, `restore`, `run`, `server.*`), `dockflow_version`, `server` |
-| `config.loaded` | `files` (paths of the Compose files, `dockflow.yml` and the secrets file), `services` |
+| `config.loaded` | `files` (paths of the Compose files, `dockflow.yml` and the secrets file), `services`; emitted (`debug`) once connected, by the operations that reach the server |
 | `warning` | `code` (stable, for example `compose.depends_on_ignored`), `detail`, `service?` |
 | `lock.waiting` | `holder`, `op`, `by`, `since` |
 | `lock.acquired` | `scope` |
-| `lock.taken_over` | `scope`, `previous_holder` |
-| `lock.lost` | `scope`, `new_holder` |
+| `lock.taken_over` | `scope` (`manual`), `previous_holder`: `lock acquire --force` took over someone else's manual lock |
+| `lock.lost` | `scope`, `new_holder`. Reserved: the kernel lock of [state-v1](state-v1.md#lock) is never lost while its holder lives, so no version-1 agent emits it, nor the outcome `lock_lost` |
 | `lock.released` | `scope` |
 | `build.started` | `services`, `platforms` |
 | `build.log` | `service`, `line` |
 | `build.finished` | `service`, `digest` |
-| `push.progress` | `image`, `bytes_sent`, `bytes_total` |
+| `push.progress` | `image`, `bytes_sent`, `bytes_total`; at most once a second per image, and once at the end (`debug`) |
 | `push.finished` | `image`, `digest`, `blobs_skipped`, `blobs_sent` |
 | `plan.computed` | `fingerprint`, `summary` (`create`, `update`, `remove`), `actions` (list of `id`, `kind`, `target`, `reason`) |
 | `plan.empty` | – |
@@ -70,14 +70,14 @@ No event carries a secret value. Text fields (`msg`, `line`, `error.message`) ar
 | `job.finished` | `service`, `exit_code` |
 | `health.check` | `service`, `url`, `attempt`, `status?`, `ok` |
 | `routes.applied` | `domains` |
-| `filter.applied` | `ports` |
+| `filter.applied` | `ports` (M3, with the port filter) |
 | `hook.started` | `phase`, `name`, `kind` (`local`, `host`, `exec`), `target` |
 | `hook.log` | `name`, `target`, `line` |
 | `hook.finished` | `name`, `target`, `exit_code`, `fatal` |
-| `upload.progress` | `dest`, `files_sent`, `files_total`, `bytes_sent`, `bytes_total` |
+| `upload.progress` | `dest?`, `files_sent`, `files_total`, `bytes_sent`, `bytes_total`; at most once a second, and once at the end (`debug`). Without `dest`, it counts the files of every destination, sent together: only those the server lacks |
 | `upload.finished` | `dest`, `files_changed`, `files_deleted` |
-| `backup.finished` | `service`, `snapshot`, `bytes_added`, `duration_ms` |
-| `rollback.started` | `reason`, `target_seq` |
+| `backup.finished` | `service`, `snapshot`, `bytes_added`, `duration_ms` (M4, with backups) |
+| `rollback.started` | `reason`, `target_seq?` |
 | `rollback.finished` | `ok` |
 | `cancel.requested` | `by` (`signal`, `cancel`) |
 | `log` | `line` (anything else worth showing) |
