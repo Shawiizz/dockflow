@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-Guidance for Claude Code (and any other agent) working on this branch.
+Guidance for Claude Code (and any other agent) working on this repository.
 
-## What this branch is
+## What this repository is
 
-Dockflow v2, a rewrite from scratch in Go. It shares nothing with Dockflow 1.x (the `main` branch): no code, no configuration format, no server state, no compatibility. Never port code from `main`, and never add anything that reads, detects or reports 1.x files, formats, layouts or state, not even in an error message or a hint.
+Dockflow v2, a rewrite from scratch in Go. It shares nothing with Dockflow 1.x (the `legacy` branch): no code, no configuration format, no server state, no compatibility. Never port code from `legacy`, and never add anything that reads, detects or reports 1.x files, formats, layouts or state, not even in an error message or a hint.
 
 ## Read before changing anything
 

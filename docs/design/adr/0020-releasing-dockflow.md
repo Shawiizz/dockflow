@@ -30,7 +30,7 @@ The CLI ships its own Linux binary to servers ([ADR-0004](0004-ephemeral-agent.m
 ### Versioning
 
 - Semantic versioning, with tags `v<semver>`.
-- Release numbers continue the repository's sequence: its earlier releases go up to 3.x, so this line starts at **4.0.0**. A package manager, an installer or a person comparing numbers then sees it as newer, and no number is published twice (npm refuses that). "v2" stays the name of the rewrite and of its branch, not a version number.
+- Release numbers continue the repository's sequence: its earlier releases go up to 3.x, so this line starts at **4.0.0**. A package manager, an installer or a person comparing numbers then sees it as newer, and no number is published twice (npm refuses that). "v2" stays the name of the rewrite, not a version number.
 - Until the roadmap's v1.0 milestone, releases are pre-releases, one or more per milestone: `v4.0.0-alpha.N`. The v1.0 milestone ships as `v4.0.0`.
 - The configuration format, the state format and the event schema have their own version numbers (`version: 1`, `schema: 1`, `v: 1`) and change only in a major release.
 
@@ -42,8 +42,8 @@ The CLI ships its own Linux binary to servers ([ADR-0004](0004-ephemeral-agent.m
 
 ## Implementation status (M2)
 
-- `.github/workflows/v2-release.yml` runs on a tag `v*`, or on a commit of the `v2` branch that writes the version into `.github/release` (the release then creates the tag on that commit): the whole CI on the released commit, then the binaries, `SHA256SUMS` signed keyless with cosign (`SHA256SUMS.sigstore.json`), and a GitHub release. Releases are never marked as the repository's latest; a tag with a pre-release suffix makes a pre-release.
-- `install.sh` checks the binary against `SHA256SUMS`, and `SHA256SUMS` against its signature when cosign is installed (identity: this repository's release workflow, at a `v` tag or on the `v2` branch).
+- `.github/workflows/release.yml` runs on a tag `v*`, or on a commit of `main` that writes the version into `.github/release` (the release then creates the tag on that commit): the whole CI on the released commit, then the binaries, `SHA256SUMS` signed keyless with cosign (`SHA256SUMS.sigstore.json`), and a GitHub release. Releases are never marked as the repository's latest; a tag with a pre-release suffix makes a pre-release.
+- `install.sh` checks the binary against `SHA256SUMS`, and `SHA256SUMS` against its signature when cosign is installed (identity: this repository's release workflow, at a `v` tag or on `main`).
 - The CLI downloads the agent binary over HTTPS and checks it against `SHA256SUMS`; it does not check the signature yet. That check, the PowerShell installer, Homebrew and the npm package come with the signed releases of v1.0 ([roadmap](../roadmap.md)).
 
 ## Embedding the Linux binaries

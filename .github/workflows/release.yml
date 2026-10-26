@@ -1,12 +1,12 @@
-name: v2 release
+name: Release
 
 # Publishes a release (ADR-0020), once the whole CI has passed on the released commit: a tag
-# v<semver> pushed on the v2 branch, or a commit on the v2 branch that writes the version into
+# v<semver> pushed on main, or a commit on main that writes the version into
 # .github/release, whose tag the release then creates on that commit.
 on:
   push:
     tags: ["v*"]
-    branches: [v2]
+    branches: [main]
     paths: [.github/release]
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
 
   ci:
     needs: [version]
-    uses: ./.github/workflows/v2.yml
+    uses: ./.github/workflows/ci.yml
 
   release:
     needs: [version, ci]

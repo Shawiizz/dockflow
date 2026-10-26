@@ -2,8 +2,8 @@
 # Installs the dockflow CLI from a GitHub release (ADR-0020). The binary is checked against the
 # release's SHA256SUMS, and SHA256SUMS against its Sigstore signature when cosign is installed.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/v2/install.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/v2/install.sh | sh -s -- --version vX.Y.Z --dir ~/bin
+#   curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version vX.Y.Z --dir ~/bin
 #
 # DOCKFLOW_VERSION and DOCKFLOW_INSTALL_DIR do the same as the options. DOCKFLOW_RELEASES_URL
 # replaces https://github.com/Shawiizz/dockflow/releases/download (a mirror).
@@ -65,7 +65,7 @@ fetch "$base/$name" "$tmp/$name" || fail "cannot download $base/$name"
 if command -v cosign >/dev/null 2>&1; then
 	fetch "$base/SHA256SUMS.sigstore.json" "$tmp/SHA256SUMS.sigstore.json" || fail "cannot download the signature of SHA256SUMS"
 	cosign verify-blob --bundle "$tmp/SHA256SUMS.sigstore.json" \
-		--certificate-identity-regexp "^https://github.com/$repo/.github/workflows/v2-release.yml@refs/(tags/v|heads/v2$)" \
+		--certificate-identity-regexp "^https://github.com/$repo/.github/workflows/release.yml@refs/(tags/v|heads/main$)" \
 		--certificate-oidc-issuer https://token.actions.githubusercontent.com \
 		"$tmp/SHA256SUMS" >/dev/null 2>&1 || fail "the signature of SHA256SUMS does not verify"
 	echo "signature verified"

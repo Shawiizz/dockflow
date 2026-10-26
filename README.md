@@ -1,8 +1,8 @@
-# Dockflow v2
+# Dockflow
 
 Dockflow deploys your Docker Compose applications, as written, to your own server: zero downtime, a plan before every change, a rollback that always finishes. From your laptop or your CI.
 
-This branch is a rewrite from scratch. It shares no code, no configuration format and no server state with Dockflow 1.x, and offers no migration path: moving a project or a server to v2 is done by hand.
+Documentation: [dockflow.shawiizz.dev](https://dockflow.shawiizz.dev).
 
 ## Status
 
@@ -13,8 +13,8 @@ Milestones M1 (walking skeleton) and M2 (shipping real apps) are implemented: a 
 You need a Linux server with Docker 27 or later, reachable over SSH by a user that may use Docker, with ports 80 and 443 free (or another web server in front: see the `external` edge in the [configuration](docs/design/spec/config-v1.md)).
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/v2/install.sh | sh   # from a release
-make build                                                                          # or from source: ./dockflow
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh # from a release
+make build                                                                            # or from source: ./dockflow
 ```
 
 `dockflow.yml`, next to your `compose.yml`:
