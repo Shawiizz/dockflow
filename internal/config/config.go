@@ -34,10 +34,11 @@ type Settings struct {
 	Releases  *Releases `yaml:"releases"`
 	OnFailure string    `yaml:"on_failure"`
 
+	Registry *Registry      `yaml:"registry"`
+	Build    *BuildSettings `yaml:"build"`
+
 	// Keys of the specification that arrive in later milestones. They are refused with a clear
 	// message instead of being ignored.
-	Registry  *yaml.Node `yaml:"registry"`
-	Build     *yaml.Node `yaml:"build"`
 	Templates *yaml.Node `yaml:"templates"`
 	Uploads   *yaml.Node `yaml:"uploads"`
 	Hooks     *yaml.Node `yaml:"hooks"`
@@ -47,6 +48,20 @@ type Settings struct {
 	Routes    *yaml.Node `yaml:"routes"`
 	Plugins   *yaml.Node `yaml:"plugins"`
 	Backups   *yaml.Node `yaml:"backups"`
+}
+
+// Registry is an external registry (ADR-0009). Without it, images go to the server's own.
+type Registry struct {
+	URL            string   `yaml:"url"`
+	Username       string   `yaml:"username"`
+	Password       string   `yaml:"password"`
+	AdditionalTags []string `yaml:"additional_tags"`
+}
+
+// BuildSettings is the build block.
+type BuildSettings struct {
+	Builder string `yaml:"builder"` // local or remote
+	Engine  string `yaml:"engine"`  // docker or podman
 }
 
 // Releases is the releases block.
@@ -99,11 +114,14 @@ type Resolved struct {
 	// Timeout overrides the computed health timeout of every service; 0 keeps it computed.
 	Timeout   time.Duration
 	TagSuffix string
+	// Registry is nil for the server-local registry.
+	Registry *Registry
+	Build    BuildSettings
 }
 
 // laterKeys are spec keys not available yet, with the milestone that brings them.
 var laterKeys = map[string]string{
-	"registry": "M2", "build": "M2", "templates": "M2", "uploads": "M2", "hooks": "M2",
+	"templates": "M2", "uploads": "M2", "hooks": "M2",
 	"notify": "M2", "health": "M2", "firewall": "M3", "routes": "M3", "plugins": "M3",
 	"backups": "M4", "secrets_file": "M3",
 }
@@ -142,6 +160,9 @@ func Read(dir string) (*Raw, error) {
 	r := &Raw{Dir: dir}
 	if err := yaml.Unmarshal(b, &r.root); err != nil {
 		return nil, errs.Config("%s is not valid YAML", FileName).WithCause(err)
+	}
+	if err := checkLater(&r.root, ""); err != nil {
+		return nil, err
 	}
 	if err := decodeStrict(&r.root, &r.file); err != nil {
 		return nil, err
@@ -218,6 +239,9 @@ func (r *Raw) PickEnv(name string) (string, error) {
 
 // Resolve interpolates dockflow.yml with lookup and returns the configuration of env.
 func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
+	if err := checkLater(&r.root, env); err != nil {
+		return nil, err
+	}
 	node := cloneNode(&r.root)
 	if err := interpolateNode(node, lookup, nil); err != nil {
 		return nil, err
@@ -229,15 +253,6 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 	e := f.Environments[env]
 	if e == nil {
 		return nil, errs.Usage("no environment %q in %s", env, FileName)
-	}
-	if err := checkLater("", f.Settings); err != nil {
-		return nil, err
-	}
-	if err := checkLater("environments."+env+".", e.Settings); err != nil {
-		return nil, err
-	}
-	if e.SecretsFile != "" {
-		return nil, notYet("environments."+env+".secrets_file", "M3")
 	}
 	res := &Resolved{
 		Dir: r.Dir, App: f.App, Env: env,
@@ -254,6 +269,15 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 		if s.OnFailure != "" {
 			res.OnFailure = s.OnFailure
 		}
+		if s.Registry != nil {
+			res.Registry = s.Registry
+		}
+		if s.Build != nil {
+			res.Build = *s.Build
+		}
+	}
+	if err := res.validateImages(env); err != nil {
+		return nil, err
 	}
 	if e.Deploy != nil && e.Deploy.Timeout != "" {
 		d, err := time.ParseDuration(e.Deploy.Timeout)
@@ -277,6 +301,36 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 		}
 	}
 	return res, nil
+}
+
+func (res *Resolved) validateImages(env string) error {
+	if res.Build.Builder == "" {
+		res.Build.Builder = "local"
+	}
+	if res.Build.Engine == "" {
+		res.Build.Engine = "docker"
+	}
+	switch {
+	case res.Build.Builder != "local" && res.Build.Builder != "remote":
+		return errs.Config("build.builder must be local or remote, not %q", res.Build.Builder)
+	case res.Build.Engine != "docker" && res.Build.Engine != "podman":
+		return errs.Config("build.engine must be docker or podman, not %q", res.Build.Engine)
+	case res.Build.Builder == "remote":
+		return notYet("build.builder: remote", "M2, in a later step")
+	case res.Build.Engine == "podman":
+		return notYet("build.engine: podman", "M2, in a later step")
+	}
+	if r := res.Registry; r != nil {
+		if r.URL == "" {
+			return errs.Config("registry.url is required when registry is set").
+				WithHint("remove registry to use the server's own registry")
+		}
+		r.URL = strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(r.URL, "https://"), "http://"), "/")
+		if (r.Username == "") != (r.Password == "") {
+			return errs.Config("registry.username and registry.password go together")
+		}
+	}
+	return nil
 }
 
 func (s *Server) validate(env string) error {
@@ -333,21 +387,37 @@ func (e *Environment) varsOrNil() map[string]string {
 	return e.Vars
 }
 
-func checkLater(prefix string, s Settings) error {
-	nodes := map[string]*yaml.Node{
-		"registry": s.Registry, "build": s.Build, "templates": s.Templates, "uploads": s.Uploads,
-		"hooks": s.Hooks, "notify": s.Notify, "health": s.Health, "firewall": s.Firewall,
-		"routes": s.Routes, "plugins": s.Plugins, "backups": s.Backups,
+// checkLater refuses the keys of the specification that arrive in later milestones, at the top
+// level and in env (every environment when env is empty), before anything else reads them.
+func checkLater(root *yaml.Node, env string) error {
+	doc := root
+	if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
+		doc = doc.Content[0]
 	}
-	keys := make([]string, 0, len(nodes))
-	for k, n := range nodes {
-		if n != nil {
-			keys = append(keys, k)
+	if doc.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(doc.Content); i += 2 {
+		key := doc.Content[i].Value
+		if ms, ok := laterKeys[key]; ok && key != "secrets_file" {
+			return notYet(key, ms)
 		}
-	}
-	sort.Strings(keys)
-	if len(keys) > 0 {
-		return notYet(prefix+keys[0], laterKeys[keys[0]])
+		if key != "environments" || doc.Content[i+1].Kind != yaml.MappingNode {
+			continue
+		}
+		envs := doc.Content[i+1]
+		for j := 0; j+1 < len(envs.Content); j += 2 {
+			name := envs.Content[j].Value
+			if (env != "" && name != env) || envs.Content[j+1].Kind != yaml.MappingNode {
+				continue
+			}
+			e := envs.Content[j+1]
+			for k := 0; k+1 < len(e.Content); k += 2 {
+				if ms, ok := laterKeys[e.Content[k].Value]; ok {
+					return notYet("environments."+name+"."+e.Content[k].Value, ms)
+				}
+			}
+		}
 	}
 	return nil
 }

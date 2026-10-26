@@ -71,12 +71,33 @@ func serve(c net.Conn, cfg *ssh.ServerConfig) {
 		switch nc.ChannelType() {
 		case "direct-streamlocal@openssh.com":
 			go streamlocal(nc)
+		case "direct-tcpip":
+			go directTCP(nc)
 		case "session":
 			go session(nc)
 		default:
 			nc.Reject(ssh.UnknownChannelType, "unsupported")
 		}
 	}
+}
+
+func directTCP(nc ssh.NewChannel) {
+	var p struct {
+		Host       string
+		Port       uint32
+		OriginIP   string
+		OriginPort uint32
+	}
+	if err := ssh.Unmarshal(nc.ExtraData(), &p); err != nil {
+		nc.Reject(ssh.ConnectionFailed, "bad payload")
+		return
+	}
+	conn, err := net.Dial("tcp", net.JoinHostPort(p.Host, fmt.Sprint(p.Port)))
+	if err != nil {
+		nc.Reject(ssh.ConnectionFailed, err.Error())
+		return
+	}
+	pipe(nc, conn)
 }
 
 func streamlocal(nc ssh.NewChannel) {
@@ -94,6 +115,11 @@ func streamlocal(nc ssh.NewChannel) {
 		nc.Reject(ssh.ConnectionFailed, err.Error())
 		return
 	}
+	pipe(nc, conn)
+}
+
+// pipe accepts the channel and copies between it and conn until both sides close.
+func pipe(nc ssh.NewChannel, conn net.Conn) {
 	ch, reqs, err := nc.Accept()
 	if err != nil {
 		conn.Close()
@@ -109,8 +135,8 @@ func streamlocal(nc ssh.NewChannel) {
 	}()
 	go func() {
 		io.Copy(conn, ch)
-		if uc, ok := conn.(*net.UnixConn); ok {
-			uc.CloseWrite()
+		if cw, ok := conn.(interface{ CloseWrite() error }); ok {
+			cw.CloseWrite()
 		}
 		wg.Done()
 	}()

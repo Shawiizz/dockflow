@@ -39,9 +39,10 @@ const (
 
 // Kinds of Dockflow containers.
 const (
-	KindService = "service"
-	KindJob     = "job"
-	KindRun     = "run"
-	KindSwitch  = "switch"
-	KindHelper  = "helper"
+	KindService  = "service"
+	KindJob      = "job"
+	KindRun      = "run"
+	KindSwitch   = "switch"
+	KindRegistry = "registry"
+	KindHelper   = "helper"
 )

@@ -109,7 +109,7 @@ func (a *app) root() *cobra.Command {
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return errs.Usage("%v", err) })
 
 	root.AddCommand(
-		a.planCmd(), a.deployCmd(), a.rollbackCmd(), a.attachCmd(),
+		a.buildCmd(), a.planCmd(), a.deployCmd(), a.rollbackCmd(), a.attachCmd(),
 		a.statusCmd(), a.releasesCmd(), a.versionCmd(), a.lockCmd(),
 		a.validateCmd(), a.configCmd(), a.listCmd(), a.serverCmd(), a.agentCmd(),
 	)

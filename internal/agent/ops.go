@@ -169,7 +169,7 @@ const (
 // SwitchAdminDir is where the admin socket's volume is mounted, in the switch and in the agent.
 const SwitchAdminDir = "/run/dockflow-switch"
 
-// serverInit installs or updates the switch and records the server's settings.
+// serverInit installs or updates the switch and the registry, and records the server's settings.
 func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 	edge := r.req.Edge
 	if edge == "" {
@@ -187,42 +187,77 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 	if err != nil {
 		return failed(err)
 	}
-	existing, err := r.Engine.Containers(ctx, engine.Filter{All: true, Labels: map[string]string{domain.LabelKind: domain.KindSwitch}})
-	if err != nil {
-		return failed(err)
-	}
 	srv := state.Server{Name: r.req.Server, Edge: edge, DockflowVersion: r.req.DockflowVersion}
 
+	// the registry first: it needs no network, and the switch's ports are the likelier failure
+	if r.req.Registry {
+		image := r.req.RegistryImage
+		if image == "" {
+			image = DefaultRegistryImage
+		}
+		pinned, err := r.ensure(ctx, RegistryContainer, domain.KindRegistry, image, registrySpec,
+			"port 5959 must be free on the server's loopback")
+		if err != nil {
+			return failed(err)
+		}
+		srv.RegistryImage = pinned
+	} else if err := r.removeKind(ctx, domain.KindRegistry); err != nil {
+		return failed(err)
+	}
+
+	routes := state.AllRoutes(table)
 	if edge == proxy.EdgeNone {
-		if routes := state.AllRoutes(table); len(routes) > 0 {
+		if len(routes) > 0 {
 			return failed(errs.Plan("server.routes_in_use", "%d routes still go through the switch", len(routes)).
 				WithHint("remove the routes of the apps on this server first"))
 		}
-		for _, c := range existing {
-			if err := r.Engine.Remove(ctx, c.ID); err != nil {
-				return failed(err)
-			}
-		}
-		if err := r.Store.WriteServer(srv); err != nil {
+		if err := r.removeKind(ctx, domain.KindSwitch); err != nil {
 			return failed(err)
 		}
-		r.result(srv)
-		return events.RunFinishedData{Outcome: events.OutcomeSuccess}
+	} else {
+		image := r.req.SwitchImage
+		if image == "" {
+			image = DefaultSwitchImage
+		}
+		if srv.SwitchImage, err = r.ensure(ctx, SwitchContainer, domain.KindSwitch, image, switchSpec,
+			"ports 80 and 443 must be free on the server"); err != nil {
+			return failed(err)
+		}
 	}
-
-	image := r.req.SwitchImage
-	if image == "" {
-		image = DefaultSwitchImage
-	}
-	pinned, err := r.Engine.ResolveImage(ctx, image, "missing")
-	if err != nil {
+	if err := r.Store.WriteServer(srv); err != nil {
 		return failed(err)
 	}
-	srv.SwitchImage = pinned
-	spec := switchSpec(pinned)
+	if edge != proxy.EdgeNone {
+		// a new switch starts empty: give it every app's routes back
+		if err := r.joinNetworks(ctx, routes); err != nil {
+			return failed(err)
+		}
+		if r.Switch == nil {
+			return failed(errs.Internal("the agent has no switch client"))
+		}
+		if err := r.Switch.Apply(ctx, proxy.Config{Edge: edge, Routes: routes}); err != nil {
+			return failed(err)
+		}
+	}
+	r.result(srv)
+	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
+}
+
+// ensure runs the system container name from image, replacing it when its spec changed. It
+// returns the pinned image.
+func (r *runner) ensure(ctx context.Context, name, kind, image string, specOf func(string) domain.ContainerSpec, startHint string) (string, error) {
+	pinned, err := r.Engine.ResolveImage(ctx, image, "missing", nil)
+	if err != nil {
+		return "", err
+	}
+	spec := specOf(pinned)
 	labels := map[string]string{
-		domain.LabelKind: domain.KindSwitch, domain.LabelSchema: "1", domain.LabelManagedBy: "true",
-		domain.LabelHash: (&domain.Service{Name: SwitchContainer, Spec: spec, Replicas: 1}).Hash(),
+		domain.LabelKind: kind, domain.LabelSchema: "1", domain.LabelManagedBy: "true",
+		domain.LabelHash: (&domain.Service{Name: name, Spec: spec, Replicas: 1}).Hash(),
+	}
+	existing, err := r.Engine.Containers(ctx, engine.Filter{All: true, Labels: map[string]string{domain.LabelKind: kind}})
+	if err != nil {
+		return "", err
 	}
 	var keep *engine.Container
 	for i, c := range existing {
@@ -230,42 +265,59 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 			keep = &existing[i]
 			continue
 		}
-		r.ev.Info(events.Log, "replacing the switch", map[string]any{"line": "remove " + c.Name})
+		r.ev.Info(events.Log, "replacing "+c.Name, map[string]any{"line": "remove " + c.Name})
 		if err := r.Engine.Remove(ctx, c.ID); err != nil {
-			return failed(err)
+			return "", err
 		}
 	}
-	if keep == nil {
-		id, err := r.Engine.Create(ctx, SwitchContainer, spec, labels)
-		if err != nil {
-			return failed(err)
+	if keep != nil {
+		if keep.State != "running" {
+			return pinned, r.Engine.Start(ctx, keep.ID)
 		}
-		if err := r.Engine.Start(ctx, id); err != nil {
-			return failed(errs.New("server.switch_start", errs.ExitInternal, "the switch cannot start").WithCause(err).
-				WithHint("ports 80 and 443 must be free on the server"))
+		return pinned, nil
+	}
+	id, err := r.Engine.Create(ctx, name, spec, labels)
+	if err != nil {
+		return "", err
+	}
+	if err := r.Engine.Start(ctx, id); err != nil {
+		return "", errs.Newf("server.start_failed", errs.ExitInternal, "%s cannot start", name).WithCause(err).WithHint("%s", startHint)
+	}
+	r.ev.Info(events.Log, name+" installed", map[string]any{"line": name + " " + pinned})
+	return pinned, nil
+}
+
+func (r *runner) removeKind(ctx context.Context, kind string) error {
+	cs, err := r.Engine.Containers(ctx, engine.Filter{All: true, Labels: map[string]string{domain.LabelKind: kind}})
+	if err != nil {
+		return err
+	}
+	for _, c := range cs {
+		if err := r.Engine.Remove(ctx, c.ID); err != nil {
+			return err
 		}
-		r.ev.Info(events.Log, "switch installed", map[string]any{"line": SwitchContainer + " " + pinned})
-	} else if keep.State != "running" {
-		if err := r.Engine.Start(ctx, keep.ID); err != nil {
-			return failed(err)
-		}
 	}
-	if err := r.Store.WriteServer(srv); err != nil {
-		return failed(err)
+	return nil
+}
+
+// The server-local registry (ADR-0009): loopback only, reached by the CLI through an SSH tunnel.
+const (
+	RegistryContainer    = "dockflow-registry"
+	DefaultRegistryImage = "registry:3"
+	// RegistryAddr is where it listens, on the server; images are named after it.
+	RegistryAddr   = "127.0.0.1:5959"
+	registryVolume = "dockflow-registry-data"
+)
+
+func registrySpec(image string) domain.ContainerSpec {
+	return domain.ContainerSpec{
+		Image:   image,
+		Env:     []string{"OTEL_TRACES_EXPORTER=none", "REGISTRY_STORAGE_DELETE_ENABLED=true"},
+		Restart: "unless-stopped",
+		Ports:   []domain.Port{{HostIP: "127.0.0.1", HostPort: "5959", ContainerPort: 5000, Protocol: "tcp"}},
+		Mounts:  []domain.Mount{{Type: "volume", Source: registryVolume, Target: "/var/lib/registry"}},
+		Logging: &domain.Logging{Driver: "json-file", Options: map[string]string{"max-size": "10m", "max-file": "3"}},
 	}
-	// a new switch starts empty: give it every app's routes back
-	routes := state.AllRoutes(table)
-	if err := r.joinNetworks(ctx, routes); err != nil {
-		return failed(err)
-	}
-	if r.Switch == nil {
-		return failed(errs.Internal("the agent has no switch client"))
-	}
-	if err := r.Switch.Apply(ctx, proxy.Config{Edge: edge, Routes: routes}); err != nil {
-		return failed(err)
-	}
-	r.result(srv)
-	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
 }
 
 func switchSpec(image string) domain.ContainerSpec {

@@ -1,4 +1,3 @@
 services:
   web:
-    build: .
-    image: shop/web
+    image: traefik/whoami

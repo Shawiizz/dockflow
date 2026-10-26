@@ -1,0 +1,6 @@
+version: 1
+app: site
+environments:
+  production:
+    vars:
+      NODE_VERSION: "22"

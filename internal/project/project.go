@@ -12,6 +12,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/compose"
 	"github.com/Shawiizz/dockflow/internal/config"
 	"github.com/Shawiizz/dockflow/internal/domain"
+	"github.com/Shawiizz/dockflow/internal/image"
 	"github.com/Shawiizz/dockflow/internal/secrets"
 )
 
@@ -70,6 +71,7 @@ type Loaded struct {
 	Config   *config.Resolved
 	Secrets  *secrets.Store
 	App      domain.App
+	Builds   []image.Build
 	Builtins map[string]string
 	Warnings []string
 	Version  string
@@ -159,7 +161,7 @@ func Load(ctx context.Context, o Options) (*Loaded, error) {
 		return nil, err
 	}
 	return &Loaded{
-		Raw: raw, Config: cfg, Secrets: store, App: res.App, Builtins: builtins,
+		Raw: raw, Config: cfg, Secrets: store, App: res.App, Builds: res.Builds, Builtins: builtins,
 		Warnings: res.Warnings, Version: version, Git: o.Git,
 	}, nil
 }

@@ -5,6 +5,7 @@ package agent
 
 import (
 	"github.com/Shawiizz/dockflow/internal/domain"
+	"github.com/Shawiizz/dockflow/internal/engine"
 )
 
 // Operations.
@@ -58,6 +59,12 @@ type Request struct {
 	// Edge and SwitchImage configure the server (server.init).
 	Edge        string `json:"edge,omitempty"`
 	SwitchImage string `json:"switch_image,omitempty"`
+
+	// RegistryAuth are the credentials of the external registry, when the app uses one.
+	RegistryAuth *engine.RegistryAuth `json:"registry_auth,omitempty"`
+	// Registry installs the server-local registry (server.init); RegistryImage is its image.
+	Registry      bool   `json:"registry,omitempty"`
+	RegistryImage string `json:"registry_image,omitempty"`
 
 	// Mask lists the secret values to mask in every event.
 	Mask []string `json:"mask,omitempty"`

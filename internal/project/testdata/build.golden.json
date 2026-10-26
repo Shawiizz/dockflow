@@ -1,0 +1,16 @@
+{
+  "service": "app",
+  "context": "\u003cproject\u003e",
+  "dockerfile": "docker/Dockerfile.app",
+  "args": {
+    "API_TOKEN": "token-from-local-file",
+    "NODE_VERSION": "22"
+  },
+  "labels": {
+    "org.opencontainers.image.source": "https://github.com/acme/site"
+  },
+  "target": "runtime",
+  "cache_from": [
+    "type=gha"
+  ]
+}

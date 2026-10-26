@@ -58,7 +58,7 @@ func TestCreateRunAndList(t *testing.T) {
 	p := project(t)
 	cleanup(t, e, p)
 
-	img, err := e.ResolveImage(ctx, testImage, "missing")
+	img, err := e.ResolveImage(ctx, testImage, "missing", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestWaitHealthyFailures(t *testing.T) {
 	ctx := context.Background()
 	p := project(t)
 	cleanup(t, e, p)
-	img, err := e.ResolveImage(ctx, testImage, "missing")
+	img, err := e.ResolveImage(ctx, testImage, "missing", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

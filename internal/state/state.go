@@ -84,7 +84,8 @@ type Server struct {
 	Schema          int    `json:"schema"`
 	Name            string `json:"name"`
 	Edge            string `json:"edge"`
-	SwitchImage     string `json:"switch_image"`
+	SwitchImage     string `json:"switch_image,omitempty"`
+	RegistryImage   string `json:"registry_image,omitempty"`
 	DockflowVersion string `json:"dockflow_version"`
 }
 

@@ -1,7 +1,7 @@
 # ADR-0009: Images: buildx bake, sent to the server through a server-local registry
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (single server: no cluster registry)
+- Date: 2026-10-25, revised 2026-10-26 (single server: no cluster registry; the bake definition written by Dockflow)
 
 ## Context
 
@@ -13,13 +13,14 @@ On one server, the problem is simpler than on a cluster: images must reach one D
 
 ### Build
 
-- Services with `build:` are built with `docker buildx bake` reading the environment's Compose files, so every Compose build key is honoured (target, secrets, ssh, cache, args, labels, platforms).
+- Services with `build:` are built with `docker buildx bake`, from a bake definition Dockflow writes from the Compose build keys it has already interpolated. So `${VAR}` in build keys takes its value from Dockflow's variables and secrets, as in the rest of the Compose file, and every build key bake supports is honoured (target, ssh, cache, args, labels, contexts, network).
+- Bake writes each image as an OCI image layout, so the image never has to be loaded into the local daemon. When the default builder cannot export one (the `docker` driver without the containerd image store), Dockflow creates a `docker-container` builder named `dockflow` and uses it.
 - The target platform is the server's architecture, read from the Engine at plan time.
 - **Where builds run:**
   - on the machine running the CLI (a laptop or a CI runner), by default;
   - on the server, with `build.builder: remote`, through a buildx builder that reaches the server's Docker over SSH. Nothing is transferred after such a build;
   - with `build.engine: podman`, services are built one by one with `podman build`, from the same Compose keys.
-- Tags are `<app>/<service>:<version>` (or `<registry>/<app>/<service>:<version>` with an external registry), plus `registry.additional_tags`. The plan pins digests.
+- Images are `127.0.0.1:5959/<app>/<service>:<version>` in the server-local registry, or `<registry.url>/<app>/<service>:<version>` plus `registry.additional_tags` in an external one. Services run them pinned by digest.
 - `dockflow build [<env>] [--only <services>] [--push]` builds without deploying, as in 1.x.
 
 ### Getting images to the server

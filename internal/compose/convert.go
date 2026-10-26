@@ -13,18 +13,21 @@ import (
 
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/errs"
+	"github.com/Shawiizz/dockflow/internal/image"
 )
 
 // Result is a converted project, with the warnings the conversion produced.
 type Result struct {
-	App      domain.App
+	App domain.App
+	// Builds are the images to build, one per service with `build`.
+	Builds   []image.Build
 	Warnings []string
 }
 
 // supported are the Compose service keys Dockflow handles in this version. Any other key with
 // a value is refused, so nothing is silently dropped (vision, goal 7).
 var supported = map[string]bool{
-	"image": true, "command": true, "entrypoint": true, "environment": true, "labels": true,
+	"image": true, "build": true, "command": true, "entrypoint": true, "environment": true, "labels": true,
 	"user": true, "working_dir": true, "hostname": true, "domainname": true, "ports": true,
 	"expose": true, "volumes": true, "networks": true, "network_mode": true, "healthcheck": true,
 	"restart": true, "deploy": true, "stop_signal": true, "stop_grace_period": true,
@@ -39,7 +42,7 @@ var supported = map[string]bool{
 }
 
 // later are keys that arrive in a later milestone.
-var later = map[string]string{"build": "M2", "secrets": "M3", "configs": "M3"}
+var later = map[string]string{"secrets": "M3", "configs": "M3"}
 
 // ignored are keys with no effect on one server, reported as warnings.
 var ignoredDeploy = []string{"placement", "endpoint_mode", "rollback_config"}
@@ -72,12 +75,78 @@ func Convert(p *types.Project, app, env string) (*Result, error) {
 			return nil, err
 		}
 		r.Warnings = append(r.Warnings, warnings...)
+		if svc.Build != nil {
+			b, warnings, err := convertBuild(svc)
+			if err != nil {
+				return nil, err
+			}
+			r.Warnings = append(r.Warnings, warnings...)
+			r.Builds = append(r.Builds, *b)
+			s.Build = true
+			// the image is named and pinned once built (ADR-0009)
+			s.Spec.Image = app + "/" + svc.Name
+		}
 		r.App.Services = append(r.App.Services, *s)
 	}
 	if err := checkDependencies(&r.App); err != nil {
 		return nil, err
 	}
 	return r, nil
+}
+
+// convertBuild maps the Compose build keys to a bake target (ADR-0009).
+func convertBuild(s types.ServiceConfig) (*image.Build, []string, error) {
+	at := "service " + s.Name + ": build"
+	b := s.Build
+	var warnings []string
+	switch {
+	case len(b.Secrets) > 0:
+		return nil, nil, errs.Config("%s.secrets is not available yet in this version of Dockflow", at).
+			WithHint("it arrives with secrets, in milestone M3 (docs/design/roadmap.md)")
+	case b.Isolation != "":
+		return nil, nil, errs.Config("%s.isolation is for Windows containers, which Dockflow does not deploy", at)
+	case len(b.Ulimits) > 0:
+		return nil, nil, errs.Config("%s.ulimits is not supported by buildx bake", at)
+	case b.Provenance != "" || b.SBOM != "":
+		return nil, nil, errs.Config("%s: provenance and sbom attestations are not supported yet", at)
+	}
+	if len(b.Platforms) > 0 {
+		warnings = append(warnings, fmt.Sprintf("%s.platforms is ignored: images are built for the server's platform", at))
+	}
+	if len(b.Tags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("%s.tags is ignored: images are tagged <app>/<service>:<version>, plus registry.additional_tags", at))
+	}
+	out := &image.Build{
+		Service: s.Name, Context: b.Context, Dockerfile: b.Dockerfile, DockerfileInline: b.DockerfileInline,
+		Labels: copyMap(b.Labels), Target: b.Target, CacheFrom: b.CacheFrom, CacheTo: b.CacheTo,
+		NoCache: b.NoCache, NoCacheFilter: b.NoCacheFilter, Pull: b.Pull, Network: b.Network,
+		ShmSize: int64(b.ShmSize), Entitlements: b.Entitlements,
+	}
+	if b.Privileged {
+		out.Entitlements = append(out.Entitlements, "security.insecure")
+	}
+	if len(b.AdditionalContexts) > 0 {
+		out.AdditionalContexts = map[string]string(b.AdditionalContexts)
+	}
+	if len(b.Args) > 0 {
+		out.Args = map[string]string{}
+		for k, v := range b.Args {
+			if v != nil {
+				out.Args[k] = *v
+			}
+		}
+	}
+	if len(b.ExtraHosts) > 0 {
+		out.ExtraHosts = b.ExtraHosts.AsList(":")
+	}
+	for _, k := range b.SSH {
+		if k.Path == "" {
+			out.SSH = append(out.SSH, k.ID)
+		} else {
+			out.SSH = append(out.SSH, k.ID+"="+k.Path)
+		}
+	}
+	return out, warnings, nil
 }
 
 func convertService(p *types.Project, stack string, s types.ServiceConfig) (*domain.Service, []string, error) {
@@ -89,9 +158,8 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 	if err := checkKeys(s); err != nil {
 		return nil, nil, err
 	}
-	if s.Image == "" {
-		return nil, nil, errs.Config("%s: `image` is required", at).
-			WithHint("building images arrives with milestone M2; until then, every service names an image")
+	if s.Image == "" && s.Build == nil {
+		return nil, nil, errs.Config("%s: `image` or `build` is required", at)
 	}
 	x, err := readExtension(s)
 	if err != nil {
@@ -334,7 +402,8 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 		HealthGrace:   domain.Duration(10 * time.Second),
 	}
 	switch s.PullPolicy {
-	case "", types.PullPolicyMissing, types.PullPolicyIfNotPresent:
+	case "", types.PullPolicyMissing, types.PullPolicyIfNotPresent, types.PullPolicyBuild:
+		// built images are always built, and pulled by digest from the registry
 		svc.PullPolicy = "missing"
 	case types.PullPolicyAlways, types.PullPolicyNever:
 		svc.PullPolicy = s.PullPolicy

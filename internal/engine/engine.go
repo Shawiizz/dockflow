@@ -69,12 +69,20 @@ type Engine interface {
 	CreateVolume(ctx context.Context, v domain.Volume, project string) error
 
 	// ResolveImage makes the image available according to Compose's pull_policy (missing,
-	// always, never) and returns a reference pinned to its content.
-	ResolveImage(ctx context.Context, ref, policy string) (string, error)
+	// always, never) and returns a reference pinned to its content. auth, when set, is used to
+	// pull from its registry.
+	ResolveImage(ctx context.Context, ref, policy string, auth *RegistryAuth) (string, error)
 	// ImportImage creates an image from a filesystem tar (the agent image, ADR-0004).
 	ImportImage(ctx context.Context, tar io.Reader, ref string, changes []string) error
 	HasImage(ctx context.Context, ref string) (bool, error)
 	RemoveImage(ctx context.Context, ref string) error
+}
+
+// RegistryAuth are the credentials of a registry.
+type RegistryAuth struct {
+	Server   string `json:"server"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 // Attached is an attached container: its stdin, and its stdout and stderr, demultiplexed.

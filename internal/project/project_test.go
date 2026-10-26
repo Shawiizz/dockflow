@@ -2,6 +2,7 @@ package project
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -57,9 +58,27 @@ func TestMissingVariableIsAnError(t *testing.T) {
 func TestLaterKeyIsRefused(t *testing.T) {
 	_, err := load(t, "later-key", "production")
 	e, ok := errs.As(err)
-	if !ok || !strings.Contains(e.Message, "`build`") || !strings.Contains(e.Hint, "M2") {
-		t.Fatalf("want build refused until M2, got %v", err)
+	if !ok || !strings.Contains(e.Message, "`firewall`") || !strings.Contains(e.Hint, "M3") {
+		t.Fatalf("want firewall refused until M3, got %v", err)
 	}
+}
+
+func TestBuildIsConverted(t *testing.T) {
+	l, err := load(t, "build", "production")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, _ := l.App.Service("app")
+	if !app.Build || app.Spec.Image != "site/app" {
+		t.Fatalf("a built service is named <app>/<service> until it is pinned: %+v", app)
+	}
+	b := l.Builds[0]
+	dir, _ := filepath.Abs("testdata/build")
+	if b.Context != dir {
+		t.Fatalf("the context must be absolute: %s", b.Context)
+	}
+	b.Context = "<project>"
+	testutil.Golden(t, "build", b)
 }
 
 func contains(list []string, s string) bool {

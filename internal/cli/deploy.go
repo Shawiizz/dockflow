@@ -19,7 +19,7 @@ import (
 var timeNow = time.Now
 
 func (a *app) planCmd() *cobra.Command {
-	var render bool
+	var render, noBuild bool
 	cmd := &cobra.Command{
 		Use:   "plan [<env>]",
 		Short: "Print what a deploy would change",
@@ -31,6 +31,11 @@ func (a *app) planCmd() *cobra.Command {
 			}
 			defer s.Close()
 			a.warnings(s)
+			if !noBuild {
+				if err := s.ship(cmd.Context(), nil); err != nil {
+					return err
+				}
+			}
 			req := s.request(agent.OpPlan)
 			req.Desired = &s.loaded.App
 			if _, err = s.runAgent(cmd.Context(), req); err != nil {
@@ -45,6 +50,7 @@ func (a *app) planCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&render, "render", false, "also print the service specs that would be sent")
+	cmd.Flags().BoolVar(&noBuild, "no-build", false, "plan without building: built services show as changed")
 	return cmd
 }
 
@@ -77,6 +83,9 @@ func (a *app) deployCmd() *cobra.Command {
 			defer s.Close()
 			a.warnings(s)
 			ctx := cmd.Context()
+			if err := s.ship(ctx, nil); err != nil {
+				return err
+			}
 			fingerprint := ""
 			if a.interactive() {
 				// show the plan, then apply exactly that plan once confirmed

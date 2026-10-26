@@ -28,6 +28,8 @@ linters:
         - (*compress/gzip.Writer).Write
         - (*compress/gzip.Writer).Close
         - os.Remove
+        - os.RemoveAll
+        - (*io.PipeWriter).Close
         - syscall.Flock
   exclusions:
     rules:

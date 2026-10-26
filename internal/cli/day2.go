@@ -358,11 +358,12 @@ func (a *app) configCmd() *cobra.Command {
 
 func (a *app) serverCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "server", Short: "Manage servers"}
-	var edge, switchImage string
+	var edge, switchImage, registryImage string
+	var noRegistry bool
 	initCmd := &cobra.Command{
 		Use:   "init [<env>]",
-		Short: "Install the switch on an environment's server",
-		Long:  "Installs or updates the switch on the server of an environment, reached as for a deploy. Provisioning a bare server comes in a later version.",
+		Short: "Install the switch and the registry on an environment's server",
+		Long:  "Installs or updates the switch and the server-local registry on the server of an environment, reached as for a deploy. Provisioning a bare server comes in a later version.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s, err := a.connect(cmd.Context(), envArg(args), "")
@@ -374,6 +375,8 @@ func (a *app) serverCmd() *cobra.Command {
 			req.Stack = ""
 			req.Edge = edge
 			req.SwitchImage = switchImage
+			req.Registry = !noRegistry
+			req.RegistryImage = registryImage
 			_, err = s.runAgent(cmd.Context(), req)
 			if err == nil && !a.json {
 				fmt.Fprintf(a.stdout, "✓ %s is ready (edge: %s)\n", s.target.Server.Name, edgeName(edge))
@@ -383,6 +386,8 @@ func (a *app) serverCmd() *cobra.Command {
 	}
 	initCmd.Flags().StringVar(&edge, "edge", "builtin", "how traffic reaches the switch: builtin or none")
 	initCmd.Flags().StringVar(&switchImage, "switch-image", "", "the Caddy image of the switch (default caddy:2, pinned by digest)")
+	initCmd.Flags().BoolVar(&noRegistry, "no-registry", false, "no server-local registry: every built image goes to registry.url")
+	initCmd.Flags().StringVar(&registryImage, "registry-image", "", "the image of the server-local registry (default registry:3, pinned by digest)")
 	cmd.AddCommand(initCmd)
 	return cmd
 }

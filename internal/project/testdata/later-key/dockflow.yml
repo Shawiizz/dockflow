@@ -1,4 +1,6 @@
 version: 1
 app: shop
+firewall:
+  public_ports: [25565]
 environments:
   production: {}

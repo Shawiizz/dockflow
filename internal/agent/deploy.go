@@ -209,7 +209,7 @@ func (r *runner) resolve(ctx context.Context, a *domain.App, pull bool) error {
 		} else if (!have && policy != "never") || policy == "always" {
 			r.ev.Info(events.Log, "pulling "+ref, map[string]any{"line": "pull " + ref})
 		}
-		pinned, err := r.Engine.ResolveImage(ctx, ref, policy)
+		pinned, err := r.Engine.ResolveImage(ctx, ref, policy, r.req.RegistryAuth)
 		if err != nil {
 			return err
 		}

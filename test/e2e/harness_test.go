@@ -44,10 +44,11 @@ func env(k, def string) string {
 }
 
 var (
-	dindImage   = env("DOCKFLOW_E2E_DIND_IMAGE", "mirror.gcr.io/library/docker:dind")
-	whoamiImage = env("DOCKFLOW_E2E_WHOAMI_IMAGE", "traefik/whoami:latest")
-	caddyImage  = env("DOCKFLOW_E2E_CADDY_IMAGE", "mirror.gcr.io/library/caddy:2")
-	alpineImage = env("DOCKFLOW_E2E_ALPINE_IMAGE", "mirror.gcr.io/library/alpine:3")
+	dindImage     = env("DOCKFLOW_E2E_DIND_IMAGE", "mirror.gcr.io/library/docker:dind")
+	whoamiImage   = env("DOCKFLOW_E2E_WHOAMI_IMAGE", "traefik/whoami:latest")
+	caddyImage    = env("DOCKFLOW_E2E_CADDY_IMAGE", "mirror.gcr.io/library/caddy:2")
+	alpineImage   = env("DOCKFLOW_E2E_ALPINE_IMAGE", "mirror.gcr.io/library/alpine:3")
+	registryImage = env("DOCKFLOW_E2E_REGISTRY_IMAGE", "mirror.gcr.io/library/registry:3")
 )
 
 func TestMain(m *testing.M) {
@@ -114,7 +115,7 @@ func setup() (int, error) {
 	}
 
 	// the server has no network: it gets its images from here
-	for _, img := range []string{whoamiImage, caddyImage, alpineImage} {
+	for _, img := range []string{whoamiImage, caddyImage, alpineImage, registryImage} {
 		if _, err := sh("docker", "image", "inspect", img); err != nil {
 			if _, err := sh("docker", "pull", img); err != nil {
 				return 1, err
@@ -178,7 +179,7 @@ func setup() (int, error) {
 	// the switch, as a user would install it
 	dir := filepath.Join(workDir, "init")
 	writeProject(nil, dir, "init", "services: {}\n")
-	if r := dockflow(nil, dir, "server", "init", "--switch-image", caddyImage); r.code != 0 {
+	if r := dockflow(nil, dir, "server", "init", "--switch-image", caddyImage, "--registry-image", registryImage); r.code != 0 {
 		return 1, fmt.Errorf("server init: exit %d: %s", r.code, r.out)
 	}
 	return 0, nil

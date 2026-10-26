@@ -57,10 +57,12 @@ type Service struct {
 	Replicas int           `json:"replicas"`
 	Spec     ContainerSpec `json:"spec"`
 	// PullPolicy is Compose's pull_policy: missing (default), always, never.
-	PullPolicy string       `json:"pull_policy"`
-	Routes     []Route      `json:"routes,omitempty"`
-	DependsOn  []Dependency `json:"depends_on,omitempty"`
-	Stateful   bool         `json:"stateful,omitempty"`
+	PullPolicy string `json:"pull_policy"`
+	// Build tells that Dockflow builds the image, so it is named and pinned at deploy time.
+	Build     bool         `json:"build,omitempty"`
+	Routes    []Route      `json:"routes,omitempty"`
+	DependsOn []Dependency `json:"depends_on,omitempty"`
+	Stateful  bool         `json:"stateful,omitempty"`
 	// Drain is how long requests in flight are given before old containers stop (switch).
 	Drain Duration `json:"drain"`
 	// HealthGrace is how long a container without a healthcheck must run to count as healthy.

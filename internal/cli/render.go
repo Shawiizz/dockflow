@@ -64,6 +64,10 @@ func (h *human) Emit(e events.Event) {
 		fmt.Fprintln(h.w, h.paint("32", "Nothing to change."))
 		return
 	}
+	if e.Type == events.BuildLog {
+		fmt.Fprintln(h.w, h.paint("2", "  │ "+e.Msg))
+		return
+	}
 	prefix := "  "
 	switch e.Level {
 	case events.Warn:

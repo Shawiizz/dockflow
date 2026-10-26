@@ -3,6 +3,8 @@ package docker
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +21,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/registry"
 	"github.com/moby/moby/client"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
@@ -406,7 +409,7 @@ func (e *Engine) HasImage(ctx context.Context, ref string) (bool, error) {
 	return false, apiErr("inspect image "+ref, err)
 }
 
-func (e *Engine) ResolveImage(ctx context.Context, ref, policy string) (string, error) {
+func (e *Engine) ResolveImage(ctx context.Context, ref, policy string, auth *engine.RegistryAuth) (string, error) {
 	have, err := e.HasImage(ctx, ref)
 	if err != nil {
 		return "", err
@@ -414,10 +417,10 @@ func (e *Engine) ResolveImage(ctx context.Context, ref, policy string) (string, 
 	switch policy {
 	case "", "missing", "if_not_present":
 		if !have {
-			err = e.pull(ctx, ref)
+			err = e.pull(ctx, ref, auth)
 		}
 	case "always":
-		err = e.pull(ctx, ref)
+		err = e.pull(ctx, ref, auth)
 	case "never":
 		if !have {
 			return "", errs.Plan("plan.image_missing", "image %s is not on the server and pull_policy is never", ref)
@@ -457,8 +460,13 @@ func pin(ref, id string, repoDigests []string) string {
 	return id
 }
 
-func (e *Engine) pull(ctx context.Context, ref string) error {
-	r, err := e.c.ImagePull(ctx, ref, client.ImagePullOptions{})
+func (e *Engine) pull(ctx context.Context, ref string, auth *engine.RegistryAuth) error {
+	opts := client.ImagePullOptions{}
+	if auth != nil && authFor(ref, auth.Server) {
+		b, _ := json.Marshal(registry.AuthConfig{Username: auth.Username, Password: auth.Password, ServerAddress: auth.Server})
+		opts.RegistryAuth = base64.URLEncoding.EncodeToString(b)
+	}
+	r, err := e.c.ImagePull(ctx, ref, opts)
 	if err == nil {
 		err = r.Wait(ctx)
 	}
@@ -467,6 +475,16 @@ func (e *Engine) pull(ctx context.Context, ref string) error {
 			WithHint("check the image name and that the server can reach the registry (and is logged in to it)")
 	}
 	return nil
+}
+
+// authFor tells whether ref lives on the registry server.
+func authFor(ref, server string) bool {
+	named, err := reference.ParseNormalizedNamed(ref)
+	if err != nil {
+		return false
+	}
+	host, _, _ := strings.Cut(server, "/")
+	return reference.Domain(named) == host
 }
 
 func (e *Engine) ImportImage(ctx context.Context, tar io.Reader, ref string, changes []string) error {

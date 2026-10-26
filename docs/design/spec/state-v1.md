@@ -13,7 +13,7 @@ All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/000
 
 ```
 /var/lib/dockflow/
-├── server.json                     server settings: edge, switch image, filter state, versions
+├── server.json                     server settings: edge, switch and registry images, filter state, versions
 ├── server.lock                     empty file, held with flock while the switch's configuration changes
 ├── switch/routes/<stack>.json      the routes the switch serves for each app environment
 ├── apps/<stack>/

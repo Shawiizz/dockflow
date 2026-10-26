@@ -117,7 +117,7 @@ func (s *session) request(op string) agent.Request {
 		Server: s.target.Server.Name, Author: author(), Version: l.Version,
 		Source:          domain.Source{GitSHA: l.Git.SHA, Branch: l.Git.Branch, Dirty: l.Git.Dirty},
 		DockflowVersion: version.Version, Keep: l.Config.Keep, OnFailure: l.Config.OnFailure,
-		Timeout: domain.Duration(l.Config.Timeout), Mask: l.Secrets.Values(),
+		Timeout: domain.Duration(l.Config.Timeout), Mask: l.Secrets.Values(), RegistryAuth: registryAuth(l),
 	}
 	return req
 }
