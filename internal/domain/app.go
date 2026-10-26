@@ -64,6 +64,9 @@ type Service struct {
 	Spec     ContainerSpec `json:"spec"`
 	// PullPolicy is Compose's pull_policy: missing (default), always, never.
 	PullPolicy string `json:"pull_policy"`
+	// Stopped is set by `dockflow stop`: the service runs no container until a deploy or a
+	// restart.
+	Stopped bool `json:"stopped,omitempty"`
 	// Job is before or after for a one-off job run in every deploy that changes something; empty
 	// for a long-running service (ADR-0010).
 	Job string `json:"job,omitempty"`
@@ -91,8 +94,9 @@ func (s *Service) Hash() string {
 		Replicas  int
 		Name      string
 		Container string
+		Stopped   bool `json:",omitempty"`
 	}
-	b, _ := json.Marshal(hashed{s.Spec, s.Replicas, s.Name, s.ContainerName})
+	b, _ := json.Marshal(hashed{s.Spec, s.Replicas, s.Name, s.ContainerName, s.Stopped})
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])[:16]
 }
@@ -118,6 +122,14 @@ type Endpoint struct {
 	Retries        int      `json:"retries"`
 	RetryDelay     Duration `json:"retry_delay"`
 	ValidateCerts  bool     `json:"validate_certs"`
+}
+
+// Count is how many containers the service runs: its replicas, or none when stopped.
+func (s *Service) Count() int {
+	if s.Stopped {
+		return 0
+	}
+	return s.Replicas
 }
 
 // Dependency is one depends_on entry.

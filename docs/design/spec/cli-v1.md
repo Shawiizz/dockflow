@@ -37,7 +37,7 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 | `dockflow rollback [<env>] [--to <seq\|version>] [--service <name>]` | Re-applies a recorded release, by default the previous one. `--service` restores one service only |
 | `dockflow attach [<env>] [<run-id>]` | Follows a run in progress, or replays a finished one |
 | `dockflow cancel [<env>]` | Asks the running agent to stop and roll back |
-| `dockflow destroy [<env>] [--only <services>] [--volumes]` | Removes an environment, or some of its services, from the server. `--volumes` also deletes their data and asks to type the environment's name |
+| `dockflow destroy [<env>] [--only <services>] [--volumes]` | Removes an environment (its containers, routes, networks and state), or some of its services, from the server. Asks for confirmation on a terminal; `--volumes` also deletes their data and asks to type the environment's name, or needs `--yes` without a terminal |
 
 ## Day-2
 
@@ -46,18 +46,18 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 | `dockflow status [<env>]` | Without `<env>`: every environment. With it: current release, services and container counts, degraded flag, lock, watchdog restarts |
 | `dockflow ps [<env>] [-a]` | The app's containers; `-a` includes stopped ones and jobs |
 | `dockflow details [<env>]` | Full view of services: image, ports, networks, mounts, placement, resources |
-| `dockflow diagnose [<env>]` | Why containers don't run: exit codes, crash loops, failed health checks, OOM kills, ports in use, disk space |
+| `dockflow diagnose [<env>]` | Why containers don't run: exit codes, crash loops, failed health checks with their last output, OOM kills, ports in use, missing containers, disk space. Exits with code 9 when it finds a problem |
 | `dockflow releases [<env>] [-n <count>] [--stats]` | Release history; `--stats` adds durations and success rate |
 | `dockflow version [<env>]` | The deployed version; without `<env>`, the CLI's |
 | `dockflow logs [<env>] [<service>] [-f] [-n <lines>\|all] [--since <time>] [--timestamps] [--all] [--pick] [--no-prefix]` | Service logs; `--all` includes the previous release's and stopped containers |
 | `dockflow exec [<env>] <service> [-e K=V]… [-u <user>] [-w <dir>] [--sh] [-T] [--pick] [-- <cmd…>]` | A command in a running container; a shell by default |
 | `dockflow run [<env>] <service> [-e K=V]… -- <cmd…>` | A one-off job with the service's spec (a console, a script) |
 | `dockflow cp [<env>] <src> <dest> [--pick]` | Copies files between the local machine and a container, in either direction (`service:/path`) |
-| `dockflow ssh [<env>] [<command>]` | A shell, or a command, on the server |
+| `dockflow ssh [<env>] [-- <command>…]` | A shell, or a command, on the server |
 | `dockflow restart [<env>] [<service>]` | Restarts services with their rollout strategy, so routed services restart without downtime |
 | `dockflow stop [<env>] [<service>]` | Scales services to 0; `deploy` or `restart` brings them back |
 | `dockflow scale [<env>] <service> <replicas>` | Changes replicas until the next deploy, which restores Compose's count and says so in its plan |
-| `dockflow prune [<env>] [--images] [--containers] [--volumes] [--networks] [-a]` | Cleans unused Docker objects on the server |
+| `dockflow prune [<env>] [--images] [--containers] [--volumes] [--networks] [-a]` | Cleans unused Docker objects on the server. Without a kind: stopped containers, untagged images and networks. `-a` removes every unused image, not only untagged ones. Never removes what Dockflow manages, app volumes, or the images of releases in retention; `--volumes` removes unused anonymous volumes only |
 | `dockflow list envs\|services [<env>]\|images [<env>] [-a]` | Lists |
 | `dockflow lock status\|acquire\|release [<env>] [-m <message>] [--force]` | `acquire` holds the lock by hand (a maintenance window) until `release`; a manual lock never expires. `--force` releases or takes over someone else's |
 
@@ -121,4 +121,6 @@ Internal commands are hidden from help: `agent`, `provision` and `filter apply`.
 | 11 | A fatal hook failed before anything changed |
 | 130 | Interrupted: the run was cancelled and rolled back |
 
-`exec`, `run` and `ssh` exit with the command's own exit code. When they cannot start it, they use the codes above.
+`exec`, `run` and `ssh` exit with the command's own exit code. When they cannot start it, they use the codes above. They connect the terminal to the command, so their output is the command's own, not masked: the user runs it.
+
+**Ctrl+C** cancels a command, except during an agent's run: then the first one asks the agent to stop and roll back, and a second one detaches ([ADR-0004](../adr/0004-ephemeral-agent.md)).

@@ -69,20 +69,32 @@ func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
 	}
 
 	var desired domain.App
+	var restart []string
 	rollbackOf := 0
 	version, source := r.req.Version, r.req.Source
-	if r.req.Op == OpRollback {
+	switch r.req.Op {
+	case OpRollback:
 		target, err := r.rollbackTarget()
 		if err != nil {
 			return failed(err)
 		}
 		desired, rollbackOf, version, source = target.Desired, target.Seq, target.Version, target.Source
 		r.ev.Info(events.Log, fmt.Sprintf("rolling back to release %d (%s)", target.Seq, target.Version), map[string]any{"line": "target release " + strconv.Itoa(target.Seq)})
-	} else {
+	case OpDeploy:
 		if r.req.Desired == nil {
 			return failed(errs.Usage("deploy needs the desired app"))
 		}
 		desired = *r.req.Desired
+	default:
+		// restart, stop, scale, destroy --only: the current release, changed
+		cur, err := r.currentRelease()
+		if err != nil {
+			return failed(err)
+		}
+		version, source = cur.Version, cur.Source
+		if desired, restart, err = r.changed(cur.Desired); err != nil {
+			return failed(err)
+		}
 	}
 	if err := r.resolve(ctx, &desired, true); err != nil {
 		return failed(err)
@@ -94,7 +106,7 @@ func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
 	if err != nil {
 		return failed(err)
 	}
-	p, err := planner.Plan(desired, o.actual)
+	p, err := planner.Plan(desired, o.actual, restart...)
 	if err != nil {
 		return failed(err)
 	}
@@ -120,7 +132,7 @@ func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
 		App: desired.Name, Env: desired.Env, Server: r.req.Server, Seq: seq, Version: version,
 		Status: domain.StatusApplying, Run: r.req.Run, CreatedAt: r.Now().UTC(), CreatedBy: r.req.Author,
 		Source: source, DockflowVersion: r.req.DockflowVersion, RollbackOf: rollbackOf, Desired: desired,
-		PlanFingerprint: p.Fingerprint,
+		PlanFingerprint: p.Fingerprint, Op: r.req.Op,
 	}
 	if err := r.app.WriteRelease(rel); err != nil {
 		return failed(err)
@@ -458,7 +470,7 @@ func containerLabels(stack string, s *domain.Service, seq, n int) map[string]str
 
 // startNew creates and starts the containers of release seq, and waits until they are healthy.
 func (r *runner) startNew(ctx context.Context, s *domain.Service, seq int, st *step) error {
-	for n := 1; n <= s.Replicas; n++ {
+	for n := 1; n <= s.Count(); n++ {
 		name := containerName(r.stack, s, seq, n)
 		id, err := r.Engine.Create(ctx, name, s.Spec, containerLabels(r.stack, s, seq, n))
 		if err != nil {
@@ -504,8 +516,8 @@ func (r *runner) startNew(ctx context.Context, s *domain.Service, seq int, st *s
 		}
 		return err
 	}
-	r.ev.Info(events.ServiceHealthy, fmt.Sprintf("%s: %d/%d healthy", s.Name, s.Replicas, s.Replicas), map[string]any{
-		"service": s.Name, "healthy": s.Replicas, "desired": s.Replicas,
+	r.ev.Info(events.ServiceHealthy, fmt.Sprintf("%s: %d/%d healthy", s.Name, s.Count(), s.Count()), map[string]any{
+		"service": s.Name, "healthy": s.Count(), "desired": s.Count(),
 	})
 	return r.checkPolicy(r.checkContainers(ctx, s, st.newNames))
 }
@@ -713,12 +725,12 @@ func (r *runner) commit(ctx context.Context, rel *domain.Release, desired *domai
 			}
 		}
 	}
-	r.prune(ctx)
+	r.pruneReleases(ctx)
 	return nil
 }
 
-// prune applies the retention rule and removes the images no kept release uses.
-func (r *runner) prune(ctx context.Context) {
+// pruneReleases applies the retention rule and removes the images no kept release uses.
+func (r *runner) pruneReleases(ctx context.Context) {
 	keep := r.req.Keep
 	if keep < 2 {
 		keep = 10

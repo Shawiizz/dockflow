@@ -129,6 +129,17 @@ func TestJobsDoNotRunWithoutAChange(t *testing.T) {
 	}
 }
 
+func TestRestartReplacesUnchangedServices(t *testing.T) {
+	a := app()
+	p, err := Plan(a, deployed(a, 3), "web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Actions) != 1 || p.Actions[0].Kind != domain.ActionUpdateService || p.Actions[0].Target != "web" || p.Actions[0].Reason != "restart" {
+		t.Fatalf("want web restarted alone, got %+v", p.Actions)
+	}
+}
+
 func TestMissingExternalNetwork(t *testing.T) {
 	a := app()
 	a.Networks = append(a.Networks, domain.Network{Key: "shared", Name: "shared", External: true})

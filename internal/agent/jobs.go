@@ -19,8 +19,8 @@ const defaultJobTimeout = 30 * time.Minute
 // runJob runs a job of release seq as a one-off container on the new image, streams its output,
 // and fails unless it exits 0 (ADR-0010).
 func (r *runner) runJob(ctx context.Context, s *domain.Service, seq int) error {
-	if r.req.Op == OpRollback {
-		r.ev.Info(events.Log, s.Name+": jobs are not run again by a rollback", map[string]any{"line": "skip job " + s.Name})
+	if r.req.Op != OpDeploy {
+		r.ev.Info(events.Log, fmt.Sprintf("%s: jobs run on deploys only, not on %s", s.Name, r.req.Op), map[string]any{"line": "skip job " + s.Name})
 		return nil
 	}
 	timeout := r.req.Timeout.D()
@@ -41,7 +41,7 @@ func (r *runner) runJob(ctx context.Context, s *domain.Service, seq int) error {
 	}
 	jctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	logs, err := r.Engine.Logs(jctx, id, true, true)
+	logs, err := r.Engine.Logs(jctx, id, engine.LogOptions{Follow: true, Stderr: true})
 	if err != nil {
 		return err
 	}

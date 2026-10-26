@@ -47,6 +47,7 @@ const (
 	KindService  = "service"
 	KindJob      = "job"
 	KindRun      = "run"
+	KindOneOff   = "oneoff"
 	KindSwitch   = "switch"
 	KindRegistry = "registry"
 	KindHelper   = "helper"

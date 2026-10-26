@@ -74,7 +74,7 @@ type Loaded struct {
 	Builds   []image.Build
 	Builtins map[string]string
 	// Values are every variable templates see: built-ins, secrets and vars.
-	Values map[string]string
+	Values   map[string]string
 	Warnings []string
 	Version  string
 	Git      Git

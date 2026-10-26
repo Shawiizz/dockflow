@@ -72,7 +72,7 @@ func (l *Launcher) Run(ctx context.Context, req agent.Request, interrupts <-chan
 	if err != nil {
 		return nil, err
 	}
-	att, err := l.Engine.Attach(ctx, id)
+	att, err := l.Engine.Attach(ctx, id, false)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func (l *Launcher) Attach(ctx context.Context, run string) (*Result, error) {
 		return nil, errs.Newf("run.unknown", errs.ExitUsage, "no run %s on this server", run).
 			WithHint("finished runs are kept: the %d most recent", keepRuns)
 	}
-	logs, err := l.Engine.Logs(ctx, c.ID, true, false)
+	logs, err := l.Engine.Logs(ctx, c.ID, engine.LogOptions{Follow: true})
 	if err != nil {
 		return nil, err
 	}

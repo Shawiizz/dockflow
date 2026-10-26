@@ -94,6 +94,7 @@ func (r *runner) status(ctx context.Context) events.RunFinishedData {
 		return failed(err)
 	}
 	st := Status{App: r.req.App, Env: r.req.Env, State: o.actual.Env, Services: []ServiceStatus{}}
+	st.DiskFree, st.DiskTotal = diskUsage(r.Store.Root())
 	if st.Lock, err = r.app.ManualLock(); err != nil {
 		return failed(err)
 	}
@@ -119,7 +120,7 @@ func (r *runner) status(ctx context.Context) events.RunFinishedData {
 		ss := ServiceStatus{Name: name, Containers: []domain.ContainerInfo{}}
 		if o.current != nil {
 			if s, ok := o.current.Desired.Service(name); ok {
-				ss.Strategy, ss.Desired = s.Strategy, s.Replicas
+				ss.Strategy, ss.Desired = s.Strategy, s.Count()
 				for _, rt := range s.Routes {
 					for _, d := range rt.Domains {
 						ss.Domains = append(ss.Domains, d+rt.Path)

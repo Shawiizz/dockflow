@@ -8,6 +8,17 @@ import (
 	"github.com/Shawiizz/dockflow/internal/engine"
 )
 
+// PruneRequest selects the unused Docker objects prune removes.
+type PruneRequest struct {
+	Containers bool `json:"containers"`
+	Images     bool `json:"images"`
+	// AllImages removes every unused image, not only untagged ones; images of releases in
+	// retention are always kept.
+	AllImages bool `json:"all_images"`
+	Volumes   bool `json:"volumes"`
+	Networks  bool `json:"networks"`
+}
+
 // Operations.
 const (
 	OpPlan        = "plan"
@@ -19,6 +30,12 @@ const (
 	OpLockRelease = "lock.release"
 	OpLockStatus  = "lock.status"
 	OpServerInit  = "server.init"
+	OpRestart     = "restart"
+	OpStop        = "stop"
+	OpScale       = "scale"
+	OpDestroy     = "destroy"
+	OpPrune       = "prune"
+	OpDetails     = "details"
 )
 
 // Request is the agent's input. Secret values reach the agent only here, on stdin, never in its
@@ -55,6 +72,14 @@ type Request struct {
 
 	// Target is the release to roll back to; 0 means the previous one.
 	Target int `json:"target,omitempty"`
+	// Services are the services restart, stop, scale and destroy act on; none means all.
+	Services []string `json:"services,omitempty"`
+	// Replicas is scale's count.
+	Replicas int `json:"replicas,omitempty"`
+	// Volumes also deletes the app's volumes (destroy).
+	Volumes bool `json:"volumes,omitempty"`
+	// Prune selects what prune removes.
+	Prune *PruneRequest `json:"prune,omitempty"`
 
 	// Lock describes a manual lock (lock.acquire).
 	Lock *domain.LockInfo `json:"lock,omitempty"`
@@ -83,6 +108,9 @@ type Status struct {
 	Current  *ReleaseSummary   `json:"current,omitempty"`
 	Services []ServiceStatus   `json:"services"`
 	Lock     *domain.LockInfo  `json:"manual_lock,omitempty"`
+	// DiskFree and DiskTotal are the bytes of the filesystem holding Dockflow's state.
+	DiskFree  uint64 `json:"disk_free,omitempty"`
+	DiskTotal uint64 `json:"disk_total,omitempty"`
 }
 
 // ServiceStatus is one service in status.
@@ -107,6 +135,7 @@ type ReleaseSummary struct {
 	CreatedBy  domain.Author        `json:"created_by"`
 	Source     domain.Source        `json:"source"`
 	RollbackOf int                  `json:"rollback_of,omitempty"`
+	Op         string               `json:"op,omitempty"`
 	Services   map[string]string    `json:"services"` // service → image
 	Error      *domain.ReleaseError `json:"error,omitempty"`
 }
@@ -116,7 +145,7 @@ func Summarise(r *domain.Release) ReleaseSummary {
 	s := ReleaseSummary{
 		Seq: r.Seq, Version: r.Version, Status: r.Status, Run: r.Run,
 		CreatedAt: r.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"), CreatedBy: r.CreatedBy,
-		Source: r.Source, RollbackOf: r.RollbackOf, Error: r.Error, Services: map[string]string{},
+		Source: r.Source, RollbackOf: r.RollbackOf, Op: r.Op, Error: r.Error, Services: map[string]string{},
 	}
 	if r.FinishedAt != nil {
 		s.FinishedAt = r.FinishedAt.UTC().Format("2006-01-02T15:04:05Z")

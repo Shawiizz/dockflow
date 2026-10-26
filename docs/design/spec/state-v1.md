@@ -45,7 +45,7 @@ Dockflow's own labels:
 |---|---|
 | `dockflow.schema` | `1` |
 | `dockflow.release` | The release sequence number the container belongs to |
-| `dockflow.kind` | `service`, `job`, `run` (agent), `switch`, `registry`, `watchdog` or `helper` |
+| `dockflow.kind` | `service`, `job`, `run` (agent), `oneoff` (`dockflow run`), `switch`, `registry`, `watchdog` or `helper` |
 
 **Naming:**
 
@@ -127,6 +127,7 @@ It deletes the other release files, then the images, registry manifests, secret 
   "source": { "git_sha": "a1b2c3d4e5…", "branch": "main", "dirty": false },
   "dockflow_version": "2.0.0",
   "rollback_of": 40,
+  "op": "rollback",
   "desired": {
     "name": "shop", "env": "production", "stack": "shop-production",
     "services": [
@@ -149,6 +150,7 @@ It deletes the other release files, then the images, registry manifests, secret 
 
 **What a record contains:**
 - **`desired`** is the app as it was deployed: every service with its container spec, the input of the Engine's create call, with images pinned by digest. A rollback recreates the same containers from it.
+- **`op`** is what made the release: `deploy`, `rollback`, `restart`, `stop`, `scale` or `destroy` (of some services).
 - **`serving`** says, per service, which release's containers serve it: a service a deploy left unchanged keeps the containers of an older release.
 - **`hashes`** identify each service's containers: an unchanged hash means unchanged containers.
 - **`error`** is set on a release that is `rolled-back`, `failed` or `abandoned`: `{ "code": "…", "message": "…" }`.

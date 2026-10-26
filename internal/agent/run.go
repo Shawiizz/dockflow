@@ -91,8 +91,17 @@ func (r *runner) dispatch(ctx context.Context) events.RunFinishedData {
 	switch r.req.Op {
 	case OpPlan:
 		return r.plan(ctx)
-	case OpDeploy, OpRollback:
+	case OpDeploy, OpRollback, OpRestart, OpStop, OpScale:
 		return r.deploy(ctx)
+	case OpDestroy:
+		if len(r.req.Services) > 0 {
+			return r.deploy(ctx)
+		}
+		return r.destroy(ctx)
+	case OpPrune:
+		return r.prune(ctx)
+	case OpDetails:
+		return r.details()
 	case OpStatus:
 		return r.status(ctx)
 	case OpReleases:

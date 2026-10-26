@@ -56,20 +56,22 @@ const (
 
 // Release is a release record (docs/design/spec/state-v1.md).
 type Release struct {
-	Schema          int               `json:"schema"`
-	App             string            `json:"app"`
-	Env             string            `json:"env"`
-	Server          string            `json:"server"`
-	Seq             int               `json:"seq"`
-	Version         string            `json:"version"`
-	Status          string            `json:"status"`
-	Run             string            `json:"run"`
-	CreatedAt       time.Time         `json:"created_at"`
-	FinishedAt      *time.Time        `json:"finished_at,omitempty"`
-	CreatedBy       Author            `json:"created_by"`
-	Source          Source            `json:"source"`
-	DockflowVersion string            `json:"dockflow_version"`
-	RollbackOf      int               `json:"rollback_of,omitempty"`
+	Schema          int        `json:"schema"`
+	App             string     `json:"app"`
+	Env             string     `json:"env"`
+	Server          string     `json:"server"`
+	Seq             int        `json:"seq"`
+	Version         string     `json:"version"`
+	Status          string     `json:"status"`
+	Run             string     `json:"run"`
+	CreatedAt       time.Time  `json:"created_at"`
+	FinishedAt      *time.Time `json:"finished_at,omitempty"`
+	CreatedBy       Author     `json:"created_by"`
+	Source          Source     `json:"source"`
+	DockflowVersion string     `json:"dockflow_version"`
+	RollbackOf      int        `json:"rollback_of,omitempty"`
+	// Op is what made the release: deploy, rollback, restart, stop, scale or destroy.
+	Op              string            `json:"op,omitempty"`
 	Desired         App               `json:"desired"`
 	Serving         map[string]int    `json:"serving"` // service → release whose containers serve it
 	Hashes          map[string]string `json:"hashes"`

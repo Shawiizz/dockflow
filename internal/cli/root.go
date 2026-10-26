@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -32,6 +33,8 @@ type app struct {
 	emitter        *events.Emitter
 	human          *human
 	interrupts     chan struct{}
+	// agentRunning routes Ctrl+C to the agent (rollback, then detach) instead of cancelling.
+	agentRunning atomic.Bool
 }
 
 // Main runs the command line and returns the exit code.
@@ -46,6 +49,10 @@ func Main(args []string) int {
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		for range sigs {
+			if !a.agentRunning.Load() {
+				stop()
+				continue
+			}
 			select {
 			case a.interrupts <- struct{}{}:
 			default:
@@ -58,6 +65,9 @@ func Main(args []string) int {
 		return errs.ExitOK
 	}
 	var e *errs.Error
+	if errors.As(err, &e) && e.Code == "command.exit" {
+		return e.Exit
+	}
 	if !errors.As(err, &e) {
 		// cobra's own errors: unknown command, bad flag
 		fmt.Fprintf(a.stderr, "error: %v\n", err)
@@ -109,7 +119,10 @@ func (a *app) root() *cobra.Command {
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return errs.Usage("%v", err) })
 
 	root.AddCommand(
-		a.buildCmd(), a.planCmd(), a.deployCmd(), a.rollbackCmd(), a.attachCmd(),
+		a.buildCmd(), a.planCmd(), a.deployCmd(), a.rollbackCmd(), a.attachCmd(), a.psCmd(), a.logsCmd(),
+		a.execCmd(), a.runCmd(), a.cpCmd(), a.sshCmd(),
+		a.restartCmd(), a.stopCmd(), a.scaleCmd(), a.destroyCmd(), a.pruneCmd(), a.cancelCmd(),
+		a.detailsCmd(), a.diagnoseCmd(),
 		a.statusCmd(), a.releasesCmd(), a.versionCmd(), a.lockCmd(),
 		a.validateCmd(), a.configCmd(), a.listCmd(), a.serverCmd(), a.agentCmd(),
 	)

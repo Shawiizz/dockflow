@@ -61,6 +61,24 @@ func (s *Store) App(stack string) (*App, error) {
 	return &App{s: s, dir: dir}, nil
 }
 
+// Delete removes the state of the app environment: its releases, locks and records. The held
+// lock file goes with it; the run holding it ends right after.
+func (a *App) Delete() error {
+	entries, err := os.ReadDir(a.dir)
+	if err != nil {
+		return ioErr("read "+a.dir, err)
+	}
+	for _, e := range entries {
+		if e.Name() == "lock" {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(a.dir, e.Name())); err != nil {
+			return ioErr("delete "+e.Name(), err)
+		}
+	}
+	return nil
+}
+
 // Stacks lists the app environments that have state on this server.
 func (s *Store) Stacks() ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(s.root, "apps"))

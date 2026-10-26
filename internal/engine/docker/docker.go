@@ -144,6 +144,10 @@ func (e *Engine) Inspect(ctx context.Context, id string) (engine.Container, erro
 		c.Error = s.Error
 		if s.Health != nil {
 			c.Health = string(s.Health.Status)
+			c.FailingStreak = s.Health.FailingStreak
+			if n := len(s.Health.Log); n > 0 && s.Health.Log[n-1] != nil {
+				c.HealthLog = strings.TrimSpace(s.Health.Log[n-1].Output)
+			}
 		}
 	}
 	fillFromLabels(&c)
@@ -205,12 +209,20 @@ func (e *Engine) Rename(ctx context.Context, id, name string) error {
 	return nil
 }
 
-func (e *Engine) Attach(ctx context.Context, id string) (*engine.Attached, error) {
+func (e *Engine) Attach(ctx context.Context, id string, tty bool) (*engine.Attached, error) {
 	r, err := e.c.ContainerAttach(ctx, id, client.ContainerAttachOptions{Stream: true, Stdin: true, Stdout: true, Stderr: true})
 	if err != nil {
 		return nil, apiErr("attach to "+id, err)
 	}
-	h := r.HijackedResponse
+	return attached(r.HijackedResponse, tty), nil
+}
+
+// attached splits a hijacked connection into streams: raw with a TTY, demultiplexed without.
+func attached(h client.HijackedResponse, tty bool) *engine.Attached {
+	in := closeWriter{h.Conn, func() error { return h.CloseWrite() }}
+	if tty {
+		return &engine.Attached{Stdin: in, Stdout: h.Reader, Stderr: strings.NewReader(""), Close: func() { h.Close() }}
+	}
 	outR, outW := io.Pipe()
 	errR, errW := io.Pipe()
 	go func() {
@@ -218,11 +230,83 @@ func (e *Engine) Attach(ctx context.Context, id string) (*engine.Attached, error
 		outW.CloseWithError(err)
 		errW.CloseWithError(err)
 	}()
-	return &engine.Attached{
-		Stdin:  closeWriter{h.Conn, func() error { return h.CloseWrite() }},
-		Stdout: outR, Stderr: errR,
-		Close: func() { h.Close() },
+	return &engine.Attached{Stdin: in, Stdout: outR, Stderr: errR, Close: func() { h.Close() }}
+}
+
+func (e *Engine) Resize(ctx context.Context, id string, width, height uint) error {
+	if _, err := e.c.ContainerResize(ctx, id, client.ContainerResizeOptions{Width: width, Height: height}); err != nil {
+		return apiErr("resize "+id, err)
+	}
+	return nil
+}
+
+func (e *Engine) Exec(ctx context.Context, id string, o engine.ExecOptions) (*engine.Exec, error) {
+	size := client.ConsoleSize{Height: o.Height, Width: o.Width}
+	created, err := e.c.ExecCreate(ctx, id, client.ExecCreateOptions{
+		Cmd: o.Cmd, Env: o.Env, User: o.User, WorkingDir: o.WorkingDir, TTY: o.TTY, ConsoleSize: size,
+		AttachStdin: o.Stdin, AttachStdout: true, AttachStderr: true,
+	})
+	if err != nil {
+		return nil, apiErr("run a command in "+id, err)
+	}
+	r, err := e.c.ExecAttach(ctx, created.ID, client.ExecAttachOptions{TTY: o.TTY, ConsoleSize: size})
+	if err != nil {
+		return nil, apiErr("attach to the command in "+id, err)
+	}
+	execID := created.ID
+	return &engine.Exec{
+		Attached: *attached(r.HijackedResponse, o.TTY),
+		Resize: func(ctx context.Context, w, h uint) error {
+			_, err := e.c.ExecResize(ctx, execID, client.ExecResizeOptions{Width: w, Height: h})
+			return err
+		},
+		Wait: func(ctx context.Context) (int, error) {
+			for {
+				res, err := e.c.ExecInspect(ctx, execID, client.ExecInspectOptions{})
+				if err != nil {
+					return -1, apiErr("inspect the command in "+id, err)
+				}
+				if !res.Running {
+					return res.ExitCode, nil
+				}
+				select {
+				case <-ctx.Done():
+					return -1, ctx.Err()
+				case <-time.After(100 * time.Millisecond):
+				}
+			}
+		},
 	}, nil
+}
+
+func (e *Engine) CopyTo(ctx context.Context, id, dir string, tar io.Reader) error {
+	if _, err := e.c.CopyToContainer(ctx, id, client.CopyToContainerOptions{DestinationPath: dir, Content: tar}); err != nil {
+		return apiErr("copy files into "+id, err)
+	}
+	return nil
+}
+
+func (e *Engine) CopyFrom(ctx context.Context, id, path string) (io.ReadCloser, error) {
+	r, err := e.c.CopyFromContainer(ctx, id, client.CopyFromContainerOptions{SourcePath: path})
+	if err != nil {
+		if cerrdefs.IsNotFound(err) {
+			return nil, errs.Usage("%s does not exist in the container", path)
+		}
+		return nil, apiErr("copy files from "+id, err)
+	}
+	return r.Content, nil
+}
+
+func (e *Engine) Images(ctx context.Context) ([]engine.Image, error) {
+	r, err := e.c.ImageList(ctx, client.ImageListOptions{})
+	if err != nil {
+		return nil, apiErr("list images", err)
+	}
+	out := make([]engine.Image, 0, len(r.Items))
+	for _, i := range r.Items {
+		out = append(out, engine.Image{ID: i.ID, Tags: i.RepoTags, Digests: i.RepoDigests, Size: i.Size, Created: i.Created, Containers: i.Containers})
+	}
+	return out, nil
 }
 
 type closeWriter struct {
@@ -245,15 +329,17 @@ func (e *Engine) Wait(ctx context.Context, id string) (int, error) {
 	}
 }
 
-func (e *Engine) Logs(ctx context.Context, id string, follow, stderr bool) (io.ReadCloser, error) {
-	r, err := e.c.ContainerLogs(ctx, id, client.ContainerLogsOptions{ShowStdout: true, ShowStderr: stderr, Follow: follow})
+func (e *Engine) Logs(ctx context.Context, id string, o engine.LogOptions) (io.ReadCloser, error) {
+	r, err := e.c.ContainerLogs(ctx, id, client.ContainerLogsOptions{
+		ShowStdout: true, ShowStderr: o.Stderr, Follow: o.Follow, Tail: o.Tail, Since: o.Since, Timestamps: o.Timestamps,
+	})
 	if err != nil {
 		return nil, apiErr("read the logs of "+id, err)
 	}
 	pr, pw := io.Pipe()
 	go func() {
 		errOut := io.Discard
-		if stderr {
+		if o.Stderr {
 			errOut = pw
 		}
 		_, err := stdcopy.StdCopy(pw, errOut, r)
@@ -371,6 +457,40 @@ func (e *Engine) Disconnect(ctx context.Context, net, ctr string) error {
 		return apiErr("disconnect "+ctr+" from "+net, err)
 	}
 	return nil
+}
+
+func (e *Engine) RemoveNetwork(ctx context.Context, name string) error {
+	if _, err := e.c.NetworkRemove(ctx, name, client.NetworkRemoveOptions{}); err != nil && !cerrdefs.IsNotFound(err) {
+		return apiErr("remove network "+name, err)
+	}
+	return nil
+}
+
+func (e *Engine) PruneNetworks(ctx context.Context) ([]string, error) {
+	f := client.Filters{}
+	f.Add("label!", domain.LabelManagedBy)
+	r, err := e.c.NetworkPrune(ctx, client.NetworkPruneOptions{Filters: f})
+	if err != nil {
+		return nil, apiErr("prune networks", err)
+	}
+	return r.Report.NetworksDeleted, nil
+}
+
+func (e *Engine) RemoveVolume(ctx context.Context, name string) error {
+	if _, err := e.c.VolumeRemove(ctx, name, client.VolumeRemoveOptions{}); err != nil && !cerrdefs.IsNotFound(err) {
+		return apiErr("remove volume "+name, err)
+	}
+	return nil
+}
+
+func (e *Engine) PruneVolumes(ctx context.Context) ([]string, error) {
+	f := client.Filters{}
+	f.Add("label!", domain.LabelManagedBy)
+	r, err := e.c.VolumePrune(ctx, client.VolumePruneOptions{Filters: f})
+	if err != nil {
+		return nil, apiErr("prune volumes", err)
+	}
+	return r.Report.VolumesDeleted, nil
 }
 
 func (e *Engine) Volumes(ctx context.Context) (map[string]bool, error) {

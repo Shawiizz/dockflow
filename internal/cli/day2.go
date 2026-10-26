@@ -103,8 +103,8 @@ func (a *app) statusCmd() *cobra.Command {
 }
 
 func (a *app) listCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "list", Short: "List environments and services"}
-	cmd.AddCommand(&cobra.Command{
+	cmd := &cobra.Command{Use: "list", Short: "List environments, services and images"}
+	cmd.AddCommand(a.listImagesCmd(), &cobra.Command{
 		Use:   "envs",
 		Short: "The environments of dockflow.yml",
 		Args:  cobra.NoArgs,
@@ -158,6 +158,32 @@ func (a *app) listCmd() *cobra.Command {
 	return cmd
 }
 
+func (a *app) listImagesCmd() *cobra.Command {
+	var all bool
+	cmd := &cobra.Command{
+		Use:   "images [<env>]",
+		Short: "The app's images on the server; -a for every image",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a.quiet()
+			s, err := a.connect(cmd.Context(), envArg(args), "")
+			if err != nil {
+				return err
+			}
+			defer s.Close()
+			imgs, err := s.engine.Images(cmd.Context())
+			if err != nil {
+				return err
+			}
+			imgs = imagesOf(imgs, s.loaded.Config.App, all)
+			a.printResult(imgs, func(w io.Writer) { renderImages(w, imgs) })
+			return nil
+		},
+	}
+	cmd.Flags().BoolVarP(&all, "all", "a", false, "every image of the server")
+	return cmd
+}
+
 func routeList(rs []domain.Route) []string {
 	var out []string
 	for _, r := range rs {
@@ -201,6 +227,7 @@ type releasesResult struct {
 
 func (a *app) releasesCmd() *cobra.Command {
 	var n int
+	var withStats bool
 	cmd := &cobra.Command{
 		Use:   "releases [<env>]",
 		Short: "Release history",
@@ -212,10 +239,15 @@ func (a *app) releasesCmd() *cobra.Command {
 				return err
 			}
 			defer s.Close()
+			st := stats(r.Releases)
 			if n > 0 && len(r.Releases) > n {
 				r.Releases = r.Releases[:n]
 			}
-			a.printResult(r, func(w io.Writer) {
+			var doc any = r
+			if withStats {
+				doc = map[string]any{"state": r.State, "releases": r.Releases, "stats": st}
+			}
+			a.printResult(doc, func(w io.Writer) {
 				tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 				fmt.Fprintln(tw, "SEQ\tVERSION\tSTATUS\tCREATED\tBY\t")
 				for _, rel := range r.Releases {
@@ -227,14 +259,21 @@ func (a *app) releasesCmd() *cobra.Command {
 					if rel.RollbackOf > 0 {
 						status += fmt.Sprintf(" (rollback to %d)", rel.RollbackOf)
 					}
+					if rel.Op != "" && rel.Op != agent.OpDeploy && rel.Op != agent.OpRollback {
+						status += " (" + rel.Op + ")"
+					}
 					fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\n", rel.Seq, rel.Version, status, rel.CreatedAt, rel.CreatedBy.User, mark)
 				}
 				tw.Flush()
+				if withStats {
+					renderStats(w, st)
+				}
 			})
 			return nil
 		},
 	}
 	cmd.Flags().IntVarP(&n, "count", "n", 0, "show the n most recent releases")
+	cmd.Flags().BoolVar(&withStats, "stats", false, "add durations and the success rate")
 	return cmd
 }
 

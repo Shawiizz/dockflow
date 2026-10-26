@@ -38,20 +38,20 @@ type Settings struct {
 	Releases  *Releases `yaml:"releases"`
 	OnFailure string    `yaml:"on_failure"`
 
-	Registry *Registry      `yaml:"registry"`
-	Build    *BuildSettings `yaml:"build"`
-	Health    *Health          `yaml:"health"`
+	Registry  *Registry       `yaml:"registry"`
+	Build     *BuildSettings  `yaml:"build"`
+	Health    *Health         `yaml:"health"`
 	Templates []TemplateEntry `yaml:"templates"`
 
 	// Keys of the specification that arrive in later milestones. They are refused with a clear
 	// message instead of being ignored.
-	Uploads   *yaml.Node `yaml:"uploads"`
-	Hooks     *yaml.Node `yaml:"hooks"`
-	Notify    *yaml.Node `yaml:"notify"`
-	Firewall  *yaml.Node `yaml:"firewall"`
-	Routes    *yaml.Node `yaml:"routes"`
-	Plugins   *yaml.Node `yaml:"plugins"`
-	Backups   *yaml.Node `yaml:"backups"`
+	Uploads  *yaml.Node `yaml:"uploads"`
+	Hooks    *yaml.Node `yaml:"hooks"`
+	Notify   *yaml.Node `yaml:"notify"`
+	Firewall *yaml.Node `yaml:"firewall"`
+	Routes   *yaml.Node `yaml:"routes"`
+	Plugins  *yaml.Node `yaml:"plugins"`
+	Backups  *yaml.Node `yaml:"backups"`
 }
 
 // Registry is an external registry (ADR-0009). Without it, images go to the server's own.
@@ -163,7 +163,7 @@ type Resolved struct {
 
 // laterKeys are spec keys not available yet, with the milestone that brings them.
 var laterKeys = map[string]string{
-"uploads": "M2", "hooks": "M2",
+	"uploads": "M2", "hooks": "M2",
 	"notify": "M2", "firewall": "M3", "routes": "M3", "plugins": "M3",
 	"backups": "M4", "secrets_file": "M3",
 }

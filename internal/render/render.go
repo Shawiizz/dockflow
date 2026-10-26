@@ -245,4 +245,3 @@ func cleanError(err error) error {
 	msg := strings.Join(strings.Fields(err.Error()), " ")
 	return fmt.Errorf("%s", msg)
 }
-

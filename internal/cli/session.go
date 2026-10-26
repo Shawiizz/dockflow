@@ -125,7 +125,9 @@ func (s *session) request(op string) agent.Request {
 
 // runAgent runs req on the server and returns its result, mapping a failed run to its exit code.
 func (s *session) runAgent(ctx context.Context, req agent.Request) (*launcher.Result, error) {
+	s.app.agentRunning.Store(true)
 	res, err := s.launcher.Run(ctx, req, s.app.interrupts)
+	s.app.agentRunning.Store(false)
 	if err != nil {
 		return nil, err
 	}

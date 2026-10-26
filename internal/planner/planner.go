@@ -16,8 +16,13 @@ import (
 	"github.com/Shawiizz/dockflow/internal/errs"
 )
 
-// Plan returns the actions that turn actual into desired.
-func Plan(desired domain.App, actual domain.Actual) (*domain.Plan, error) {
+// Plan returns the actions that turn actual into desired. The services named in restart are
+// replaced even when unchanged.
+func Plan(desired domain.App, actual domain.Actual, restart ...string) (*domain.Plan, error) {
+	force := map[string]bool{}
+	for _, name := range restart {
+		force[name] = true
+	}
 	p := &domain.Plan{App: desired.Name, Env: desired.Env}
 	add := func(kind, target, reason string, strategy domain.Strategy) {
 		p.Actions = append(p.Actions, domain.Action{
@@ -72,8 +77,11 @@ func Plan(desired domain.App, actual domain.Actual) (*domain.Plan, error) {
 			if cur.Desired == nil || !reflect.DeepEqual(cur.Desired.Routes, s.Routes) {
 				routesChanged = true
 			}
-		case running(cur) < s.Replicas:
-			add(domain.ActionUpdateService, name, fmt.Sprintf("%d of %d containers running", running(cur), s.Replicas), s.Strategy)
+		case force[name]:
+			add(domain.ActionUpdateService, name, "restart", s.Strategy)
+			p.Summary.Update++
+		case running(cur) < s.Count():
+			add(domain.ActionUpdateService, name, fmt.Sprintf("%d of %d containers running", running(cur), s.Count()), s.Strategy)
 			p.Summary.Update++
 		default:
 			p.Unchanged = append(p.Unchanged, name)
@@ -166,6 +174,9 @@ func changeReason(old, new *domain.Service) string {
 	var fields []string
 	if old.Replicas != new.Replicas {
 		fields = append(fields, fmt.Sprintf("replicas %d → %d", old.Replicas, new.Replicas))
+	}
+	if old.Stopped != new.Stopped {
+		fields = append(fields, map[bool]string{true: "stopped", false: "started again"}[new.Stopped])
 	}
 	if old.Spec.Image != new.Spec.Image {
 		fields = append(fields, "image "+shortImage(old.Spec.Image)+" → "+shortImage(new.Spec.Image))
