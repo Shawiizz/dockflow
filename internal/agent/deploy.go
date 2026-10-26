@@ -149,6 +149,9 @@ func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
 		runErr = r.checkPolicy(r.publicChecks(ctx))
 	}
 	if runErr == nil {
+		runErr = r.execHooks(ctx, domain.HookAfterDeploy)
+	}
+	if runErr == nil {
 		runErr = r.drain(ctx, x)
 	}
 	if runErr == nil {
@@ -300,9 +303,17 @@ func (r *runner) execute(ctx context.Context, p *domain.Plan, desired *domain.Ap
 		return err
 	}
 	x.routesBefore = table[r.stack]
+	hooksDone := false
 	for _, a := range p.Actions {
 		if ctx.Err() != nil {
 			return interrupted()
+		}
+		if !hooksDone && changesServices(a.Kind) {
+			// before_deploy: after the before jobs, before any service changes (ADR-0022)
+			hooksDone = true
+			if err := r.execHooks(ctx, domain.HookBeforeDeploy); err != nil {
+				return err
+			}
 		}
 		started := r.Now()
 		r.ev.Info(events.ActionStarted, actionMessage(a), map[string]any{"action": a.ID})
@@ -314,6 +325,14 @@ func (r *runner) execute(ctx context.Context, p *domain.Plan, desired *domain.Ap
 		r.ev.Info(events.ActionFinished, fmt.Sprintf("%s %s done", a.Kind, a.Target), map[string]any{"action": a.ID, "duration_ms": r.Now().Sub(started).Milliseconds()})
 	}
 	return nil
+}
+
+func changesServices(kind string) bool {
+	switch kind {
+	case domain.ActionCreateService, domain.ActionUpdateService, domain.ActionRemoveService, domain.ActionRoutes:
+		return true
+	}
+	return false
 }
 
 func actionMessage(a domain.Action) string {
@@ -800,6 +819,9 @@ func (r *runner) fail(ctx context.Context, rel *domain.Release, env *domain.EnvR
 		undoErr = r.undo(ctx, x)
 		r.ev.Info(events.RollbackFinished, "rollback finished", map[string]any{"ok": undoErr == nil})
 	}
+	if err := r.execHooks(ctx, domain.HookAfterFailure); err != nil {
+		r.warn("hook.failed", err.Error())
+	}
 	cur, _ := r.app.Env()
 	if cur == nil {
 		cur = env
@@ -817,6 +839,9 @@ func (r *runner) fail(ctx context.Context, rel *domain.Release, env *domain.EnvR
 	case cancelled:
 		rel.Status = domain.StatusRolledBack
 		res.Outcome, res.ExitCode = events.OutcomeCancelled, errs.ExitInterrupted
+	case errs.ExitCode(runErr) == errs.ExitHook:
+		rel.Status = domain.StatusRolledBack
+		res.Outcome, res.ExitCode = events.OutcomeHookFailed, errs.ExitHook
 	default:
 		rel.Status = domain.StatusRolledBack
 		res.Outcome, res.ExitCode = events.OutcomeRolledBack, errs.ExitRolledBack

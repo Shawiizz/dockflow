@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -83,7 +84,23 @@ func (a *app) deployCmd() *cobra.Command {
 			defer s.Close()
 			a.warnings(s)
 			ctx := cmd.Context()
+			hookList, err := s.hooks()
+			if err != nil {
+				return err
+			}
+			hk := s.hookRunner()
+			if err := hk.Run(ctx, domain.HookBeforeBuild, hookList); err != nil {
+				return err
+			}
 			if err := s.ship(ctx, nil); err != nil {
+				return err
+			}
+			if err := hk.Run(ctx, domain.HookAfterBuild, hookList); err != nil {
+				return err
+			}
+			// local and host hooks run here, around the agent's run, which must not depend on
+			// this connection (ADR-0022)
+			if err := hk.Run(ctx, domain.HookBeforeDeploy, hookList); err != nil {
 				return err
 			}
 			fingerprint := ""
@@ -110,8 +127,30 @@ func (a *app) deployCmd() *cobra.Command {
 			req.NoRollback = noRollback
 			req.Force = force
 			req.WaitLock = domain.Duration(waitLock)
-			_, err = s.runAgent(ctx, req)
-			return err
+			req.Hooks = execHooks(hookList)
+			res, err := s.runAgent(ctx, req)
+			if err != nil {
+				if res != nil && res.ExitCode != errs.ExitLocked {
+					if herr := hk.Run(context.WithoutCancel(ctx), domain.HookAfterFailure, hookList); herr != nil {
+						a.emitter.Warn(events.Warning, herr.Error(), map[string]any{"code": "hook.failed"})
+					}
+				}
+				return err
+			}
+			if res.ReleaseSeq == 0 {
+				return nil
+			}
+			if herr := hk.Run(ctx, domain.HookAfterDeploy, hookList); herr != nil {
+				// the release is committed: a fatal after_deploy hook restores the previous one
+				a.emitter.Warn(events.RollbackStarted, herr.Error()+": rolling back", map[string]any{"reason": herr.Error()})
+				s.run = launcher.NewRunID(timeNow())
+				back := s.request(agent.OpRollback)
+				if _, rerr := s.runAgent(ctx, back); rerr != nil {
+					return rerr
+				}
+				return herr
+			}
+			return nil
 		},
 	}
 	f := cmd.Flags()

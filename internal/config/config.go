@@ -42,11 +42,11 @@ type Settings struct {
 	Build     *BuildSettings  `yaml:"build"`
 	Health    *Health         `yaml:"health"`
 	Templates []TemplateEntry `yaml:"templates"`
+	Hooks     *Hooks          `yaml:"hooks"`
 
 	// Keys of the specification that arrive in later milestones. They are refused with a clear
 	// message instead of being ignored.
 	Uploads  *yaml.Node `yaml:"uploads"`
-	Hooks    *yaml.Node `yaml:"hooks"`
 	Notify   *yaml.Node `yaml:"notify"`
 	Firewall *yaml.Node `yaml:"firewall"`
 	Routes   *yaml.Node `yaml:"routes"`
@@ -78,6 +78,28 @@ type Endpoint struct {
 	Retries        *int   `yaml:"retries"`
 	RetryDelay     string `yaml:"retry_delay"`
 	ValidateCerts  *bool  `yaml:"validate_certs"`
+}
+
+// Hooks is the hooks block, per phase (ADR-0022).
+type Hooks struct {
+	BeforeBuild  []HookEntry `yaml:"before_build"`
+	AfterBuild   []HookEntry `yaml:"after_build"`
+	BeforeDeploy []HookEntry `yaml:"before_deploy"`
+	AfterDeploy  []HookEntry `yaml:"after_deploy"`
+	AfterFailure []HookEntry `yaml:"after_failure"`
+}
+
+// HookEntry is one hook: exactly one of run, script, host and exec.
+type HookEntry struct {
+	Name    string   `yaml:"name"`
+	Run     string   `yaml:"run"`
+	Script  string   `yaml:"script"`
+	Host    string   `yaml:"host"`
+	Exec    []string `yaml:"exec"`
+	Service string   `yaml:"service"`
+	Secrets []string `yaml:"secrets"`
+	Timeout string   `yaml:"timeout"`
+	Fatal   *bool    `yaml:"fatal"`
 }
 
 // TemplateEntry is one entry of templates: a path rendered in place, or src and dest.
@@ -159,12 +181,13 @@ type Resolved struct {
 	StartupDelay time.Duration
 	Endpoints    []domain.Endpoint
 	Templates    []render.Template
+	Hooks        []domain.Hook
 }
 
 // laterKeys are spec keys not available yet, with the milestone that brings them.
 var laterKeys = map[string]string{
-	"uploads": "M2", "hooks": "M2",
-	"notify": "M2", "firewall": "M3", "routes": "M3", "plugins": "M3",
+	"uploads": "M2",
+	"notify":  "M2", "firewall": "M3", "routes": "M3", "plugins": "M3",
 	"backups": "M4", "secrets_file": "M3",
 }
 
@@ -322,6 +345,13 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 				return nil, err
 			}
 		}
+		if s.Hooks != nil {
+			h, err := hooks(s.Hooks)
+			if err != nil {
+				return nil, err
+			}
+			res.Hooks = h
+		}
 		if s.Templates != nil {
 			t, err := templates(s.Templates)
 			if err != nil {
@@ -355,6 +385,87 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 		}
 	}
 	return res, nil
+}
+
+func hooks(h *Hooks) ([]domain.Hook, error) {
+	var out []domain.Hook
+	phases := []struct {
+		name    string
+		entries []HookEntry
+	}{
+		{domain.HookBeforeBuild, h.BeforeBuild}, {domain.HookAfterBuild, h.AfterBuild},
+		{domain.HookBeforeDeploy, h.BeforeDeploy}, {domain.HookAfterDeploy, h.AfterDeploy},
+		{domain.HookAfterFailure, h.AfterFailure},
+	}
+	for _, ph := range phases {
+		for i, e := range ph.entries {
+			at := fmt.Sprintf("hooks.%s[%d]", ph.name, i)
+			hk := domain.Hook{Phase: ph.name, Name: e.Name, Secrets: e.Secrets, Timeout: domain.Duration(5 * time.Minute),
+				Fatal: strings.HasPrefix(ph.name, "before_")}
+			kinds := 0
+			if e.Run != "" {
+				kinds++
+				hk.Kind, hk.Command = domain.HookLocal, e.Run
+			}
+			if e.Script != "" {
+				kinds++
+				hk.Kind, hk.Script = domain.HookLocal, e.Script
+			}
+			if e.Host != "" {
+				kinds++
+				hk.Kind, hk.Command = domain.HookHost, e.Host
+			}
+			if len(e.Exec) > 0 {
+				kinds++
+				hk.Kind, hk.Exec, hk.Service = domain.HookExec, e.Exec, e.Service
+				if e.Service == "" {
+					return nil, errs.Config("%s: exec needs the service to run in", at)
+				}
+				if ph.name == domain.HookBeforeBuild || ph.name == domain.HookAfterBuild {
+					return nil, errs.Config("%s: exec hooks run in containers, from before_deploy on", at)
+				}
+			} else if e.Service != "" {
+				return nil, errs.Config("%s: service goes with exec", at)
+			}
+			if kinds != 1 {
+				return nil, errs.Config("%s: set exactly one of run, script, host and exec", at)
+			}
+			if hk.Name == "" {
+				hk.Name = hookName(hk)
+			}
+			for _, k := range e.Secrets {
+				if !domain.KeyName.MatchString(k) {
+					return nil, errs.Config("%s: secret %q must match %s", at, k, domain.KeyName)
+				}
+			}
+			if e.Timeout != "" {
+				d, err := time.ParseDuration(e.Timeout)
+				if err != nil || d <= 0 {
+					return nil, errs.Config("%s.timeout %q is not a duration", at, e.Timeout)
+				}
+				hk.Timeout = domain.Duration(d)
+			}
+			if e.Fatal != nil {
+				hk.Fatal = *e.Fatal
+			}
+			out = append(out, hk)
+		}
+	}
+	return out, nil
+}
+
+func hookName(h domain.Hook) string {
+	s := h.Command
+	switch {
+	case h.Script != "":
+		s = h.Script
+	case len(h.Exec) > 0:
+		s = h.Service + ": " + strings.Join(h.Exec, " ")
+	}
+	if len(s) > 40 {
+		s = s[:37] + "…"
+	}
+	return s
 }
 
 func templates(entries []TemplateEntry) ([]render.Template, error) {

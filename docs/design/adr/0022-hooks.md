@@ -40,6 +40,16 @@ Entry options: `name`, `timeout` (default 5 minutes), and `fatal` (default `true
 - Every hook gets, as environment variables, the built-in `DOCKFLOW_*` values, the environment's `vars`, and the secrets it lists under `secrets:`.
 - A script that needs a real template is listed under `templates:` and rendered with Jinja ([ADR-0006](0006-compose-as-written.md)).
 
+### Who runs them
+
+A deploy must survive the CLI's death ([ADR-0004](0004-ephemeral-agent.md)), so the agent never waits on the CLI's connection in the middle of a run:
+
+- **`exec` hooks run in the agent**, at the points above: `before_deploy` right before the first service changes, `after_deploy` after the public checks and before the old containers are drained, so a fatal one rolls back like a failed check, and `after_failure` after the rollback.
+- **Local and `host` hooks run in the CLI**, around the agent's run: `before_deploy` before the agent starts (so before the `before` jobs), `after_deploy` once the release is committed, and `after_failure` once the agent reports the failure. A fatal `after_deploy` hook there rolls back with a rollback run to the previous release.
+- **A `host` hook's script travels on stdin** to `sh -s`, its environment exported in it, so no value appears in a command line on the server.
+
+A fatal `before_*` hook exits with code 11, before any release is created; a fatal `after_deploy` hook with code 8, once the previous release is back.
+
 ### Running inside containers
 
 `exec` hooks use the Engine API's exec on the server's containers, as `docker exec` does: the agent finds the service's current containers by their Compose labels. `dockflow exec` uses the same path.

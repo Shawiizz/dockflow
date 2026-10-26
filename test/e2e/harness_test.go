@@ -251,7 +251,13 @@ func (r result) find(typ string) *event {
 
 // dockflow runs the binary in dir with --json and the server's connection string.
 func dockflow(t *testing.T, dir string, args ...string) result {
+	return dockflowEnv(t, dir, nil, args...)
+}
+
+// dockflowEnv runs the binary with extra environment variables, as CI secrets.
+func dockflowEnv(t *testing.T, dir string, env []string, args ...string) result {
 	cmd := dockflowCmd(dir, args...)
+	cmd.Env = append(cmd.Env, env...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err := cmd.Run()

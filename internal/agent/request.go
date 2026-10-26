@@ -58,6 +58,8 @@ type Request struct {
 	Keep      int             `json:"keep,omitempty"`
 	OnFailure string          `json:"on_failure,omitempty"`
 	Timeout   domain.Duration `json:"timeout,omitempty"`
+	// Hooks are the exec hooks, with their environments.
+	Hooks []domain.Hook `json:"hooks,omitempty"`
 	// Endpoints are the public checks, run StartupDelay after the switch.
 	Endpoints    []domain.Endpoint `json:"endpoints,omitempty"`
 	StartupDelay domain.Duration   `json:"startup_delay,omitempty"`

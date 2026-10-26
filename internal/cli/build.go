@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Shawiizz/dockflow/internal/agent"
+	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/engine"
 	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/events"
@@ -178,7 +179,7 @@ func registryAuth(l *project.Loaded) *engine.RegistryAuth {
 
 func (a *app) buildCmd() *cobra.Command {
 	var only []string
-	var push bool
+	var push, skipHooks bool
 	var platform string
 	cmd := &cobra.Command{
 		Use:   "build [<env>]",
@@ -195,7 +196,20 @@ func (a *app) buildCmd() *cobra.Command {
 				if len(s.loaded.Builds) == 0 {
 					return errs.Usage("no service of %s has a build", s.loaded.Config.Env)
 				}
-				return s.ship(ctx, only)
+				var hookList []domain.Hook
+				if !skipHooks {
+					if hookList, err = s.hooks(); err != nil {
+						return err
+					}
+				}
+				hk := s.hookRunner()
+				if err := hk.Run(ctx, domain.HookBeforeBuild, hookList); err != nil {
+					return err
+				}
+				if err := s.ship(ctx, only); err != nil {
+					return err
+				}
+				return hk.Run(ctx, domain.HookAfterBuild, hookList)
 			}
 			l, err := a.load(ctx, envArg(args), "")
 			if err != nil {
@@ -219,6 +233,7 @@ func (a *app) buildCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringSliceVar(&only, "only", nil, "build these services only")
 	f.BoolVar(&push, "push", false, "also push the images to the registry the environment deploys from")
+	f.BoolVar(&skipHooks, "skip-hooks", false, "do not run the before_build and after_build hooks")
 	f.StringVar(&platform, "platform", "", "the platform to build for, without --push (default linux/<this machine's architecture>)")
 	return cmd
 }

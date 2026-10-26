@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"errors"
+	"io"
 	"os"
 	"os/user"
 	"strconv"
@@ -17,6 +19,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/engine/docker"
 	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/events"
+	"github.com/Shawiizz/dockflow/internal/hooks"
 	"github.com/Shawiizz/dockflow/internal/launcher"
 	"github.com/Shawiizz/dockflow/internal/project"
 	"github.com/Shawiizz/dockflow/internal/version"
@@ -237,4 +240,61 @@ func checkEngine(info engine.Info) error {
 			WithHint("upgrade Docker on the server")
 	}
 	return nil
+}
+
+// hooks returns the project's hooks with their environments.
+func (s *session) hooks() ([]domain.Hook, error) {
+	l := s.loaded
+	out := make([]domain.Hook, 0, len(l.Config.Hooks))
+	for _, h := range l.Config.Hooks {
+		env, err := hooks.Env(h, l.Builtins, l.Config.Vars, l.Secrets.Lookup)
+		if err != nil {
+			return nil, err
+		}
+		h.Env = env
+		out = append(out, h)
+	}
+	return out, nil
+}
+
+func (s *session) hookRunner() *hooks.Runner {
+	return &hooks.Runner{Dir: s.loaded.Config.Dir, Events: s.app.emitter, Host: s.hostScript}
+}
+
+// hostScript runs a script on the server with `sh -s`, feeding it on stdin.
+func (s *session) hostScript(ctx context.Context, script string, out io.Writer) (int, error) {
+	sess, err := s.ssh.NewSession()
+	if err != nil {
+		return -1, errs.Connect("cannot open an SSH session").WithCause(err)
+	}
+	defer sess.Close()
+	sess.Stdin = strings.NewReader(script)
+	sess.Stdout, sess.Stderr = out, out
+	done := make(chan error, 1)
+	go func() { done <- sess.Run("sh -s") }()
+	select {
+	case <-ctx.Done():
+		_ = sess.Signal(ssh.SIGKILL)
+		return -1, ctx.Err()
+	case err := <-done:
+		var exit *ssh.ExitError
+		if errors.As(err, &exit) {
+			return exit.ExitStatus(), nil
+		}
+		if err != nil {
+			return -1, err
+		}
+		return 0, nil
+	}
+}
+
+// execHooks keeps the hooks the agent runs: those inside containers.
+func execHooks(all []domain.Hook) []domain.Hook {
+	var out []domain.Hook
+	for _, h := range all {
+		if h.Kind == domain.HookExec {
+			out = append(out, h)
+		}
+	}
+	return out
 }
