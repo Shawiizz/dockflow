@@ -1,17 +1,13 @@
 name: v2 release
 
 # Publishes a release (ADR-0020), once the whole CI has passed on the released commit: a tag
-# v<semver> pushed on the v2 branch, or a run started by hand on the v2 branch with the version,
-# whose tag the release then creates on that commit.
+# v<semver> pushed on the v2 branch, or a commit on the v2 branch that writes the version into
+# .github/release, whose tag the release then creates on that commit.
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "The version to release, v<semver> (v4.0.0-alpha.2)"
-        required: true
-        type: string
+    branches: [v2]
+    paths: [.github/release]
 
 permissions:
   contents: read
@@ -22,15 +18,14 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
+      - uses: actions/checkout@v4
       - id: tag
-        env:
-          INPUT: ${{ inputs.version }}
         run: |
-          tag="${INPUT:-$GITHUB_REF_NAME}"
+          case "$GITHUB_REF" in
+            refs/tags/*) tag="$GITHUB_REF_NAME" ;;
+            *) tag=$(tr -d '[:space:]' < .github/release) ;;
+          esac
           [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::not a version: $tag"; exit 1; }
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$GITHUB_REF" != refs/heads/v2 ]; then
-            echo "::error::releases are made from the v2 branch"; exit 1
-          fi
           echo "tag=$tag" >>"$GITHUB_OUTPUT"
 
   ci:
