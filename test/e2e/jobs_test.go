@@ -96,7 +96,7 @@ func TestFirstDeployWithDatabaseAndMigration(t *testing.T) {
       start_interval: 1s
   migrate:
     image: %[2]s
-    command: ["sh", "-c", "nslookup db >/dev/null && echo migrated against db"]
+    command: ["sh", "-c", "ping -c 1 -W 5 db >/dev/null && echo migrated against db"]
     depends_on:
       db:
         condition: service_healthy

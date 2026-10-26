@@ -1,13 +1,19 @@
 name: Release
 
 # Publishes a release (ADR-0020), once the whole CI has passed on the released commit: a tag
-# v<semver> pushed on main, or a commit on main that writes the version into
-# .github/release, whose tag the release then creates on that commit.
+# v<semver> pushed on main, a commit on main that writes the version into .github/release, or
+# a run started by hand on main with the version. The release creates the tag on that commit.
 on:
   push:
     tags: ["v*"]
     branches: [main]
     paths: [.github/release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version to release, v<semver>"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -20,11 +26,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: tag
+        env:
+          INPUT: ${{ inputs.version }}
         run: |
           case "$GITHUB_REF" in
             refs/tags/*) tag="$GITHUB_REF_NAME" ;;
-            *) tag=$(tr -d '[:space:]' < .github/release) ;;
+            *) tag="${INPUT:-$(tr -d '[:space:]' < .github/release)}" ;;
           esac
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::releases are made from main"; exit 1
+          fi
           [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::not a version: $tag"; exit 1; }
           echo "tag=$tag" >>"$GITHUB_OUTPUT"
 
