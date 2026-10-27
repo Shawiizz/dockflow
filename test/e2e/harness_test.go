@@ -53,6 +53,9 @@ var (
 	registryImage = env("DOCKFLOW_E2E_REGISTRY_IMAGE", "mirror.gcr.io/library/registry:3")
 	nginxImage    = env("DOCKFLOW_E2E_NGINX_IMAGE", "mirror.gcr.io/library/nginx:alpine")
 	postgresImage = env("DOCKFLOW_E2E_POSTGRES_IMAGE", "mirror.gcr.io/library/postgres:17-alpine")
+	mariadbImage  = env("DOCKFLOW_E2E_MARIADB_IMAGE", "mirror.gcr.io/library/mariadb:11")
+	redisImage    = env("DOCKFLOW_E2E_REDIS_IMAGE", "mirror.gcr.io/library/redis:7-alpine")
+	mongoImage    = env("DOCKFLOW_E2E_MONGO_IMAGE", "mirror.gcr.io/library/mongo:8")
 	// the agent runs restic by this name: the server loads it from here
 	resticImage = agent.DefaultResticImage
 )
@@ -124,7 +127,7 @@ func setup() (int, error) {
 	}
 
 	// the server has no network: it gets its images from here
-	for _, img := range []string{whoamiImage, caddyImage, alpineImage, registryImage, nginxImage, postgresImage, resticImage} {
+	for _, img := range []string{whoamiImage, caddyImage, alpineImage, registryImage, nginxImage, postgresImage, mariadbImage, redisImage, mongoImage, resticImage} {
 		if _, err := sh("docker", "image", "inspect", img); err != nil {
 			if _, err := sh("docker", "pull", img); err != nil {
 				return 1, err

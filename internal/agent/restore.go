@@ -1,8 +1,11 @@
 package agent
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -117,10 +120,10 @@ func (r *runner) backupRestore(ctx context.Context) events.RunFinishedData {
 	switch svc.Backup.Type {
 	case domain.BackupVolume:
 		err = r.restoreVolumes(ctx, rp, svc, snap)
-	case domain.BackupPostgres, domain.BackupCommand:
-		err = r.restoreDump(ctx, rp, svc, snap)
+	case domain.BackupRedis:
+		err = r.restoreRedis(ctx, rp, svc, snap)
 	default:
-		err = fmt.Errorf("type %s is not available yet", svc.Backup.Type)
+		err = r.restoreDump(ctx, rp, svc, snap)
 	}
 	if err != nil {
 		return failed(errs.Newf("backup.restore_failed", errs.ExitBackup, "the restore of %s failed: %v", svc.Name, err))
@@ -143,6 +146,12 @@ func restoreCommand(svc *domain.Service) []string {
 		}
 		cmd := []string{"pg_restore", "--username", user, "--dbname", db, "--clean", "--if-exists", "--single-transaction", "--exit-on-error"}
 		return append(cmd, b.RestoreOptions...)
+	case domain.BackupMySQL:
+		return append([]string{"sh", "-c", mysqlCredentials + mysqlRestore, "sh", b.Database}, b.RestoreOptions...)
+	case domain.BackupMongo:
+		return append([]string{"sh", "-c", mongoCredentials + `if [ -n "$db" ]; then set -- --nsInclude="$db.*" "$@"; fi
+mongorestore --archive --drop --stopOnError "$@"
+`, "sh", b.Database}, b.RestoreOptions...)
 	case domain.BackupCommand:
 		return b.Restore
 	}
@@ -186,6 +195,66 @@ func (r *runner) restoreDump(ctx context.Context, rp *repo, svc *domain.Service,
 	return nil
 }
 
+// restoreRedis restores an RDB: Redis reads its data when it starts, so the dump becomes the
+// stopped container's /data/dump.rdb.
+func (r *runner) restoreRedis(ctx context.Context, rp *repo, svc *domain.Service, snap Snapshot) error {
+	c, err := r.runningContainer(ctx, svc)
+	if err != nil {
+		return err
+	}
+	_, name := dumpCommand(svc)
+	ls, err := r.restic(ctx, rp, []string{"ls", "--json", "--no-lock", snap.ID, "/" + name}, nil, nil)
+	if err != nil {
+		return err
+	}
+	size := int64(-1)
+	for _, line := range strings.Split(string(ls.stdout), "\n") {
+		var n struct {
+			Path string `json:"path"`
+			Size int64  `json:"size"`
+		}
+		if json.Unmarshal([]byte(line), &n) == nil && n.Path == "/"+name {
+			size = n.Size
+		}
+	}
+	if size < 0 {
+		return fmt.Errorf("snapshot %s holds no %s", snap.ID, name)
+	}
+	resume, err := r.stopService(ctx, svc, "its restore")
+	if err != nil {
+		return err
+	}
+	pr, pw := io.Pipe()
+	var dumpRes *resticRun
+	var dumpErr error
+	go func() {
+		tw := tar.NewWriter(pw)
+		if err := tw.WriteHeader(&tar.Header{Name: "dump.rdb", Mode: 0o644, Size: size, ModTime: snap.Time}); err != nil {
+			pw.CloseWithError(err)
+			return
+		}
+		dumpRes, dumpErr = r.resticPipe(ctx, rp, []string{"dump", snap.ID, "/" + name}, nil, nil, tw)
+		if dumpErr == nil {
+			dumpErr = tw.Close()
+		}
+		pw.CloseWithError(dumpErr)
+	}()
+	copyErr := r.Engine.CopyTo(ctx, c.ID, "/data", pr)
+	_ = pr.CloseWithError(copyErr)
+	switch {
+	case dumpErr != nil:
+		err = dumpErr
+	case dumpRes != nil && dumpRes.code != 0:
+		err = fmt.Errorf("restic dump exited with code %d: %s", dumpRes.code, lastLines(dumpRes.stderr, 3))
+	case copyErr != nil:
+		err = copyErr
+	}
+	if rerr := resume(); rerr != nil {
+		err = errors.Join(err, fmt.Errorf("%s could not start again: %w", svc.Name, rerr))
+	}
+	return err
+}
+
 // restoreVolumes restores the service's volumes with the service stopped: each one gets the
 // snapshot's files, and loses those the snapshot does not have.
 func (r *runner) restoreVolumes(ctx context.Context, rp *repo, svc *domain.Service, snap Snapshot) error {
@@ -215,7 +284,7 @@ func (r *runner) restoreVolumes(ctx context.Context, rp *repo, svc *domain.Servi
 		}
 	}
 	if err := resume(); err != nil {
-		errRestore = fmt.Errorf("%w; and %s could not start again: %v", errRestore, svc.Name, err)
+		errRestore = errors.Join(errRestore, fmt.Errorf("%s could not start again: %w", svc.Name, err))
 	}
 	return errRestore
 }

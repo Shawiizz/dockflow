@@ -401,11 +401,57 @@ func dumpCommand(svc *domain.Service) ([]string, string) {
 		}
 		cmd := append([]string{"pg_dump", "--username", user, "--format=custom"}, b.DumpOptions...)
 		return append(cmd, db), svc.Name + ".pgdump"
+	case domain.BackupMySQL:
+		return append([]string{"sh", "-c", mysqlCredentials + mysqlDump, "sh", b.Database}, b.DumpOptions...), svc.Name + ".sql"
+	case domain.BackupMongo:
+		return append([]string{"sh", "-c", mongoCredentials + `if [ -n "$db" ]; then set -- --db="$db" "$@"; fi
+mongodump --archive "$@"
+`, "sh", b.Database}, b.DumpOptions...), svc.Name + ".archive"
+	case domain.BackupRedis:
+		return append([]string{"sh", "-c", redisDump, "sh"}, b.DumpOptions...), svc.Name + ".rdb"
 	case domain.BackupCommand:
 		return b.Dump, svc.Name + ".dump"
 	}
 	return nil, ""
 }
+
+// The dump and restore scripts of the mysql, mongo and redis types run in the service's
+// container, with its own environment: the credentials never leave it, and never reach a
+// command line ($1 is the database, the options follow).
+const (
+	// mysqlCredentials writes the client's credentials, from the image's variables, to a file
+	// only this command reads.
+	mysqlCredentials = `set -e
+db="$1"; shift
+[ -n "$db" ] || db="${MYSQL_DATABASE:-${MARIADB_DATABASE:-}}"
+user=root; pass="${MYSQL_ROOT_PASSWORD:-${MARIADB_ROOT_PASSWORD:-}}"
+if [ -z "$pass" ]; then user="${MYSQL_USER:-${MARIADB_USER:-root}}"; pass="${MYSQL_PASSWORD:-${MARIADB_PASSWORD:-}}"; fi
+cnf=$(mktemp); trap 'rm -f "$cnf"' EXIT
+printf '[client]\nuser=%s\npassword="%s"\n' "$user" "$pass" > "$cnf"
+`
+	mysqlDump = `dump=$(command -v mariadb-dump || command -v mysqldump)
+if [ -n "$db" ]; then set -- "$@" --databases "$db"; else set -- "$@" --all-databases; fi
+"$dump" --defaults-extra-file="$cnf" --single-transaction --routines --events "$@"
+`
+	mysqlRestore = `client=$(command -v mariadb || command -v mysql)
+"$client" --defaults-extra-file="$cnf" "$@"
+`
+	// mongoCredentials adds the root user of the image's variables, its password in a file.
+	mongoCredentials = `set -e
+db="$1"; shift
+if [ -n "${MONGO_INITDB_ROOT_USERNAME:-}" ]; then
+	cnf=$(mktemp); trap 'rm -f "$cnf"' EXIT
+	printf 'password: "%s"\n' "$MONGO_INITDB_ROOT_PASSWORD" > "$cnf"
+	set -- --config="$cnf" --username="$MONGO_INITDB_ROOT_USERNAME" --authenticationDatabase=admin "$@"
+fi
+`
+	redisDump = `set -e
+[ -z "${REDIS_PASSWORD:-}" ] || export REDISCLI_AUTH="$REDIS_PASSWORD"
+rdb=$(mktemp); trap 'rm -f "$rdb"' EXIT
+redis-cli "$@" --rdb "$rdb" >/dev/null
+cat "$rdb"
+`
+)
 
 // backupService backs up one service and returns its snapshot.
 func (r *runner) backupService(ctx context.Context, rp *repo, rel *domain.Release, svc *domain.Service) (*BackupResult, error) {
@@ -422,10 +468,8 @@ func (r *runner) backupService(ctx context.Context, rp *repo, rel *domain.Releas
 	switch b.Type {
 	case domain.BackupVolume:
 		res, err = r.backupVolumes(ctx, rp, svc, args)
-	case domain.BackupPostgres, domain.BackupCommand:
-		res, err = r.backupDump(ctx, rp, svc, args)
 	default:
-		return nil, fmt.Errorf("type %s is not available yet", b.Type)
+		res, err = r.backupDump(ctx, rp, svc, args)
 	}
 	if err != nil {
 		return nil, err

@@ -64,13 +64,13 @@ What works today:
 - releases, `dockflow rollback`, locks, and the day-2 commands: `logs`, `exec`, `run`, `cp`, `ssh`, `ps`, `status`, `details`, `diagnose`, `restart`, `stop`, `scale`, `prune`, `destroy`;
 - deploys from CI with the version and environment taken from the tag;
 - Compose `secrets:` and `configs:`, SOPS files, the published-port filter, plugins with the built-in `nginx` and `systemd`, the watchdog, shared networks and volume plugins, the `cloudflare` edge, route options and error pages, redirect, proxy and files routes, and full provisioning: SSH hardening, `--nginx`, `server cloud-init`, `server status`, `check`, `edge`, `upgrade` and `uninstall`, and `dockflow init` with CI workflows;
-- backups with restic: Postgres dumps, volumes with application-aware quiesce and custom dump commands, to a repository on the server or off-site, with retention, and restores, including production's data into staging (`backup run`, `list`, `restore`, `prune`).
+- backups with restic: Postgres, MySQL, MongoDB and Redis dumps, volumes with application-aware quiesce and custom dump commands, to a repository on the server or off-site, with retention, and restores, including production's data into staging (`backup run`, `list`, `restore`, `prune`).
 
 M3 ends once a real production project, ValientRP, runs on it.
 
 What comes next:
 
-- <Badge text="Coming in M4" variant="caution" /> the rest of the backups: MySQL, MongoDB and Redis dumps, and the backup of the server's own state.
+- <Badge text="Coming in M4" variant="caution" /> the backup of the server's own state, and scheduled backups in the generated CI workflows.
 - <Badge text="Coming in M5" variant="caution" /> the local web UI, the MCP server, the GitHub Action and preview environments.
 
 The [roadmap](/project/roadmap/) has the details.

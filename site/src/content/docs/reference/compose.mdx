@@ -278,7 +278,7 @@ A service that another one waits for with `depends_on: { condition: service_comp
 
 ### `backup`
 
-How a `stateful` service is backed up with restic: `type` (`postgres`, `volume` or `command`; `mysql`, `mongo` and `redis` <Badge text="Coming in M4" variant="caution" />), `database`, `dump_options`, `volumes`, `quiesce` (`stop`, `none` or `{ exec: { pre, post } }`), `dump` and `restore`, and the retention `keep`. Every option is in the [backups guide](/guides/backups/#what-is-backed-up).
+How a `stateful` service is backed up with restic: `type` (`postgres`, `mysql`, `mongo`, `redis`, `volume` or `command`), `database`, `dump_options`, `volumes`, `quiesce` (`stop`, `none` or `{ exec: { pre, post } }`), `dump` and `restore`, and the retention `keep`. Every option is in the [backups guide](/guides/backups/#what-is-backed-up).
 
 ```yaml
 # compose.yml (fragment)

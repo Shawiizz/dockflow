@@ -46,13 +46,15 @@ A service is backed up when it is `stateful` and declares `backup`. Its `type` s
 | `postgres` | `pg_dump --format=custom`, run in the service's own container, so the dump tool is the server's version. The user is `POSTGRES_USER` (default `postgres`), the database `database` or `POSTGRES_DB` |
 | `volume` | The service's volumes and bind mounts, or those listed in `volumes`, read-only, with its writes stopped as `quiesce` says |
 | `command` | The `dump` command, run in the service's container: its standard output is the backup. `restore` reads it back on its standard input |
-| `mysql`, `mongo`, `redis` | <Badge text="Coming in M4" variant="caution" /> |
+| `mysql` | `mysqldump --single-transaction --routines --events` (or `mariadb-dump`) of `database`, `MYSQL_DATABASE` or `MARIADB_DATABASE`, or every database. The credentials are the image's: `MYSQL_ROOT_PASSWORD` or `MARIADB_ROOT_PASSWORD`, else `MYSQL_USER` and `MYSQL_PASSWORD` |
+| `mongo` | `mongodump --archive`, of `database` or every database, as `MONGO_INITDB_ROOT_USERNAME` |
+| `redis` | `redis-cli --rdb`, with `REDIS_PASSWORD` when it is set |
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `type` | string | required | See above. |
-| `database` | string | the image's | `postgres`: the database to dump. |
-| `dump_options` | string | none | `postgres`: extra arguments of `pg_dump`, split on spaces, like `"--no-owner --no-acl"`. |
+| `database` | string | the image's | `postgres`, `mysql`, `mongo`: the database to dump. |
+| `dump_options`, `restore_options` | string | none | `postgres`, `mysql`, `mongo`, `redis`: extra arguments of the dump and restore tools, split on spaces, like `"--no-owner --no-acl"`. |
 | `volumes` | list | every volume and bind mount | `volume`: the volumes, by their key in the Compose file, and bind mounts, by their path on the server, to copy. |
 | `quiesce` | `stop`, `none` or map | `stop` | `volume`: how writes stop during the copy. `stop` stops the service's containers, then starts them again; `none` copies while it runs; `{ exec: { pre: [...], post: [...] } }` runs `pre` in the running container before the copy and `post` after, even when the copy fails. |
 | `dump`, `restore` | argument lists | required for `command` | The commands of the `command` type. |
@@ -95,7 +97,7 @@ backups:
 
 `repository` is any restic repository reachable from the server: `s3:` (AWS and S3-compatible storage such as OVH, Scaleway or MinIO), `b2:`, `azure:`, `gs:`, `sftp:`, `rest:`. `env` is passed to restic. Without `password`, Dockflow generates one, as for the local repository, in `/var/lib/dockflow/backups/<id>.password`.
 
-The password and the credentials reach restic through a file on the server's tmpfs, readable by root and removed at the end of the run: never on a command line, in a container's configuration or on disk.
+The credentials of the databases never leave their containers: the dump and restore commands read them from the image's variables and pass them to the tool in a temporary file, never on a command line. The repository's password and the storage's credentials reach restic through a file on the server's tmpfs, readable by root and removed at the end of the run: never on a command line, in a container's configuration or on disk.
 
 ## How a backup runs
 
@@ -142,7 +144,8 @@ dockflow backup restore staging db --from production           # production's da
 
 `backup restore` restores a snapshot into the service of the **current release**, under the environment's lock. It asks for confirmation on a terminal, and needs `--yes` without one.
 
-- **A dump** streams from the snapshot into the running service: `pg_restore --clean --if-exists --single-transaction --exit-on-error` for Postgres, so that the first error stops it and rolls back what it did; `restore` for the `command` type. `restore_options` adds arguments to `pg_restore`.
+- **A dump** streams from the snapshot into the running service, with options that stop at the first error: `pg_restore --clean --if-exists --single-transaction --exit-on-error` for Postgres, which also rolls back what it did; the `mysql` (or `mariadb`) client for MySQL; `mongorestore --archive --drop --stopOnError` for MongoDB; `restore` for the `command` type. `restore_options` adds arguments.
+- **Redis** loads its data when it starts: the service is stopped, the dump becomes `/data/dump.rdb` in its container (the official image's data directory), and it starts again. With `appendonly yes`, Redis loads its append-only file instead: turn it off, or back Redis up as a `volume`.
 - **Volumes** are restored with the service stopped, then started again. Each volume gets the snapshot's files, and loses those the snapshot does not have.
 - **`--from <env>`** restores a snapshot of another environment of the same app, read from that environment's repository with its secrets: the one on the server when both run on the same server, or its off-site `backups.repository`.
 
