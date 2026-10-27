@@ -35,13 +35,14 @@ The format is strict. An unknown key is an error (exit code 3, see [exit codes](
 | `notify` | list | none | Webhooks sent when a run finishes. See [`notify`](#notify). |
 | `firewall` | map | none | The published ports open to the internet. See [`firewall`](#firewall). |
 | `plugins` | list | none | Plugins expanded into uploads, templates and hooks. See [`plugins`](#plugins). |
+| `routes` | list | none | Routes that target no service of the app: redirects, proxies, files. See [`routes`](#routes). |
 | `environments` | map | required, at least one | The environments, by name. See [`environments`](#environments). |
 
 ### Keys an environment can override
 
 These top-level keys can also be set inside an environment, where they **replace** the top-level value for that environment (blocks are not merged key by key):
 
-`templates`, `registry`, `build`, `releases`, `on_failure`, `health`, `uploads`, `hooks`, `notify`, `firewall`, `plugins`.
+`templates`, `registry`, `build`, `releases`, `on_failure`, `health`, `uploads`, `hooks`, `notify`, `firewall`, `plugins`, `routes`.
 
 `version`, `app`, `compose` and `environments` cannot be set inside an environment. An environment has its own `compose` key, which replaces the top-level list.
 
@@ -204,6 +205,39 @@ plugins:
 | `id` | string | the plugin's name | Names the use: in hook names, the plan, and the plugin's own paths. Matches `^[a-z][a-z0-9_-]{0,31}$`; two uses of one plugin need different ids. |
 | `with` | map | none | The plugin's inputs. An unknown input, or a required one missing, is an error. Values are interpolated like the rest of the file. |
 
+## `routes`
+
+Routes the switch serves that don't target a service of the app. Each has exactly one of `redirect`, `proxy` and `files`.
+
+```yaml
+routes:
+  - domains: [mohistmc.com]
+    path: /maven
+    redirect: "https://maven.mohistmc.com{uri}"
+  - domains: [api.mohistmc.com]
+    proxy: http://valientrp-api:8080       # another app's service, on a shared network
+    network: valientrp
+  - name: maintenance
+    domains: [mohistmc.com]
+    path: /maintenance
+    files: { host_path: /srv/maintenance }
+  - domains: [archives.mohistmc.com]
+    files: { volume: archives, browse: true }
+    auth: { user: team, password: "${ARCHIVES_PASSWORD}" }
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | none | Names the route, for the `error_pages` of other routes. Matches `^[a-z][a-z0-9-]{0,31}$`. |
+| `domains`, `path`, `tls`, `strip_prefix` | | | As on a service's route ([Compose reference](/reference/compose/#routes)). |
+| `redirect` | string | | A URL, or a path, to redirect to. Caddy's placeholders work: `{uri}` is the request's path and query. |
+| `status` | integer | `308` | With `redirect`: `301`, `302`, `303`, `307` or `308`. |
+| `proxy` | string | | An `http` or `https` URL without a path, `http://host:port`, to send requests to. The `Host` header is the URL's, as nginx's `proxy_pass` does. |
+| `network` | string | none | With `proxy`: a [shared network](/guides/shared-servers/#shared-networks) the switch joins to reach the URL's host. |
+| `files` | map | | Serve a directory: `host_path`, an absolute path on the server, or `volume`, a volume of the Compose file; `browse: true` lists directories. The route's path is stripped: `/builds-raw/a.zip` is `a.zip` of the directory. |
+
+A route also takes every option of a service's route: `headers`, `encode`, `max_body`, `timeouts`, `auth`, `caddy` and `error_pages`. A `files` route runs a small file server, `files-<name>` (or `files-<n>`), in the switch's image, which mounts the directory read-only: the switch itself mounts nothing.
+
 ## `environments`
 
 A map from environment name to its settings. At least one environment is required. An environment can be empty (`production: {}`) when its server comes from the `<ENV>_CONNECTION` secret.
@@ -244,7 +278,6 @@ These keys are part of the format, but this version refuses them with "not avail
 
 | Key | Where | Arrives with |
 |---|---|---|
-| `routes` (routes that target no service) | top level or environment | <Badge text="Coming in M3" variant="caution" /> |
 | `backups` | top level or environment | <Badge text="Coming in M4" variant="caution" /> |
 
 See the [roadmap](/project/roadmap/).

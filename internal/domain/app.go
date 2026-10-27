@@ -33,7 +33,26 @@ type App struct {
 	Files []File `json:"files,omitempty"`
 	// PublicPorts are the published ports the port filter lets in from outside (ADR-0014).
 	PublicPorts []PublicPort `json:"public_ports,omitempty"`
+	// Routes are the routes of dockflow.yml that target no service: redirects and proxies
+	// (ADR-0011). Its files routes are services of their own.
+	Routes []AppRoute `json:"routes,omitempty"`
 }
+
+// AppRoute is a route of dockflow.yml that targets no service of the app.
+type AppRoute struct {
+	Route
+	// Redirect is the URL a redirect sends to, with Status (301, 302, 303, 307 or 308).
+	Redirect string `json:"redirect,omitempty"`
+	Status   int    `json:"status,omitempty"`
+	// Proxy is the URL requests are sent to; Network is a shared network the switch joins to
+	// reach it.
+	Proxy   string `json:"proxy,omitempty"`
+	Network string `json:"network,omitempty"`
+}
+
+// FileServerImage stands for the switch's image in the services of files routes: the agent
+// gives them the image the switch runs.
+const FileServerImage = "dockflow:file-server"
 
 // PublicPort is a port of firewall.public_ports: open to everyone, or to the From CIDRs.
 type PublicPort struct {
@@ -104,6 +123,9 @@ const (
 
 // HasRoutes reports whether any service is routed by the switch.
 func (a *App) HasRoutes() bool {
+	if len(a.Routes) > 0 {
+		return true
+	}
 	for _, s := range a.Services {
 		if len(s.Routes) > 0 {
 			return true
@@ -210,6 +232,8 @@ type Dependency struct {
 
 // Route sends HTTP traffic for domains and a path to a container port, through the switch.
 type Route struct {
+	// Name is given to the routes of dockflow.yml, which error pages can show.
+	Name        string   `json:"name,omitempty"`
 	Domains     []string `json:"domains"`
 	Path        string   `json:"path"`
 	Port        int      `json:"port"`
@@ -230,6 +254,17 @@ type RouteOptions struct {
 	Auth     *RouteAuth     `json:"auth,omitempty"`
 	// Caddy are raw Caddyfile directives, run before the request is proxied.
 	Caddy string `json:"caddy,omitempty"`
+	// ErrorPages replace the answers of the given statuses, and the failures to reach the
+	// containers.
+	ErrorPages []ErrorPage `json:"error_pages,omitempty"`
+}
+
+// ErrorPage is what a route answers for some statuses: the route of dockflow.yml named Route,
+// or Body, an inline page.
+type ErrorPage struct {
+	Statuses []int  `json:"statuses"`
+	Route    string `json:"route,omitempty"`
+	Body     string `json:"body,omitempty"`
 }
 
 // RouteTimeouts bound the switch's connection to the containers.

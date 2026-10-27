@@ -188,6 +188,7 @@ Each route sends HTTP traffic from the server's switch to the service's containe
 | `timeouts` | map | Caddy's | `read`, `write` and `dial`: durations for the switch's connection to the containers. |
 | `auth` | map | none | HTTP basic authentication: `user`, and `password`, from a secret: `password: ${PANEL_PASSWORD}`. The switch keeps only a bcrypt hash. |
 | `caddy` | string | none | Raw Caddyfile directives, run before the request reaches the service. `{upstream}` is the name of the service's first container. They are checked by the switch when the plan is computed. |
+| `error_pages` | map | none | Statuses, `"502,503,504"`, mapped to `{ route: <name> }`, a named [route of dockflow.yml](/reference/dockflow-yml/#routes) whose root is shown, or `{ body: "<html>…" }`, an inline page. They replace the service's answers with these statuses, and the switch's own when no container can be reached, as while a `stop-first` service restarts. |
 
 ```yaml
 # compose.yml (fragment)
@@ -215,7 +216,7 @@ The options are applied by the switch, in every edge mode, behind nginx too. Cha
 
 A domain and path pair can be routed only once per server: a second app or service claiming it makes the plan fail with `plan.domain_conflict`, before anything changes. Routes need a switch on the server, installed by [`dockflow server init`](/reference/cli/#server-init).
 
-`error_pages`, and routes that point elsewhere than a service (redirects, proxies, files), are <Badge text="Coming in M3" variant="caution" /> and refused for now.
+Routes that point elsewhere than a service, redirects, proxies and files, go in [`routes:` of dockflow.yml](/reference/dockflow-yml/#routes).
 
 ### `rollout`
 
@@ -279,7 +280,6 @@ A service that another one waits for with `depends_on: { condition: service_comp
 | Key | Arrives with |
 |---|---|
 | `backup` | <Badge text="Coming in M4" variant="caution" /> |
-| Route options other than those listed under [routes](#routes) | <Badge text="Coming in M3" variant="caution" /> |
 
 ## Refused combinations
 

@@ -61,7 +61,7 @@ Exit criteria: **shawiizz.dev and Dockflow's docs site deploy with v2 in product
 ## M3: Production-ready — ValientRP
 
 - **Provisioning:** the full `server init` (interactive, hardening, `--nginx`), `server cloud-init`, `check`, `connection`, `status`, `edge`, `upgrade`, `uninstall`.
-- **Edges:** `cloudflare` (done; `none` shipped with M2); route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks, (domain, path) uniqueness.
+- **Edges:** `cloudflare`, route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks, (domain, path) uniqueness (done; `none` shipped with M2).
 - **Plugins:** the project's own and the built-in `nginx` and `systemd`, plus `plugins list` (done; `server init --nginx` comes with provisioning).
 - **Security:** the published-port filter with `public_ports` and `from` (done), and the Cloudflare ranges timer (done).
 - **Secrets:** Compose `secrets:` and `configs:`, the SOPS file and the `secrets` commands (done).

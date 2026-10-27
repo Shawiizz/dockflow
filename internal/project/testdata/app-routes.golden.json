@@ -1,0 +1,182 @@
+{
+  "Services": [
+    {
+      "name": "web",
+      "strategy": "switch",
+      "replicas": 1,
+      "spec": {
+        "image": "nginx:alpine",
+        "networks": [
+          {
+            "network": "mohist-production_default",
+            "aliases": [
+              "web"
+            ]
+          }
+        ],
+        "restart": "unless-stopped",
+        "resources": {}
+      },
+      "pull_policy": "missing",
+      "routes": [
+        {
+          "domains": [
+            "mohist.example.com"
+          ],
+          "path": "/",
+          "port": 80,
+          "tls": true,
+          "error_pages": [
+            {
+              "statuses": [
+                502,
+                503
+              ],
+              "route": "maintenance"
+            }
+          ]
+        }
+      ],
+      "drain": "30s",
+      "health_grace": "10s"
+    },
+    {
+      "name": "files-maintenance",
+      "strategy": "switch",
+      "replicas": 1,
+      "spec": {
+        "image": "dockflow:file-server",
+        "command": [
+          "caddy",
+          "file-server",
+          "--root",
+          "/srv",
+          "--listen",
+          ":80"
+        ],
+        "mounts": [
+          {
+            "type": "bind",
+            "source": "/srv/maintenance",
+            "target": "/srv",
+            "read_only": true
+          }
+        ],
+        "networks": [
+          {
+            "network": "mohist-production_default",
+            "aliases": [
+              "files-maintenance"
+            ]
+          }
+        ],
+        "restart": "unless-stopped",
+        "resources": {}
+      },
+      "pull_policy": "missing",
+      "routes": [
+        {
+          "name": "maintenance",
+          "domains": [
+            "mohist.example.com"
+          ],
+          "path": "/maintenance",
+          "port": 80,
+          "tls": true,
+          "strip_prefix": true
+        }
+      ],
+      "drain": "30s",
+      "health_grace": "2s"
+    },
+    {
+      "name": "files-archives",
+      "strategy": "switch",
+      "replicas": 1,
+      "spec": {
+        "image": "dockflow:file-server",
+        "command": [
+          "caddy",
+          "file-server",
+          "--root",
+          "/srv",
+          "--listen",
+          ":80",
+          "--browse"
+        ],
+        "mounts": [
+          {
+            "type": "volume",
+            "source": "mohist-production_archives",
+            "target": "/srv",
+            "read_only": true
+          }
+        ],
+        "networks": [
+          {
+            "network": "mohist-production_default",
+            "aliases": [
+              "files-archives"
+            ]
+          }
+        ],
+        "restart": "unless-stopped",
+        "resources": {}
+      },
+      "pull_policy": "missing",
+      "routes": [
+        {
+          "name": "archives",
+          "domains": [
+            "archives.mohist.example.com"
+          ],
+          "path": "/",
+          "port": 80,
+          "tls": true,
+          "auth": {
+            "user": "team",
+            "password": "s3cret"
+          }
+        }
+      ],
+      "drain": "30s",
+      "health_grace": "2s"
+    }
+  ],
+  "Routes": [
+    {
+      "domains": [
+        "mohist.example.com"
+      ],
+      "path": "/maven",
+      "port": 0,
+      "tls": true,
+      "redirect": "https://maven.mohist.example.com{uri}",
+      "status": 301
+    },
+    {
+      "domains": [
+        "api.mohist.example.com"
+      ],
+      "path": "/",
+      "port": 0,
+      "tls": true,
+      "error_pages": [
+        {
+          "statuses": [
+            502
+          ],
+          "body": "\u003ch1\u003eThe API is down\u003c/h1\u003e"
+        }
+      ],
+      "proxy": "http://mohist-api:8080",
+      "network": "mohist"
+    }
+  ],
+  "Networks": [
+    {
+      "key": "default",
+      "name": "mohist-production_default"
+    }
+  ]
+}

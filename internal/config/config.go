@@ -51,11 +51,48 @@ type Settings struct {
 	Notify    []NotifyEntry   `yaml:"notify"`
 	Firewall  *Firewall       `yaml:"firewall"`
 	Plugins   []PluginUse     `yaml:"plugins"`
+	Routes    []RouteEntry    `yaml:"routes"`
 
 	// Keys of the specification that arrive in later milestones. They are refused with a clear
 	// message instead of being ignored.
-	Routes  *yaml.Node `yaml:"routes"`
 	Backups *yaml.Node `yaml:"backups"`
+}
+
+// RouteEntry is a route of dockflow.yml, which targets no service of the app (ADR-0011):
+// exactly one of Redirect, Proxy and Files, and the options of a service's route.
+type RouteEntry struct {
+	Name        string   `yaml:"name"`
+	Domains     []string `yaml:"domains"`
+	Path        string   `yaml:"path"`
+	TLS         *bool    `yaml:"tls"`
+	StripPrefix bool     `yaml:"strip_prefix"`
+	Redirect    string   `yaml:"redirect"`
+	Status      int      `yaml:"status"`
+	Proxy       string   `yaml:"proxy"`
+	Network     string   `yaml:"network"`
+	Files       *struct {
+		HostPath string `yaml:"host_path"`
+		Volume   string `yaml:"volume"`
+		Browse   bool   `yaml:"browse"`
+	} `yaml:"files"`
+
+	Headers  map[string]string `yaml:"headers"`
+	Encode   []string          `yaml:"encode"`
+	MaxBody  string            `yaml:"max_body"`
+	Timeouts *struct {
+		Read  string `yaml:"read"`
+		Write string `yaml:"write"`
+		Dial  string `yaml:"dial"`
+	} `yaml:"timeouts"`
+	Auth *struct {
+		User     string `yaml:"user"`
+		Password string `yaml:"password"`
+	} `yaml:"auth"`
+	Caddy      string `yaml:"caddy"`
+	ErrorPages map[string]struct {
+		Route string `yaml:"route"`
+		Body  string `yaml:"body"`
+	} `yaml:"error_pages"`
 }
 
 // PluginUse is one entry of plugins (ADR-0017): a built-in plugin's name, or the path of a
@@ -249,11 +286,12 @@ type Resolved struct {
 	PublicPorts []domain.PublicPort
 	// Plugins are expanded into Uploads and Hooks once the variables are known.
 	Plugins []PluginUse
+	// Routes are the routes of dockflow.yml, converted with the app.
+	Routes []RouteEntry
 }
 
 // laterKeys are spec keys not available yet, with the milestone that brings them.
 var laterKeys = map[string]string{
-	"routes":  "M3",
 	"backups": "M4",
 }
 
@@ -466,6 +504,9 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 		}
 		if s.Plugins != nil {
 			res.Plugins = s.Plugins
+		}
+		if s.Routes != nil {
+			res.Routes = s.Routes
 		}
 		if s.Templates != nil {
 			t, err := templates(r.Dir, s.Templates)

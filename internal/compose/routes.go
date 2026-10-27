@@ -2,6 +2,7 @@ package compose
 
 import (
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -15,8 +16,8 @@ var (
 	sizeValue  = regexp.MustCompile(`^(\d+)\s*([kKmMgG]?)(i?[bB])?$`)
 )
 
-// routeOptions checks the options of a route and converts them (ADR-0011).
-func routeOptions(at string, x RouteOptionsExt) (domain.RouteOptions, error) {
+// RouteOptions checks the options of a route and converts them (ADR-0011).
+func RouteOptions(at string, x RouteOptionsExt) (domain.RouteOptions, error) {
 	o := domain.RouteOptions{Headers: x.Headers, Caddy: strings.TrimSpace(x.Caddy)}
 	for name, value := range x.Headers {
 		if !headerName.MatchString(name) {
@@ -61,6 +62,26 @@ func routeOptions(at string, x RouteOptionsExt) (domain.RouteOptions, error) {
 				WithHint("give the password from a secret: password: ${PANEL_PASSWORD}")
 		}
 		o.Auth = &domain.RouteAuth{User: a.User, Password: a.Password}
+	}
+	keys := make([]string, 0, len(x.ErrorPages))
+	for k := range x.ErrorPages {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		page := x.ErrorPages[k]
+		if (page.Route == "") == (page.Body == "") {
+			return o, errs.Config("%s: route error_pages %q: give a route or a body", at, k)
+		}
+		ep := domain.ErrorPage{Route: page.Route, Body: page.Body}
+		for _, part := range strings.Split(k, ",") {
+			n, err := strconv.Atoi(strings.TrimSpace(part))
+			if err != nil || n < 400 || n > 599 {
+				return o, errs.Config("%s: route error_pages %q: statuses from 400 to 599, separated by commas", at, k)
+			}
+			ep.Statuses = append(ep.Statuses, n)
+		}
+		o.ErrorPages = append(o.ErrorPages, ep)
 	}
 	return o, nil
 }

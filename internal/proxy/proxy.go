@@ -38,6 +38,13 @@ type Route struct {
 	// Caddy are raw Caddyfile directives; CaddyJSON are their handlers, adapted by the switch.
 	Caddy     string          `json:"caddy,omitempty"`
 	CaddyJSON json.RawMessage `json:"caddy_json,omitempty"`
+	// ErrorPages replace some answers; a page that shows a route names it by Name.
+	ErrorPages []domain.ErrorPage `json:"error_pages,omitempty"`
+	Name       string             `json:"name,omitempty"`
+	// Redirect, with RedirectStatus, or ProxyURL: a route of dockflow.yml, with no upstreams.
+	Redirect       string `json:"redirect,omitempty"`
+	RedirectStatus int    `json:"redirect_status,omitempty"`
+	ProxyURL       string `json:"proxy,omitempty"`
 }
 
 // UpstreamMarker stands for the route's first container in raw Caddy directives, written

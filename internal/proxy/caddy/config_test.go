@@ -48,6 +48,26 @@ func TestBuildOptions(t *testing.T) {
 	}
 }
 
+func TestBuildAppRoutesAndErrorPages(t *testing.T) {
+	b, err := Build(proxy.Config{Edge: proxy.EdgeBuiltin, Routes: []proxy.Route{
+		{Stack: "mohist-production", Service: "web", Domains: []string{"mohist.example.com"}, Path: "/", Port: 3000, TLS: true,
+			Upstreams:  []string{"mohist-production-web-3-1"},
+			ErrorPages: []domain.ErrorPage{{Statuses: []int{502, 503}, Route: "maintenance"}, {Statuses: []int{404}, Body: "<h1>Not here</h1>"}}},
+		{Stack: "mohist-production", Service: "files-maintenance", Name: "maintenance", Domains: []string{"mohist.example.com"}, Path: "/maintenance",
+			Port: 80, TLS: true, StripPrefix: true, Upstreams: []string{"mohist-production-files-maintenance-3-1"}},
+		{Stack: "mohist-production", Service: "routes.maven", Name: "maven", Domains: []string{"mohist.example.com"}, Path: "/maven", TLS: true,
+			Redirect: "https://maven.example.com{uri}", RedirectStatus: 308, Upstreams: []string{}},
+		{Stack: "mohist-production", Service: "routes.1", Domains: []string{"api.mohist.example.com"}, Path: "/", TLS: true,
+			ProxyURL: "https://api.upstream.example", Upstreams: []string{}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v any
+	json.Unmarshal(b, &v)
+	testutil.Golden(t, "app-routes", v)
+}
+
 func TestBuildCloudflare(t *testing.T) {
 	b, err := Build(proxy.Config{Edge: proxy.EdgeCloudflare, TrustedProxies: []string{"173.245.48.0/20", "2400:cb00::/32"}, Routes: []proxy.Route{
 		{Stack: "web-production", Service: "web", Domains: []string{"example.com"}, Path: "/", Port: 80, TLS: true,

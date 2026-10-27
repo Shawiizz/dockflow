@@ -53,7 +53,7 @@ Everything a web app needs to go to production from CI.
 Take a blank server to a hardened production host, and cover the needs of larger apps.
 
 - **Provisioning:** the rest of `server init`: interactive questions, SSH hardening, fail2ban, security updates, time synchronisation, `from=` restrictions on the deploy key, and `--nginx`. Plus `server cloud-init`, `server check`, `server status`, `server edge`, `server upgrade` and `server uninstall`.
-- **Edges and routes:** the `cloudflare` edge <Badge text="Done" variant="success" />; route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks.
+- **Edges and routes** <Badge text="Done" variant="success" />: the `cloudflare` edge, route options, error pages, `redirect`, `proxy` and `files` routes, raw Caddy blocks.
 - **Plugins** <Badge text="Done" variant="success" />: project plugins and the built-in `nginx` and `systemd` plugins, with `plugins list`. `server init --nginx`, which installs nginx and the plugins' sudo rules, arrives with provisioning.
 - **Firewall** <Badge text="Done" variant="success" />: the published-port filter, with `firewall.public_ports` and per-port source ranges. Cloudflare's ranges, refreshed every week, come with the `cloudflare` edge.
 - **Secrets** <Badge text="Done" variant="success" />: Compose `secrets:` and `configs:` delivered as files on a tmpfs, build secrets, encrypted secrets files with SOPS, and the `secrets` commands.

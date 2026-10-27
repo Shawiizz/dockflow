@@ -102,7 +102,11 @@ firewall:                           # ADR-0014
     - 25565                         # tcp and udp, from anywhere
     - { port: 4326, protocol: tcp, from: [203.0.113.0/24] }
 
-routes:                             # routes that don't target a service of this app (ADR-0011)
+routes:                             # routes that don't target a service of this app (ADR-0011):
+                                    # exactly one of redirect (with status, default 308), proxy
+                                    # (an http(s) URL without a path; network: a shared network to
+                                    # join) and files (host_path or volume, browse; the path is
+                                    # stripped); name: for error_pages; and every route option
   - domains: [mohistmc.com]
     path: /maven
     redirect: https://maven.mohistmc.com/

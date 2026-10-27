@@ -1,0 +1,288 @@
+{
+  "admin": {
+    "listen": "unix//run/dockflow-switch/admin.sock"
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "http": {
+          "listen": [
+            ":80"
+          ],
+          "routes": [
+            {
+              "handle": [
+                {
+                  "abort": true,
+                  "handler": "static_response"
+                }
+              ]
+            }
+          ]
+        },
+        "https": {
+          "errors": {
+            "routes": [
+              {
+                "handle": [
+                  {
+                    "handler": "rewrite",
+                    "uri": "/"
+                  },
+                  {
+                    "handler": "rewrite",
+                    "strip_path_prefix": "/maintenance"
+                  },
+                  {
+                    "handler": "reverse_proxy",
+                    "load_balancing": {
+                      "selection_policy": {
+                        "policy": "round_robin"
+                      },
+                      "try_duration": "2s"
+                    },
+                    "upstreams": [
+                      {
+                        "dial": "{file./run/dockflow-switch/up/mohist-production.files-maintenance.0/0}"
+                      }
+                    ]
+                  }
+                ],
+                "match": [
+                  {
+                    "expression": "{http.error.status_code} in [502, 503]",
+                    "host": [
+                      "mohist.example.com"
+                    ]
+                  }
+                ],
+                "terminal": true
+              },
+              {
+                "handle": [
+                  {
+                    "body": "\u003ch1\u003eNot here\u003c/h1\u003e",
+                    "handler": "static_response",
+                    "headers": {
+                      "Content-Type": [
+                        "text/html; charset=utf-8"
+                      ]
+                    },
+                    "status_code": "{http.error.status_code}"
+                  }
+                ],
+                "match": [
+                  {
+                    "expression": "{http.error.status_code} in [404]",
+                    "host": [
+                      "mohist.example.com"
+                    ]
+                  }
+                ],
+                "terminal": true
+              }
+            ]
+          },
+          "listen": [
+            ":443"
+          ],
+          "routes": [
+            {
+              "@id": "dockflow.mohist-production.files-maintenance.0",
+              "handle": [
+                {
+                  "handler": "rewrite",
+                  "strip_path_prefix": "/maintenance"
+                },
+                {
+                  "handler": "reverse_proxy",
+                  "load_balancing": {
+                    "selection_policy": {
+                      "policy": "round_robin"
+                    },
+                    "try_duration": "2s"
+                  },
+                  "upstreams": [
+                    {
+                      "dial": "{file./run/dockflow-switch/up/mohist-production.files-maintenance.0/0}"
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "mohist.example.com"
+                  ],
+                  "path": [
+                    "/maintenance",
+                    "/maintenance/*"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "@id": "dockflow.mohist-production.routes.maven.0",
+              "handle": [
+                {
+                  "handler": "static_response",
+                  "headers": {
+                    "Location": [
+                      "https://maven.example.com{http.request.uri}"
+                    ]
+                  },
+                  "status_code": 308
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "mohist.example.com"
+                  ],
+                  "path": [
+                    "/maven",
+                    "/maven/*"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "@id": "dockflow.mohist-production.routes.1.0",
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "headers": {
+                    "request": {
+                      "set": {
+                        "Host": [
+                          "api.upstream.example"
+                        ]
+                      }
+                    }
+                  },
+                  "transport": {
+                    "protocol": "http",
+                    "tls": {
+                      "server_name": "api.upstream.example"
+                    }
+                  },
+                  "upstreams": [
+                    {
+                      "dial": "api.upstream.example:443"
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "api.mohist.example.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "@id": "dockflow.mohist-production.web.0",
+              "handle": [
+                {
+                  "handle_response": [
+                    {
+                      "match": {
+                        "status_code": [
+                          502,
+                          503
+                        ]
+                      },
+                      "routes": [
+                        {
+                          "handle": [
+                            {
+                              "handler": "rewrite",
+                              "uri": "/"
+                            },
+                            {
+                              "handler": "rewrite",
+                              "strip_path_prefix": "/maintenance"
+                            },
+                            {
+                              "handler": "reverse_proxy",
+                              "load_balancing": {
+                                "selection_policy": {
+                                  "policy": "round_robin"
+                                },
+                                "try_duration": "2s"
+                              },
+                              "upstreams": [
+                                {
+                                  "dial": "{file./run/dockflow-switch/up/mohist-production.files-maintenance.0/0}"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "match": {
+                        "status_code": [
+                          404
+                        ]
+                      },
+                      "routes": [
+                        {
+                          "handle": [
+                            {
+                              "body": "\u003ch1\u003eNot here\u003c/h1\u003e",
+                              "handler": "static_response",
+                              "headers": {
+                                "Content-Type": [
+                                  "text/html; charset=utf-8"
+                                ]
+                              },
+                              "status_code": "{http.reverse_proxy.status_code}"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "handler": "reverse_proxy",
+                  "load_balancing": {
+                    "selection_policy": {
+                      "policy": "round_robin"
+                    },
+                    "try_duration": "2s"
+                  },
+                  "upstreams": [
+                    {
+                      "dial": "{file./run/dockflow-switch/up/mohist-production.web.0/0}"
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "mohist.example.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "abort": true,
+                  "handler": "static_response"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -35,6 +35,40 @@ func TestBasic(t *testing.T) {
 	}{l.App, l.Warnings, l.Version})
 }
 
+func TestAppRoutes(t *testing.T) {
+	l, err := load(t, "app-routes", "production", "PRODUCTION_ARCHIVES_PASSWORD=s3cret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.Golden(t, "app-routes", struct {
+		Services any
+		Routes   any
+		Networks any
+	}{l.App.Services, l.App.Routes, l.App.Networks})
+}
+
+func TestAppRouteErrors(t *testing.T) {
+	cases := map[string]string{
+		"two kinds":      "routes:\n  - domains: [a.test]\n    redirect: https://b.test\n    proxy: http://c:80\n",
+		"no kind":        "routes:\n  - domains: [a.test]\n",
+		"proxy path":     "routes:\n  - domains: [a.test]\n    proxy: http://c:80/api\n",
+		"unknown page":   "routes:\n  - domains: [a.test]\n    redirect: https://b.test\n    error_pages: { \"502\": { route: nope } }\n",
+		"unknown volume": "routes:\n  - domains: [a.test]\n    files: { volume: nope }\n",
+		"bad status":     "routes:\n  - domains: [a.test]\n    redirect: https://b.test\n    status: 200\n",
+	}
+	for name, routes := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			os.WriteFile(filepath.Join(dir, "dockflow.yml"), []byte("version: 1\napp: shop\n"+routes+"environments:\n  production: {}\n"), 0o644)
+			os.WriteFile(filepath.Join(dir, "compose.yml"), []byte("services:\n  web:\n    image: nginx\n"), 0o644)
+			_, err := Load(context.Background(), Options{Dir: dir, Env: "production"})
+			if e, ok := errs.As(err); !ok || e.Exit != errs.ExitConfig {
+				t.Fatalf("want a config error, got %v", err)
+			}
+		})
+	}
+}
+
 func TestBasicStagingUsesLocalSecrets(t *testing.T) {
 	l, err := load(t, "basic", "staging")
 	if err != nil {
@@ -60,8 +94,8 @@ func TestMissingVariableIsAnError(t *testing.T) {
 func TestLaterKeyIsRefused(t *testing.T) {
 	_, err := load(t, "later-key", "production")
 	e, ok := errs.As(err)
-	if !ok || !strings.Contains(e.Message, "`routes`") || !strings.Contains(e.Hint, "M3") {
-		t.Fatalf("want routes refused until M3, got %v", err)
+	if !ok || !strings.Contains(e.Message, "`backups`") || !strings.Contains(e.Hint, "M4") {
+		t.Fatalf("want backups refused until M4, got %v", err)
 	}
 }
 

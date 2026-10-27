@@ -18,6 +18,8 @@ type Actual struct {
 	Files map[string]bool `json:"files,omitempty"`
 	// PublicPorts are the current release's firewall.public_ports.
 	PublicPorts []PublicPort `json:"public_ports,omitempty"`
+	// Routes are the current release's routes of dockflow.yml.
+	Routes []AppRoute `json:"routes,omitempty"`
 	// VolumeDrivers are the volume plugins installed and enabled; nil when unknown.
 	VolumeDrivers map[string]bool `json:"volume_drivers,omitempty"`
 }

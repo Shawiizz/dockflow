@@ -282,6 +282,19 @@ func (r *runner) resolve(ctx context.Context, a *domain.App, pull bool) error {
 	for i := range a.Services {
 		s := &a.Services[i]
 		ref := s.Spec.Image
+		if ref == domain.FileServerImage {
+			// a files route's server runs the switch's image (ADR-0011)
+			srv, err := r.Store.Server()
+			if err != nil {
+				return err
+			}
+			if srv == nil || srv.SwitchImage == "" {
+				return errs.Plan("plan.no_switch", "the files route %s needs the server's switch", s.Name).
+					WithHint("run `dockflow server init`")
+			}
+			s.Spec.Image = srv.SwitchImage
+			continue
+		}
 		if strings.HasPrefix(ref, "sha256:") {
 			continue
 		}
@@ -730,6 +743,7 @@ func routesFor(stack string, a *domain.App, serving map[string][]string) []proxy
 				TLS: rt.TLS, StripPrefix: rt.StripPrefix, Upstreams: append([]string(nil), serving[s.Name]...),
 				Headers: rt.Headers, Encode: rt.Encode, MaxBody: rt.MaxBody, Timeouts: rt.Timeouts, Caddy: rt.Caddy,
 			}
+			route.Name, route.ErrorPages = rt.Name, rt.ErrorPages
 			if rt.Auth != nil {
 				route.AuthUser, route.AuthPassword = rt.Auth.User, rt.Auth.Password
 			}
@@ -738,6 +752,24 @@ func routesFor(stack string, a *domain.App, serving map[string][]string) []proxy
 			}
 			out = append(out, route)
 		}
+	}
+	// the routes of dockflow.yml: redirects and proxies, which no container serves
+	for i, ar := range a.Routes {
+		name := ar.Name
+		if name == "" {
+			name = strconv.Itoa(i)
+		}
+		rt := ar.Route
+		route := proxy.Route{
+			Stack: stack, Service: "routes." + name, Name: ar.Name, Domains: rt.Domains, Path: rt.Path, TLS: rt.TLS,
+			StripPrefix: rt.StripPrefix, Upstreams: []string{}, Network: ar.Network,
+			Headers: rt.Headers, Encode: rt.Encode, MaxBody: rt.MaxBody, Timeouts: rt.Timeouts, Caddy: rt.Caddy,
+			ErrorPages: rt.ErrorPages, Redirect: ar.Redirect, RedirectStatus: ar.Status, ProxyURL: ar.Proxy,
+		}
+		if rt.Auth != nil {
+			route.AuthUser, route.AuthPassword = rt.Auth.User, rt.Auth.Password
+		}
+		out = append(out, route)
 	}
 	return out
 }

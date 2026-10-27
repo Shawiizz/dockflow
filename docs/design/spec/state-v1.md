@@ -173,5 +173,6 @@ It deletes the other release files, then the images, registry manifests, secret 
 - **`error`** is set on a release that is `rolled-back`, `failed` or `abandoned`: `{ "code": "…", "message": "…" }`.
 - **Interpolated values.** Values interpolated into environment variables are part of the spec, as they are of `docker inspect`. The file is readable by root only.
 - **Jobs** are services of `desired` with `"job": "before"` or `"after"`; they have no containers once the run is over.
+- **Routes of dockflow.yml** are in `desired.routes`: redirects and proxies; files routes are services (`files-<name>`), whose image `dockflow:file-server` the agent replaces with the switch's.
 - **Uploads** are in `desired.uploads`: each destination with the digest of its manifest, and `plugin`, the id of the plugin that added it.
 - **Secrets and configs** are in `desired.files`: `name`, `secret`, `hash`, `path`, `uid`, `gid`, `mode`, never the value. The CLI sends the values with each run, on the agent's stdin; a rollback to a release whose file is gone (a reboot empties the tmpfs) and whose value the run does not have fails with `secret.missing`.

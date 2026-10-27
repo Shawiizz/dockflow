@@ -270,6 +270,9 @@ func Load(ctx context.Context, o Options) (*Loaded, error) {
 		return nil, err
 	}
 	res.App.PublicPorts = cfg.PublicPorts
+	if err := appRoutes(cfg.Routes, &res.App); err != nil {
+		return nil, err
+	}
 	res.Warnings = append(res.Warnings, unlistedPorts(&res.App)...)
 	files := []string{config.FileName}
 	for _, f := range proj.ComposeFiles {

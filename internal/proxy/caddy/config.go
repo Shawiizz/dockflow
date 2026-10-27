@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/proxy"
 )
 
@@ -45,16 +47,24 @@ func Build(c proxy.Config) ([]byte, error) {
 		return routes[i].Service < routes[j].Service
 	})
 
-	var https, http []any
+	b := builder{byName: map[string]identified{}}
 	for _, r := range routes {
-		if r.TLS {
-			https = append(https, route(r))
-		} else {
-			http = append(http, route(r))
+		if r.Name != "" {
+			b.byName[r.Stack+"/"+r.Name] = r
 		}
 	}
 	if c.Edge == proxy.EdgeExternal {
-		return external(c, routes)
+		return external(c, routes, b)
+	}
+	var https, http, httpsErrors, httpErrors []any
+	for _, r := range routes {
+		if r.TLS {
+			https = append(https, b.route(r))
+			httpsErrors = append(httpsErrors, b.errorRoutes(r)...)
+		} else {
+			http = append(http, b.route(r))
+			httpErrors = append(httpErrors, b.errorRoutes(r)...)
+		}
 	}
 	refuse := obj{"handle": []any{obj{"handler": "static_response", "abort": true}}}
 	servers := obj{
@@ -64,8 +74,14 @@ func Build(c proxy.Config) ([]byte, error) {
 			// automatic HTTPS adds its redirects for the TLS domains to this server
 		},
 	}
+	if len(httpErrors) > 0 {
+		servers["http"].(obj)["errors"] = obj{"routes": httpErrors}
+	}
 	if len(https) > 0 {
 		servers["https"] = obj{"listen": []string{":443"}, "routes": append(https, refuse)}
+		if len(httpsErrors) > 0 {
+			servers["https"].(obj)["errors"] = obj{"routes": httpsErrors}
+		}
 	}
 	if c.Edge == proxy.EdgeCloudflare {
 		// the client is the one Cloudflare names, when Cloudflare connects; the filter lets
@@ -85,10 +101,11 @@ func Build(c proxy.Config) ([]byte, error) {
 
 // external serves every route on one plain HTTP address, behind the user's own proxy, which
 // terminates TLS and sends X-Forwarded-For.
-func external(c proxy.Config, routes []identified) ([]byte, error) {
-	var rs []any
+func external(c proxy.Config, routes []identified, b builder) ([]byte, error) {
+	var rs, errs []any
 	for _, r := range routes {
-		rs = append(rs, route(r))
+		rs = append(rs, b.route(r))
+		errs = append(errs, b.errorRoutes(r)...)
 	}
 	rs = append(rs, obj{"handle": []any{obj{"handler": "static_response", "status_code": 404}}})
 	trusted := c.TrustedProxies
@@ -103,6 +120,9 @@ func external(c proxy.Config, routes []identified) ([]byte, error) {
 		"automatic_https":   obj{"disable": true},
 		"trusted_proxies":   obj{"source": "static", "ranges": trusted},
 		"client_ip_headers": []string{"X-Forwarded-For"},
+	}
+	if len(errs) > 0 {
+		server["errors"] = obj{"routes": errs}
 	}
 	cfg := obj{
 		"admin": obj{"listen": "unix/" + AdminSocket},
@@ -144,12 +164,38 @@ func Upstreams(c proxy.Config) map[string]string {
 	return out
 }
 
-func route(r identified) obj {
-	match := obj{"host": r.Domains}
+// shorthands are the Caddyfile's short placeholders, which the JSON configuration spells out.
+var shorthands = strings.NewReplacer(
+	"{uri}", "{http.request.uri}", "{path}", "{http.request.uri.path}", "{query}", "{http.request.uri.query}",
+	"{host}", "{http.request.host}", "{scheme}", "{http.request.scheme}",
+)
+
+// builder builds routes, knowing every route by stack and name, for error pages that show one.
+type builder struct {
+	byName map[string]identified
+}
+
+func match(r identified) obj {
+	m := obj{"host": r.Domains}
 	if r.Path != "" && r.Path != "/" {
 		p := strings.TrimSuffix(r.Path, "/")
-		match["path"] = []string{p, p + "/*"}
+		m["path"] = []string{p, p + "/*"}
 	}
+	return m
+}
+
+func (b builder) route(r identified) obj {
+	return obj{
+		"@id":      "dockflow." + r.ID,
+		"match":    []any{match(r)},
+		"handle":   b.handlers(r, true),
+		"terminal": true,
+	}
+}
+
+// handlers are what a route does: its options, then its redirect, its proxy to a URL, or its
+// proxy to its containers. pages adds its error pages to the proxy's answers.
+func (b builder) handlers(r identified, pages bool) []any {
 	var handle []any
 	if r.AuthUser != "" {
 		handle = append(handle, obj{"handler": "authentication", "providers": obj{"http_basic": obj{
@@ -179,6 +225,10 @@ func route(r identified) obj {
 		}
 		handle = append(handle, obj{"handler": "headers", "response": resp})
 	}
+	if r.Redirect != "" {
+		return append(handle, obj{"handler": "static_response", "status_code": r.RedirectStatus,
+			"headers": obj{"Location": []string{shorthands.Replace(r.Redirect)}}})
+	}
 	if len(r.Encode) > 0 {
 		enc := obj{}
 		for _, e := range r.Encode {
@@ -196,29 +246,82 @@ func route(r identified) obj {
 			handle = append(handle, obj{"handler": "subroute", "routes": routes})
 		}
 	}
-	ups := make([]any, 0, len(r.Upstreams))
-	for i := range r.Upstreams {
-		ups = append(ups, obj{"dial": fmt.Sprintf("{file.%s/%s/%d}", upstreamDir, r.ID, i)})
-	}
-	rp := obj{
-		"handler":        "reverse_proxy",
-		"upstreams":      ups,
-		"load_balancing": obj{"selection_policy": obj{"policy": "round_robin"}, "try_duration": "2s"},
+	rp := obj{"handler": "reverse_proxy"}
+	tr := obj{"protocol": "http"}
+	if r.ProxyURL != "" {
+		u, _ := url.Parse(r.ProxyURL)
+		host := u.Host
+		if u.Port() == "" {
+			port := "80"
+			if u.Scheme == "https" {
+				port = "443"
+			}
+			host = net.JoinHostPort(u.Hostname(), port)
+		}
+		rp["upstreams"] = []any{obj{"dial": host}}
+		// as nginx's proxy_pass: the upstream's own host name
+		rp["headers"] = obj{"request": obj{"set": obj{"Host": []string{u.Host}}}}
+		if u.Scheme == "https" {
+			tr["tls"] = obj{"server_name": u.Hostname()}
+		}
+	} else {
+		ups := make([]any, 0, len(r.Upstreams))
+		for i := range r.Upstreams {
+			ups = append(ups, obj{"dial": fmt.Sprintf("{file.%s/%s/%d}", upstreamDir, r.ID, i)})
+		}
+		rp["upstreams"] = ups
+		rp["load_balancing"] = obj{"selection_policy": obj{"policy": "round_robin"}, "try_duration": "2s"}
 	}
 	if t := r.Timeouts; t != nil {
-		tr := obj{"protocol": "http"}
 		for k, d := range map[string]time.Duration{"read_timeout": t.Read.D(), "write_timeout": t.Write.D(), "dial_timeout": t.Dial.D()} {
 			if d > 0 {
 				tr[k] = d.String()
 			}
 		}
+	}
+	if len(tr) > 1 {
 		rp["transport"] = tr
 	}
-	handle = append(handle, rp)
-	return obj{
-		"@id":      "dockflow." + r.ID,
-		"match":    []any{match},
-		"handle":   handle,
-		"terminal": true,
+	if pages {
+		var hr []any
+		for _, p := range r.ErrorPages {
+			hr = append(hr, obj{
+				"match":  obj{"status_code": p.Statuses},
+				"routes": []any{obj{"handle": b.page(r, p, "{http.reverse_proxy.status_code}")}},
+			})
+		}
+		if len(hr) > 0 {
+			rp["handle_response"] = hr
+		}
 	}
+	return append(handle, rp)
+}
+
+// errorRoutes answer for r when its containers cannot be reached: Caddy's errors of the server.
+func (b builder) errorRoutes(r identified) []any {
+	var out []any
+	for _, p := range r.ErrorPages {
+		codes := make([]string, len(p.Statuses))
+		for i, s := range p.Statuses {
+			codes[i] = strconv.Itoa(s)
+		}
+		m := match(r)
+		m["expression"] = "{http.error.status_code} in [" + strings.Join(codes, ", ") + "]"
+		out = append(out, obj{"match": []any{m}, "handle": b.page(r, p, "{http.error.status_code}"), "terminal": true})
+	}
+	return out
+}
+
+// page is an error page: an inline body with the error's status, or the page of a route of the
+// same app, its root.
+func (b builder) page(r identified, p domain.ErrorPage, status string) []any {
+	if p.Body != "" {
+		return []any{obj{"handler": "static_response", "status_code": status, "body": p.Body,
+			"headers": obj{"Content-Type": []string{"text/html; charset=utf-8"}}}}
+	}
+	target, ok := b.byName[r.Stack+"/"+p.Route]
+	if !ok {
+		return []any{obj{"handler": "static_response", "status_code": status}}
+	}
+	return append([]any{obj{"handler": "rewrite", "uri": "/"}}, b.handlers(target, false)...)
 }

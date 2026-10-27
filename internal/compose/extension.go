@@ -32,8 +32,6 @@ type RouteExt struct {
 	TLS         *bool    `json:"tls"`
 	StripPrefix bool     `json:"strip_prefix"`
 	RouteOptionsExt
-	// the route options of the spec that arrive later, refused by name
-	ErrorPages *json.RawMessage `json:"error_pages"`
 }
 
 // RouteOptionsExt are the options of a route (ADR-0011).
@@ -51,6 +49,14 @@ type RouteOptionsExt struct {
 		Password string `json:"password"`
 	} `json:"auth"`
 	Caddy string `json:"caddy"`
+	// ErrorPages maps statuses, "502,503", to a route of dockflow.yml or an inline body.
+	ErrorPages map[string]ErrorPageExt `json:"error_pages"`
+}
+
+// ErrorPageExt is a page of error_pages.
+type ErrorPageExt struct {
+	Route string `json:"route" yaml:"route"`
+	Body  string `json:"body" yaml:"body"`
 }
 
 // SizeExt is a size, written as a number of bytes or a string: 25MB, 512k.
@@ -68,14 +74,6 @@ func (s *SizeExt) UnmarshalJSON(b []byte) error {
 	}
 	*s = SizeExt(str)
 	return nil
-}
-
-// later is the first route option set that arrives in a later milestone.
-func (r RouteExt) later() string {
-	if r.ErrorPages != nil {
-		return "error_pages"
-	}
-	return ""
 }
 
 // StatusExt is a status or a range of statuses, written as a number or a string: 200, "200-399".
@@ -138,11 +136,6 @@ func readExtension(s types.ServiceConfig) (Extension, error) {
 	switch {
 	case x.Backup != nil:
 		return x, notYetExt(s.Name, "backup", "M4")
-	}
-	for _, r := range x.Routes {
-		if o := r.later(); o != "" {
-			return x, notYetExt(s.Name, "routes."+o, "M3")
-		}
 	}
 	return x, nil
 }

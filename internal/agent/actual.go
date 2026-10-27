@@ -82,6 +82,7 @@ func observe(ctx context.Context, eng engine.Engine, app *state.App, stack strin
 	}
 	if o.current != nil {
 		o.actual.PublicPorts = o.current.Desired.PublicPorts
+		o.actual.Routes = o.current.Desired.Routes
 	}
 	if o.current != nil && len(o.current.Desired.Uploads) > 0 {
 		o.actual.Uploads = map[string]string{}

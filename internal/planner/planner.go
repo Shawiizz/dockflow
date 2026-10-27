@@ -146,6 +146,9 @@ func Plan(desired domain.App, actual domain.Actual, restart ...string) (*domain.
 			routesChanged = true
 		}
 	}
+	if (len(desired.Routes) > 0 || len(actual.Routes) > 0) && !reflect.DeepEqual(desired.Routes, actual.Routes) {
+		routesChanged = true
+	}
 	if routesChanged && (desired.HasRoutes() || hadRoutes(actual)) {
 		add(domain.ActionRoutes, desired.Stack, "routes changed", "")
 	}
@@ -233,6 +236,9 @@ func running(s domain.ActualService) int {
 }
 
 func hadRoutes(a domain.Actual) bool {
+	if len(a.Routes) > 0 {
+		return true
+	}
 	for _, s := range a.Services {
 		if s.Desired != nil && len(s.Desired.Routes) > 0 {
 			return true

@@ -113,6 +113,12 @@ These options are applied by the switch, so they work in every edge mode, behind
 - `{upstream}` in raw directives is the service's first container, from an upstream file (`<route>/h0`).
 - The plan refuses directives that do not adapt (`plan.caddy`) and a (domain, path) another app routes (`plan.domain_conflict`), before anything changes.
 
+## Implementation of the routes of dockflow.yml and error pages (M3)
+
+- A `redirect` is a `static_response` with `Location`, `308` by default; the Caddyfile's short placeholders (`{uri}`, `{path}`, `{query}`, `{host}`) are spelled out. A `proxy` is a `reverse_proxy` to the URL's host, with the URL's `Host` header and TLS for `https`; its `network` is joined by the switch like an app's. Both are recorded in the release (`desired.routes`), and a change to them changes the plan's routes.
+- A `files` route is a service of the app, `files-<name>`, running `caddy file-server` in the switch's own image (the agent substitutes it), with the directory or the volume mounted read-only at `/srv`; its route strips the path. It deploys, drains and rolls back as any service.
+- `error_pages` add a `handle_response` to the route's `reverse_proxy`, for the statuses the containers answer, and routes to the server's `errors`, matched by host, path and `{http.error.status_code}`, for the failures to reach them. A page that shows a route runs that route's handlers on `/`; an inline body keeps the error's status. Route names are checked when the project loads.
+
 ## Implementation of the cloudflare edge (M3)
 
 The switch is the `builtin` one, with `trusted_proxies` set to Cloudflare's ranges and `client_ip_headers` to `CF-Connecting-IP` on both of its servers; the port filter restricts 80 and 443 to the same ranges ([ADR-0014](0014-networking-port-filter.md#implementation-m3)).

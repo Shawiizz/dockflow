@@ -1,7 +1,6 @@
 version: 1
 app: shop
-routes:
-  - domains: [shop.example.com]
-    redirect: https://example.com/
+backups:
+  repository: s3:example/shop
 environments:
   production: {}
