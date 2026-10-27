@@ -57,7 +57,7 @@ plugins:
 | `name` | `<app>-<env>.conf`, with `-<id>` for an id other than `nginx` | The vhost's file name. |
 | `template` | none | The project's own vhost, a Jinja template that sees these inputs, instead of the plugin's. |
 
-The hook runs as the SSH user of the environment, without a terminal, so `sudo` must not ask a password for these two commands. Add a rule with `sudo visudo -f /etc/sudoers.d/dockflow-nginx`, with your SSH user and the paths `command -v nginx systemctl` prints:
+The hook runs as the SSH user of the environment, without a terminal, so `sudo` must not ask a password for these two commands. `server init --nginx` installs nginx and this rule. On a server prepared otherwise, add it with `sudo visudo -f /etc/sudoers.d/dockflow-nginx`, with your SSH user and the paths `command -v nginx systemctl` prints:
 
 ```text
 dockflow ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx

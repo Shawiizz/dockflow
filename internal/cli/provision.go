@@ -27,6 +27,10 @@ type provisionFlags struct {
 	key, passwordFile, hostKey, name string
 	user, deployKey                  string
 	skipDocker, noFilter             bool
+	// noHarden leaves SSH, fail2ban, updates and time as they are; nginx installs nginx; from
+	// restricts the deploy key's source addresses (ADR-0013)
+	noHarden, nginx bool
+	from            []string
 	// on the server itself: the address and SSH port the connection string gives
 	host string
 	port int
@@ -62,7 +66,7 @@ func (a *app) provisionServer(ctx context.Context, target string, f provisionFla
 		return err
 	}
 	a.emitter.Masker().Add(admin.PrivateKey, admin.Password, key.PrivatePEM)
-	script, err := provision.Script(provision.Options{User: f.user, AuthorizedKey: key.Authorized, InstallDocker: !f.skipDocker, PortFilter: !f.noFilter})
+	script, err := provision.Script(f.options(key, srv.User))
 	if err != nil {
 		return err
 	}
@@ -92,20 +96,38 @@ func (a *app) provisionServer(ctx context.Context, target string, f provisionFla
 	return a.finishProvisioning(ctx, &connection.Target{Server: public, PrivateKey: key.PrivatePEM}, public, key, init)
 }
 
-// deployKeyFor returns the deploy key: --deploy-key, or a new one.
+// deployKeyFor returns the deploy key: --deploy-key, or a new one, restricted to --from.
 func (f *provisionFlags) deployKeyFor(host string) (*provision.Key, error) {
 	if f.user == "" {
 		f.user = provision.DefaultUser
 	}
 	comment := f.user + "@" + host
+	var key *provision.Key
+	var err error
 	if f.deployKey == "" {
-		return provision.NewKey(comment)
+		key, err = provision.NewKey(comment)
+	} else {
+		b, rerr := os.ReadFile(f.deployKey)
+		if rerr != nil {
+			return nil, errs.Usage("cannot read the deploy key %s: %v", f.deployKey, rerr)
+		}
+		key, err = provision.KeyFrom(string(b), comment)
 	}
-	b, err := os.ReadFile(f.deployKey)
 	if err != nil {
-		return nil, errs.Usage("cannot read the deploy key %s: %v", f.deployKey, err)
+		return nil, err
 	}
-	return provision.KeyFrom(string(b), comment)
+	if err := key.Restrict(f.from); err != nil {
+		return nil, err
+	}
+	return key, nil
+}
+
+// options are what the provisioning script does, run from the account admin.
+func (f *provisionFlags) options(key *provision.Key, admin string) provision.Options {
+	return provision.Options{
+		User: f.user, AuthorizedKey: key.Authorized, InstallDocker: !f.skipDocker, PortFilter: !f.noFilter,
+		Harden: !f.noHarden, Admin: admin, Nginx: f.nginx,
+	}
 }
 
 // runProvisioning runs the provisioning script through run, showing its steps.

@@ -452,8 +452,13 @@ dockflow server init [<env>] [flags]
 With `<admin>@<host>`, prepares a server from an administrator's account (`root`, or a user with passwordless `sudo`), then prints the connection string for your CI:
 
 1. installs Docker from Docker's repository when it is missing (Debian and Ubuntu; elsewhere, install Docker Engine 27 or later first, or pass `--skip-docker-install` to be told so);
-2. creates the deploy user (`dockflow`), adds it to the `docker` group, and installs a key generated on this machine, with `restrict,port-forwarding,pty`;
-3. reconnects as the deploy user and installs the switch and the server-local registry.
+2. creates the deploy user (`dockflow`), adds it to the `docker` group, and installs a key generated on this machine, with `restrict,port-forwarding,pty`, and `from=` with `--from`;
+3. hardens the server, unless `--no-hardening`: an SSH drop-in that refuses passwords and lets root in by key only (passwords stay while the administrator's account has no key, so you are never locked out), fail2ban for SSH, unattended security updates and time synchronisation (Debian and Ubuntu);
+4. with `--nginx`, installs nginx, which refuses the host names no vhost serves, with the sudo rules of the [nginx plugin](/guides/plugins/#the-nginx-plugin);
+5. installs the boot units of the port filter and of Cloudflare's ranges;
+6. reconnects as the deploy user and installs the switch, the server-local registry and the watchdog.
+
+On a terminal, without `--edge` or `--nginx`, it asks how traffic reaches the server's apps; Enter keeps the server's choice, `builtin` for a new server. `--yes` or `--json` never ask.
 
 The server's host key must be known: in your `~/.ssh/known_hosts`, or given with `--host-key`. Every step can be run again; a new run adds a new key. `<host>` may be a `Host` alias of your `~/.ssh/config`, whose `HostName`, `Port`, `User` and `IdentityFile` apply where the target sets none; the connection string gets the real address.
 
@@ -487,6 +492,9 @@ Running it again updates the server, and the switch keeps every app's routes. An
 | `--deploy-key string` | a new key | When preparing a server: a private key to use for the deploy user instead of generating one. |
 | `--name string` | `main` | When preparing a server: its name in the connection string. |
 | `--skip-docker-install` | `false` | When preparing a server: refuse one without Docker instead of installing it. |
+| `--no-hardening` | `false` | When preparing a server: leave SSH, fail2ban, security updates and time synchronisation as they are. |
+| `--nginx` | `false` | When preparing a server: install nginx in front of the switch (`--edge external` unless given), refusing unknown host names, with the sudo rules of the nginx plugin. |
+| `--from strings` | none | When preparing a server: the addresses or CIDRs the deploy key is accepted from (`from=` of `authorized_keys`). Keep it off with hosted CI runners, whose addresses change. |
 | `--host string` | its public address | On the server itself: the address or domain name the CI reaches it at. |
 | `--port int` | `Port` of `sshd_config`, or 22 | On the server itself: the SSH port the CI uses. |
 
@@ -494,7 +502,21 @@ Running it again updates the server, and the switch keeps every app's routes. An
 dockflow server init root@203.0.113.10 --edge external
 ```
 
-SSH hardening, fail2ban, unattended updates, `server cloud-init`, `server check`, `server status`, `server edge`, `server upgrade` are <Badge text="Coming in M3" variant="caution" />.
+`server check`, `server status`, `server edge`, `server upgrade` and `server uninstall` are <Badge text="Coming in M3" variant="caution" />.
+
+### server cloud-init
+
+```sh
+dockflow server cloud-init --host <address> [flags] > user-data.yml
+```
+
+Prints the cloud-init user-data of a new server, to give your provider (DigitalOcean, Hetzner, Scaleway, AWS) when you create it: on its first boot, it does what `server init` does before reconnecting (Docker, the deploy user and its key, hardening, `--nginx`). Then it prints the connection string, on the standard error.
+
+- The deploy key is generated here; only its public part is in the user-data.
+- The server's SSH host key is generated here too, and is in the user-data: the connection string pins it before the server exists. Keep the user-data as you would the server's disk, or write it with `-o user-data.yml` (mode 600).
+- `--host` is required: the address the CI will reach the server at, a reserved IP or a domain name.
+
+Once the server is up, install the switch, the registry and the watchdog with `dockflow server init <env>`. Options: `--host`, `--port`, `--user`, `--deploy-key`, `--name`, `--skip-docker-install`, `--no-port-filter`, `--no-hardening`, `--nginx`, `--from`, `-o`.
 
 ### server network
 

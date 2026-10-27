@@ -199,7 +199,7 @@ environments:
 
 - The upload replaces `/etc/nginx/sites-enabled/shop.conf` atomically, and only when the file changed.
 - After the deploy, the hook checks the whole nginx configuration and reloads nginx. With `fatal: true`, a configuration that fails `nginx -t` rolls the deploy back, and the rollback restores the previous file. nginx keeps serving its previous configuration meanwhile, since it was never reloaded.
-- The hook runs on the server as the SSH user of the environment, without a terminal, so `sudo` must not ask for a password for these two commands. Add a rule with `sudo visudo -f /etc/sudoers.d/dockflow-nginx`, using your SSH user's name and the paths `command -v nginx systemctl` prints:
+- The hook runs on the server as the SSH user of the environment, without a terminal, so `sudo` must not ask for a password for these two commands. `server init --nginx` installs nginx and this rule for you. Add a rule with `sudo visudo -f /etc/sudoers.d/dockflow-nginx`, using your SSH user's name and the paths `command -v nginx systemctl` prints:
 
   ```text
   dockflow ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx

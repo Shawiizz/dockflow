@@ -28,6 +28,7 @@ const (
 	exitNoDocker      = 20
 	exitDockerTooOld  = 21
 	exitUnsupportedOS = 22
+	exitNoNginx       = 23
 )
 
 // MinDocker is the oldest Docker Engine Dockflow supports (ADR-0003).
@@ -47,6 +48,14 @@ type Options struct {
 	// PortFilter installs the systemd unit that loads the published-port filter at boot, before
 	// Docker (ADR-0014). The agent writes and applies the rules themselves.
 	PortFilter bool
+	// Harden adds the SSH hardening drop-in, fail2ban, unattended security updates and time
+	// synchronisation (ADR-0013). Admin is the account provisioning runs from: SSH keeps
+	// accepting passwords while it has no key, so that it is not locked out.
+	Harden bool
+	Admin  string
+	// Nginx installs nginx, which refuses the host names it does not serve, and the sudo rules
+	// of the nginx plugin (ADR-0017).
+	Nginx bool
 }
 
 // Script returns the provisioning script, to run as root with sh.
@@ -57,15 +66,33 @@ func Script(o Options) (string, error) {
 	if strings.ContainsAny(o.AuthorizedKey, "\n\r") || o.AuthorizedKey == "" {
 		return "", errs.Internal("the deploy key is not one authorized_keys line")
 	}
-	install, portFilter := "0", "0"
-	if o.InstallDocker {
-		install = "1"
+	flag := func(b bool) string {
+		if b {
+			return "1"
+		}
+		return "0"
 	}
-	if o.PortFilter {
-		portFilter = "1"
+	if o.Admin == "" {
+		o.Admin = "root"
+	}
+	if !userName.MatchString(o.Admin) {
+		return "", errs.Usage("%q is not a valid user name", o.Admin)
+	}
+	// the key's own part, by which a line with other options is replaced
+	blob := ""
+	fields := strings.Fields(o.AuthorizedKey)
+	for i, f := range fields {
+		if (strings.HasPrefix(f, "ssh-") || strings.HasPrefix(f, "ecdsa-")) && i+1 < len(fields) {
+			blob = fields[i+1]
+			break
+		}
+	}
+	if blob == "" {
+		return "", errs.Internal("the deploy key has no public key")
 	}
 	s := &shell.Script{}
-	s.Set("DF_USER", o.User).Set("DF_KEY", o.AuthorizedKey).Set("DF_INSTALL_DOCKER", install).Set("DF_PORT_FILTER", portFilter)
+	s.Set("DF_USER", o.User).Set("DF_KEY", o.AuthorizedKey).Set("DF_KEY_BLOB", blob).Set("DF_INSTALL_DOCKER", flag(o.InstallDocker)).
+		Set("DF_PORT_FILTER", flag(o.PortFilter)).Set("DF_HARDEN", flag(o.Harden)).Set("DF_ADMIN", o.Admin).Set("DF_NGINX", flag(o.Nginx))
 	s.Body(body)
 	return s.String(), nil
 }
@@ -129,8 +156,13 @@ mkdir -p "$home/.ssh"
 touch "$home/.ssh/authorized_keys"
 if ! grep -qxF "$DF_KEY" "$home/.ssh/authorized_keys"; then
 	say "installing the deploy key of $DF_USER"
-	printf '%s\n' "$DF_KEY" >>"$home/.ssh/authorized_keys"
+	# the same key with other options (from=) is replaced
+	grep -vF "$DF_KEY_BLOB" "$home/.ssh/authorized_keys" >"$home/.ssh/authorized_keys.tmp" || true
+	printf '%s\n' "$DF_KEY" >>"$home/.ssh/authorized_keys.tmp"
+	mv "$home/.ssh/authorized_keys.tmp" "$home/.ssh/authorized_keys"
 fi
+mkdir -p /var/lib/dockflow
+chmod 700 /var/lib/dockflow
 chmod 700 "$home/.ssh"
 chmod 600 "$home/.ssh/authorized_keys"
 chown -R "$DF_USER:$(id -g "$DF_USER")" "$home/.ssh"
@@ -160,6 +192,106 @@ UNIT
 		systemctl enable dockflow-filter.service >/dev/null 2>&1 || true
 	else
 		rm -f "$unit.tmp"
+	fi
+fi
+
+# install_file replaces $2 with the file $1 when they differ, and says $3
+install_file() {
+	if cmp -s "$1" "$2"; then
+		rm -f "$1"
+		return 1
+	fi
+	mv "$1" "$2"
+	[ -z "${3:-}" ] || say "$3"
+	return 0
+}
+
+if [ "$DF_HARDEN" = 1 ]; then
+	# SSH: keys only, root by key only; passwords stay while the admin account has no key
+	if [ -d /etc/ssh/sshd_config.d ] && grep -qiE '^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d' /etc/ssh/sshd_config 2>/dev/null; then
+		admin_home=$(awk -F: -v u="$DF_ADMIN" '$1 == u { print $6 }' /etc/passwd)
+		dropin=/etc/ssh/sshd_config.d/50-dockflow.conf
+		if [ -n "$admin_home" ] && grep -qE '^[^#]*(ssh-|ecdsa-)' "$admin_home/.ssh/authorized_keys" 2>/dev/null; then
+			printf '# Written by Dockflow (server init): keys only, root by key only\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\n' >"$dropin.tmp"
+		else
+			printf '# Written by Dockflow (server init): root by key only; passwords stay until %s has a key\nPermitRootLogin prohibit-password\n' "$DF_ADMIN" >"$dropin.tmp"
+		fi
+		if install_file "$dropin.tmp" "$dropin" "hardening SSH ($dropin)"; then
+			if sshd -t >/dev/null 2>&1; then
+				systemctl reload ssh >/dev/null 2>&1 || systemctl reload sshd >/dev/null 2>&1 || true
+			else
+				rm -f "$dropin"
+				say "SSH hardening undone: sshd refuses it"
+			fi
+			grep -q PasswordAuthentication "$dropin" 2>/dev/null || say "SSH still accepts passwords: $DF_ADMIN has no authorized key yet"
+		fi
+	fi
+	if command -v apt-get >/dev/null 2>&1; then
+		export DEBIAN_FRONTEND=noninteractive
+		missing=""
+		for p in fail2ban python3-systemd unattended-upgrades; do
+			dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"
+		done
+		if [ -n "$missing" ]; then
+			say "installing$missing"
+			apt-get update -q >/dev/null
+			apt-get install -yq $missing >/dev/null
+		fi
+		mkdir -p /etc/fail2ban/jail.d /etc/apt/apt.conf.d
+		printf '[sshd]\nenabled = true\nbackend = systemd\n' >/etc/fail2ban/jail.d/dockflow.conf.tmp
+		if install_file /etc/fail2ban/jail.d/dockflow.conf.tmp /etc/fail2ban/jail.d/dockflow.conf "banning SSH brute force with fail2ban"; then
+			systemctl enable fail2ban >/dev/null 2>&1 || true
+			systemctl restart fail2ban >/dev/null 2>&1 || true
+		fi
+		printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' >/etc/apt/apt.conf.d/20auto-upgrades.tmp
+		install_file /etc/apt/apt.conf.d/20auto-upgrades.tmp /etc/apt/apt.conf.d/20auto-upgrades "enabling unattended security updates" || true
+	fi
+	if command -v timedatectl >/dev/null 2>&1 && [ "$(timedatectl show -p NTP --value 2>/dev/null || true)" = no ]; then
+		say "enabling time synchronisation"
+		timedatectl set-ntp true >/dev/null 2>&1 || true
+	fi
+fi
+
+if [ "$DF_NGINX" = 1 ]; then
+	if ! command -v nginx >/dev/null 2>&1; then
+		command -v apt-get >/dev/null 2>&1 || exit 23
+		say "installing nginx"
+		export DEBIAN_FRONTEND=noninteractive
+		apt-get update -q >/dev/null
+		apt-get install -yq nginx >/dev/null
+	fi
+	# host names no vhost serves are refused, rather than served by the first vhost
+	if [ -L /etc/nginx/sites-enabled/default ]; then
+		rm -f /etc/nginx/sites-enabled/default
+	fi
+	mkdir -p /etc/nginx/conf.d
+	v6=""
+	if [ -e /proc/net/if_inet6 ]; then v6=1; fi
+	{
+		printf '# Written by Dockflow (server init --nginx): host names no vhost serves are refused\n'
+		printf 'server {\n    listen 80 default_server;\n'
+		if [ -n "$v6" ]; then printf '    listen [::]:80 default_server;\n'; fi
+		printf '    server_name _;\n    return 444;\n}\n'
+		printf 'server {\n    listen 443 ssl default_server;\n'
+		if [ -n "$v6" ]; then printf '    listen [::]:443 ssl default_server;\n'; fi
+		printf '    server_name _;\n    ssl_reject_handshake on;\n}\n'
+	} >/etc/nginx/conf.d/00-dockflow-default.conf.tmp
+	if install_file /etc/nginx/conf.d/00-dockflow-default.conf.tmp /etc/nginx/conf.d/00-dockflow-default.conf "refusing unknown host names in nginx"; then
+		if nginx -t >/dev/null 2>&1; then
+			systemctl reload nginx >/dev/null 2>&1 || systemctl enable --now nginx >/dev/null 2>&1 || true
+		fi
+	fi
+	# the nginx plugin checks and reloads nginx as the deploy user
+	if command -v visudo >/dev/null 2>&1; then
+		mkdir -p /etc/sudoers.d
+		printf '# Written by Dockflow (server init --nginx): what the nginx plugin runs\n%s ALL=(root) NOPASSWD: %s -t, %s reload nginx\n' \
+			"$DF_USER" "$(command -v nginx)" "$(command -v systemctl || echo /usr/bin/systemctl)" >/etc/sudoers.d/dockflow-nginx.tmp
+		chmod 440 /etc/sudoers.d/dockflow-nginx.tmp
+		if visudo -cqf /etc/sudoers.d/dockflow-nginx.tmp >/dev/null 2>&1; then
+			install_file /etc/sudoers.d/dockflow-nginx.tmp /etc/sudoers.d/dockflow-nginx "allowing $DF_USER to check and reload nginx" || true
+		else
+			rm -f /etc/sudoers.d/dockflow-nginx.tmp
+		fi
 	fi
 fi
 
@@ -242,6 +374,9 @@ func Failed(code int, output string) error {
 	case exitDockerTooOld:
 		return errs.Newf("provision.docker_too_old", errs.ExitConnect, "the server's Docker is older than %d, or not running (%s)", MinDocker, strings.TrimSpace(lastLine(output))).
 			WithHint("upgrade Docker Engine to %d or later and start it", MinDocker)
+	case exitNoNginx:
+		return errs.Newf("provision.no_nginx", errs.ExitConnect, "--nginx: nginx is not installed, and Dockflow installs it on Debian and Ubuntu only").
+			WithHint("install nginx yourself, then run server init again")
 	case exitUnsupportedOS:
 		return errs.Newf("provision.unsupported_os", errs.ExitConnect, "Docker is not installed, and Dockflow installs it on Debian and Ubuntu only").
 			WithHint("install Docker %d or later yourself, then run server init again", MinDocker)
@@ -289,6 +424,24 @@ func KeyFrom(privatePEM, comment string) (*Key, error) {
 	}
 	return &Key{PrivatePEM: privatePEM, Authorized: AuthorizedLine(signer.PublicKey(), comment)}, nil
 }
+
+// Restrict limits the key to the source addresses from, with the from= option of
+// authorized_keys (ADR-0013).
+func (k *Key) Restrict(from []string) error {
+	if len(from) == 0 {
+		return nil
+	}
+	for _, f := range from {
+		if !sourcePattern.MatchString(f) {
+			return errs.Usage("--from %q is not an address, a CIDR or a host pattern", f)
+		}
+	}
+	k.Authorized = `from="` + strings.Join(from, ",") + `",` + k.Authorized
+	return nil
+}
+
+// sourcePattern is what from= takes: addresses, CIDRs, host name patterns.
+var sourcePattern = regexp.MustCompile(`^!?[A-Za-z0-9.:/*?_-]+$`)
 
 // AuthorizedLine is the authorized_keys line of pub, restricted with KeyOptions.
 func AuthorizedLine(pub ssh.PublicKey, comment string) string {

@@ -23,6 +23,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/events"
 	"github.com/Shawiizz/dockflow/internal/provision"
+	"github.com/Shawiizz/dockflow/internal/proxy"
 )
 
 // sshDir is where the SSH server's configuration and host keys are.
@@ -65,7 +66,12 @@ func (a *app) provisionHere(ctx context.Context, f provisionFlags, init func(*ag
 		return err
 	}
 	a.emitter.Masker().Add(key.PrivatePEM)
-	script, err := provision.Script(provision.Options{User: f.user, AuthorizedKey: key.Authorized, InstallDocker: !f.skipDocker, PortFilter: !f.noFilter})
+	// the account that ran sudo: its password login must survive the hardening
+	admin := os.Getenv("SUDO_USER")
+	if admin == "" {
+		admin = "root"
+	}
+	script, err := provision.Script(f.options(key, admin))
 	if err != nil {
 		return err
 	}
@@ -173,4 +179,38 @@ func hostKeyFingerprint() (string, error) {
 	}
 	return "", errs.Newf("provision.no_ssh_server", errs.ExitConnect, "no SSH host key in %s: is an SSH server installed?", sshDir).
 		WithHint("install and start OpenSSH, then run server init again")
+}
+
+// askEdge asks how traffic reaches the server's apps, when server init prepares a server on a
+// terminal without --edge. Enter keeps what the server has: builtin for a new server.
+func (a *app) askEdge() (string, bool, error) {
+	fmt.Fprintf(a.stdout, `How does traffic reach the apps of this server?
+  1) builtin     the switch on ports 80 and 443, with automatic HTTPS
+  2) cloudflare  as builtin, open to Cloudflare's proxies only
+  3) external    behind nginx or another proxy that holds ports 80 and 443
+  4) none        no switch: apps publish their own ports
+Choice [Enter: keep the server's, builtin for a new one]: `)
+	in := bufio.NewReader(a.stdin)
+	line, _ := in.ReadString('\n')
+	edge := ""
+	switch strings.TrimSpace(line) {
+	case "":
+	case "1", "builtin":
+		edge = proxy.EdgeBuiltin
+	case "2", "cloudflare":
+		edge = proxy.EdgeCloudflare
+	case "3", "external":
+		edge = proxy.EdgeExternal
+	case "4", "none":
+		edge = proxy.EdgeNone
+	default:
+		return "", false, errs.Usage("%q is not one of the choices", strings.TrimSpace(line))
+	}
+	if edge != proxy.EdgeExternal {
+		return edge, false, nil
+	}
+	fmt.Fprintf(a.stdout, "Install nginx in front of the switch, with the sudo rules of the nginx plugin? [y/N] ")
+	line, _ = in.ReadString('\n')
+	answer := strings.ToLower(strings.TrimSpace(line))
+	return edge, answer == "y" || answer == "yes", nil
 }

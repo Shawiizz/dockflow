@@ -89,6 +89,15 @@ Provisioning commands build their shell commands with a typed command builder th
 
 The rest (interactive mode, running on the server itself, `from=`, SSH hardening, fail2ban, unattended updates, time synchronisation, the port filter, the watchdog, `--nginx`, `server cloud-init`) stays in M3.
 
+### Implementation (M3)
+
+- **Hardening**, unless `--no-hardening`: `/etc/ssh/sshd_config.d/50-dockflow.conf` (checked with `sshd -t` before the reload, removed when refused) turns password authentication off only when the administrator's account has an authorized key, so provisioning never locks it out; fail2ban with a `backend = systemd` SSH jail; `20auto-upgrades`; `timedatectl set-ntp true`. Each step writes a file only when it changed, so a second run says nothing.
+- **`from=`** prefixes the deploy key's options; a key already installed with other options is replaced.
+- **`--nginx`** installs nginx, replaces the distribution's default site with one that refuses unknown host names (`return 444`, `ssl_reject_handshake`), and installs `/etc/sudoers.d/dockflow-nginx`, checked with `visudo -c`. It implies `--edge external` unless an edge is given.
+- **Interactive mode** asks for the edge, and nginx with the external edge, when provisioning on a terminal without `--edge`; Enter keeps the server's.
+- **`server cloud-init`** generates the deploy key and the server's ed25519 host key on the CLI's machine: the user-data holds the host key and the provisioning script with the deploy key's public part, and the connection string pins the host key. The switch, registry and watchdog need the agent, so they follow with `server init <env>` once the server is up.
+- The script still runs over the administrator's session, as in M2; the hardening steps are contract-tested in Debian with stand-ins for the commands that need a network or systemd.
+
 ## Consequences
 
 - The 1.x experience is kept: one secret per environment, nothing about the server in the repository.
