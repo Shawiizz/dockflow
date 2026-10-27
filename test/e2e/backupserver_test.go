@@ -24,7 +24,14 @@ func TestServerBackup(t *testing.T) {
 	mustSucceed(t, dockflow(t, dir, "deploy"), "deploy")
 	t.Cleanup(func() { dockflow(t, dir, "destroy", "production") })
 
-	r := dockflow(t, dir, "backup", "run", "--server")
+	// nothing to back up is not a failure: a scheduled backup runs before the app has a database
+	r := dockflow(t, dir, "backup", "run")
+	mustSucceed(t, r, "backup run with no backup")
+	if !strings.Contains(r.out, `"code":"backup.none"`) {
+		t.Fatalf("backup.none warning:\n%s", r.out)
+	}
+
+	r = dockflow(t, dir, "backup", "run", "--server")
 	mustSucceed(t, r, "backup run --server")
 	if !strings.Contains(r.out, `"type":"backup.finished"`) {
 		t.Fatalf("backup.finished:\n%s", r.out)

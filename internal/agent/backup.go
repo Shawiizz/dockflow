@@ -294,6 +294,12 @@ func (r *runner) backupRun(ctx context.Context) events.RunFinishedData {
 	if err != nil {
 		return failed(err)
 	}
+	if len(svcs) == 0 {
+		// a scheduled backup of an app with no stateful service yet is not a failure
+		r.warn("backup.none", fmt.Sprintf("no service of release %d of %s declares a backup: nothing to back up", rel.Seq, r.stack))
+		r.result(map[string]any{"backups": []BackupResult{}})
+		return events.RunFinishedData{Outcome: events.OutcomeSuccess}
+	}
 	rp, err := r.openRepo(ctx, true)
 	if err != nil {
 		return failed(err)
@@ -384,7 +390,8 @@ func (r *runner) backupServer(ctx context.Context) events.RunFinishedData {
 	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
 }
 
-// backedUp are the services of rel to back up: those with a backup, or the requested one.
+// backedUp are the services of rel to back up: those with a backup, maybe none, or the
+// requested one.
 func (r *runner) backedUp(rel *domain.Release) ([]*domain.Service, error) {
 	only := ""
 	if r.req.Backup != nil {
@@ -407,10 +414,6 @@ func (r *runner) backedUp(rel *domain.Release) ([]*domain.Service, error) {
 	}
 	if only != "" && len(out) == 0 {
 		return nil, errs.Newf("backup.none", errs.ExitUsage, "release %d of %s has no service %s", rel.Seq, r.stack, only)
-	}
-	if len(out) == 0 {
-		return nil, errs.Newf("backup.none", errs.ExitConfig, "no service of release %d of %s declares a backup", rel.Seq, r.stack).
-			WithHint("set x-dockflow.backup on the stateful services, and deploy")
 	}
 	return out, nil
 }

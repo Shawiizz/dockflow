@@ -116,7 +116,7 @@ A backup that fails exits with code 12, after backing up the other services. `ba
 
 ## Scheduling
 
-Nothing runs on a schedule on the server. Run `dockflow backup run` from your CI on a schedule, or from any cron that has the connection string:
+Nothing runs on a schedule on the server. Run `dockflow backup run` from your CI on a schedule, or from any cron that has the connection string. The workflow `dockflow init --ci github` writes does it every night, and `--ci gitlab` when a pipeline schedule runs it; in an existing workflow:
 
 ```yaml
 # .github/workflows/backup.yml

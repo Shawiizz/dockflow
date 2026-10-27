@@ -53,13 +53,17 @@ func TestInit(t *testing.T) {
 		t.Fatalf(".gitignore: %q", b)
 	}
 	var wf struct {
+		On   map[string]any `yaml:"on"`
 		Jobs map[string]struct {
 			If string `yaml:"if"`
 		} `yaml:"jobs"`
 	}
 	b, _ = os.ReadFile(filepath.Join(dir, ".github/workflows/deploy.yml"))
-	if err := yaml.Unmarshal(b, &wf); err != nil || wf.Jobs["deploy"].If != "github.ref_type == 'tag'" || wf.Jobs["build"].If == "" {
+	if err := yaml.Unmarshal(b, &wf); err != nil || wf.Jobs["deploy"].If != "github.event_name == 'push' && github.ref_type == 'tag'" || wf.Jobs["build"].If == "" {
 		t.Fatalf("the workflow: %v\n%s", err, b)
+	}
+	if wf.On["schedule"] == nil || wf.Jobs["backup"].If != "github.event_name != 'push'" || !strings.Contains(string(b), "dockflow backup run production --wait-lock 10m") {
+		t.Fatalf("the workflow backs up on a schedule:\n%s", b)
 	}
 
 	// a second run overwrites nothing

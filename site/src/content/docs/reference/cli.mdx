@@ -42,7 +42,7 @@ Start a project in the current directory (or `-C <dir>`):
 - `dockflow.yml`, with the app's name and a `production` environment whose `DOMAIN` is `--domain`;
 - `compose.yml`, when the directory has no Compose file: a `web` service built from the `Dockerfile`, on the port its `EXPOSE` gives (80 without one), or `nginx` when there is no `Dockerfile`, with a route to `${DOMAIN}`;
 - `.env.dockflow` added to `.gitignore`, which is created if needed;
-- with `--ci github`, `.github/workflows/deploy.yml`; with `--ci gitlab`, `.gitlab-ci.yml`. The workflow builds on every branch and deploys on tags, with the CLI pinned to the version that wrote it. See [Deploying from CI](/guides/ci/#complete-workflows); the other providers' workflows are there.
+- with `--ci github`, `.github/workflows/deploy.yml`; with `--ci gitlab`, `.gitlab-ci.yml`. The workflow builds on every branch, deploys on tags, and backs up `production` on a schedule (every night on GitHub; on GitLab, when a pipeline schedule runs it), with the CLI pinned to the version that wrote it. See [Deploying from CI](/guides/ci/#complete-workflows); the other providers' workflows are there.
 
 On a terminal, it asks for the name, the domain and the CI provider, unless the flags give them. It replaces no file without `--force` (`init.exists`, exit code 2). Check the result with `dockflow validate`.
 

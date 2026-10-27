@@ -254,7 +254,8 @@ func starterCompose(dir string) string {
 `
 }
 
-const githubWorkflow = `# Builds on every branch, deploys on tags: 1.2.0 to production.
+const githubWorkflow = `# Builds on every branch, deploys on tags: 1.2.0 to production, and backs up
+# production every night.
 # Add PRODUCTION_CONNECTION, and the secrets your Compose files use, under
 # Settings > Secrets and variables > Actions.
 name: Deploy
@@ -263,10 +264,13 @@ on:
   push:
     branches: ["**"]
     tags: ["*"]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
 
 jobs:
   build:
-    if: github.ref_type == 'branch'
+    if: github.event_name == 'push' && github.ref_type == 'branch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -278,7 +282,7 @@ jobs:
           DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 
   deploy:
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     concurrency: deploy
     steps:
@@ -289,9 +293,23 @@ jobs:
         run: dockflow deploy --wait-lock 10m
         env:
           DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+
+  # the services that declare x-dockflow.backup, then the server's state
+  backup:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dockflow
+        run: {install}
+      - name: Back up
+        run: dockflow backup run production --wait-lock 10m && dockflow backup run production --server
+        env:
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 `
 
-const gitlabWorkflow = `# Builds on every branch, deploys on tags: 1.2.0 to production.
+const gitlabWorkflow = `# Builds on every branch, deploys on tags: 1.2.0 to production, and backs up
+# production when a schedule runs it (Build > Pipeline schedules).
 # Add PRODUCTION_CONNECTION, and the secrets your Compose files use, under
 # Settings > CI/CD > Variables, masked.
 default:
@@ -305,11 +323,13 @@ default:
 variables:
   DOCKER_TLS_CERTDIR: "/certs"
 
-stages: [build, deploy]
+stages: [build, deploy, backup]
 
 build:
   stage: build
   rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
     - if: $CI_COMMIT_BRANCH
   script:
     - dockflow build production
@@ -321,4 +341,13 @@ deploy:
     - if: $CI_COMMIT_TAG
   script:
     - dockflow deploy --wait-lock 10m
+
+# the services that declare x-dockflow.backup, then the server's state
+backup:
+  stage: backup
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - dockflow backup run production --wait-lock 10m
+    - dockflow backup run production --server
 `
