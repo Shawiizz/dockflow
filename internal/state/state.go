@@ -120,6 +120,8 @@ type Server struct {
 	Filter      bool   `json:"filter,omitempty"`
 	SSHPort     int    `json:"ssh_port,omitempty"`
 	FilterRules string `json:"filter_rules,omitempty"`
+	// WatchdogImage is the watchdog's image; empty without the watchdog (ADR-0010).
+	WatchdogImage string `json:"watchdog_image,omitempty"`
 }
 
 // Server reads server.json; nil when the server was never initialised.

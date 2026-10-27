@@ -23,6 +23,8 @@ All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/000
 │   ├── env.json                    last_seq, current, previous, degraded
 │   ├── releases/<seq>.json.gz      one immutable release record per release
 │   ├── configs/<name>-<hash12>     Compose configs, named after their content and permissions
+│   ├── secrets/<name>-<hash12>     copies of the Compose secret files, 0600 (ADR-0012)
+│   ├── watchdog.json               the watchdog's latest restarts (ADR-0010)
 │   └── uploads/
 │       ├── blobs/<sha256>          the uploaded files, and those uploads overwrote, by content
 │       └── manifests/<digest>.json the manifests of uploads, and of what they replaced
@@ -66,7 +68,9 @@ Dockflow's own labels:
 
 A service with `container_name` keeps that name and uses the `stop-first` strategy.
 
-**Secrets** used through Compose `secrets:` are files on a tmpfs, `/run/dockflow/secrets/<stack>/<name>-<hash12>`, in a `0700` directory, with the `uid`, `gid` and `mode` the service asks for (`0:0`, `0444` by default), mounted read-only at `/run/secrets/<name>` or the reference's `target` ([ADR-0012](../adr/0012-secrets-sops.md)). `<hash12>` is the start of the sha256 of the uid, gid, mode and content: a new value is a new file. The agent refuses to write a secret when `/run/dockflow` is not a tmpfs (`secret.not_tmpfs`). **Configs** are the same files, under the app's state directory. The agent mounts `/run/dockflow` from the host.
+**Secrets** used through Compose `secrets:` are files on a tmpfs, `/run/dockflow/secrets/<stack>/<name>-<hash12>`, in a `0700` directory, with the `uid`, `gid` and `mode` the service asks for (`0:0`, `0444` by default), mounted read-only at `/run/secrets/<name>` or the reference's `target` ([ADR-0012](../adr/0012-secrets-sops.md)). `<hash12>` is the start of the sha256 of the uid, gid, mode and content: a new value is a new file. The agent refuses to write a secret when `/run/dockflow` is not a tmpfs (`secret.not_tmpfs`). It keeps a copy of each secret file, `0600`, in `apps/<stack>/secrets/` under the same name: a rollback, and the watchdog after a reboot, write the tmpfs again from it; pruning, `secrets revoke` and `destroy` delete a copy with its file. **Configs** are the same files, under the app's state directory. The agent mounts `/run/dockflow` from the host.
+
+**The watchdog** ([ADR-0010](../adr/0010-rollout-health-jobs.md)) is the container `dockflow-watchdog` (kind `watchdog`), whose image `server.json` records in `watchdog_image`. It takes an environment's lock, as `watchdog`, only to restart containers, and records each restart in `apps/<stack>/watchdog.json`: `{"schema": 1, "restarts": [{"service", "container", "at", "reason"}]}`, the 20 most recent, `reason` being `unhealthy` or `boot`.
 
 **The port filter** ([ADR-0014](../adr/0014-networking-port-filter.md)) is recorded in `server.json`: `filter` (true unless `server init --no-port-filter`), `ssh_port` (the port it always lets in, from the connection string) and `filter_rules` (the hex sha256 of the rules last applied). A release records the app's `firewall.public_ports` in `desired.public_ports`; the filter lets in those of each app environment's current release.
 

@@ -70,6 +70,7 @@ No event carries a secret value. Text fields (`msg`, `line`, `error.message`) ar
 | `job.finished` | `service`, `exit_code` |
 | `health.check` | `service`, `url`, `attempt`, `status?`, `ok` |
 | `routes.applied` | `domains` |
+| `watchdog.restarted` | `stack`, `service`, `container`, `reason` (`unhealthy`, `boot`); `warn`, in the watchdog's own output |
 | `filter.applied` | `ports`: what the filter lets in, each `{port, protocol?, from?, why}`; `why` is `SSH`, `the switch` or the stack that lists it |
 | `hook.started` | `phase`, `name`, `kind` (`local`, `host`, `exec`), `target` |
 | `hook.log` | `name`, `target`, `line` |

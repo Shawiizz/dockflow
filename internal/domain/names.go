@@ -51,4 +51,5 @@ const (
 	KindSwitch   = "switch"
 	KindRegistry = "registry"
 	KindHelper   = "helper"
+	KindWatchdog = "watchdog"
 )

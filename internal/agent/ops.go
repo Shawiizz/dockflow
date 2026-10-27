@@ -105,6 +105,12 @@ func (r *runner) status(ctx context.Context) events.RunFinishedData {
 	if st.Lock, err = r.app.ManualLock(); err != nil {
 		return failed(err)
 	}
+	if wd, err := r.app.Watchdog(); err == nil {
+		st.Watchdog = wd.Restarts
+		if n := len(st.Watchdog); n > 5 {
+			st.Watchdog = st.Watchdog[n-5:]
+		}
+	}
 	names := map[string]bool{}
 	if o.current != nil {
 		sum := Summarise(o.current)
@@ -185,7 +191,8 @@ const (
 // SwitchAdminDir is where the switch's shared volume is mounted, in the switch and in the agent.
 const SwitchAdminDir = proxy.SharedDir
 
-// serverInit installs or updates the switch and the registry, and records the server's settings.
+// serverInit installs or updates the switch, the registry and the watchdog, and records the
+// server's settings.
 func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 	edge := r.req.Edge
 	if edge == "" {
@@ -268,6 +275,18 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 		}
 		specOf := func(image string) domain.ContainerSpec { return switchSpec(image, edge, listen) }
 		if srv.SwitchImage, err = r.ensure(ctx, SwitchContainer, domain.KindSwitch, image, specOf, hint); err != nil {
+			return failed(err)
+		}
+	}
+	if r.req.NoWatchdog {
+		if err := r.removeKind(ctx, domain.KindWatchdog); err != nil {
+			return failed(err)
+		}
+	} else {
+		if r.req.AgentImage == "" {
+			return failed(errs.Internal("the agent's image is unknown"))
+		}
+		if srv.WatchdogImage, err = r.ensure(ctx, WatchdogContainer, domain.KindWatchdog, r.req.AgentImage, watchdogSpec, "the watchdog runs the agent's image"); err != nil {
 			return failed(err)
 		}
 	}

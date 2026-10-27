@@ -16,6 +16,8 @@ services:
       routes:
         - domains: ["${DOMAIN}"]
           port: 80
+      health:
+        restart_after: 30s
   worker:
     image: busybox:1.37
     command: ["sh", "-c", "sleep infinity"]

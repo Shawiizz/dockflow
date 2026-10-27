@@ -7,7 +7,7 @@ sidebar:
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Dockflow keeps no database and no service of its own besides the switch and the registry: all of its state for a server lives on that server, in `/var/lib/dockflow`, and in labels on the Docker objects it creates. This page lists everything it creates, so you can inspect it, back it up or remove it.
+Dockflow keeps no database and no service of its own besides the switch, the registry and the watchdog: all of its state for a server lives on that server, in `/var/lib/dockflow`, and in labels on the Docker objects it creates. This page lists everything it creates, so you can inspect it, back it up or remove it.
 
 ## The state directory
 
@@ -23,6 +23,8 @@ Dockflow keeps no database and no service of its own besides the switch and the 
     ├── env.json                      current and previous release
     ├── releases/<seq>.json.gz        one record per release
     ├── configs/<name>-<hash12>       Compose configs, by content
+    ├── secrets/<name>-<hash12>       copies of the Compose secret files, for the watchdog
+    ├── watchdog.json                 the watchdog's latest restarts
     └── uploads/
         ├── blobs/<sha256>            uploaded files, and the files uploads replaced
         └── manifests/<digest>.json   what each upload and its replaced files contain
@@ -57,13 +59,14 @@ Written by `dockflow server init`:
   "trusted_proxies": ["10.0.0.0/8"],
   "registry_image": "registry:3@sha256:…",
   "dockflow_version": "4.0.0-alpha.5",
+  "watchdog_image": "sha256:…",
   "filter": true,
   "ssh_port": 22,
   "filter_rules": "9f2c…"
 }
 ```
 
-`switch_listen` and `trusted_proxies` are present with the `external` edge only, and `switch_image` or `registry_image` are absent when the server runs no switch (`--edge none`) or no registry (`--no-registry`). `filter` is absent with `--no-port-filter`; `filter_rules` is the digest of the [port filter](/project/security/#the-port-filter)'s rules last applied, so a deploy that changes no port leaves the filter alone.
+`switch_listen` and `trusted_proxies` are present with the `external` edge only, and `switch_image` or `registry_image` are absent when the server runs no switch (`--edge none`) or no registry (`--no-registry`). `filter` is absent with `--no-port-filter`, and `watchdog_image` with `--no-watchdog`; `filter_rules` is the digest of the [port filter](/project/security/#the-port-filter)'s rules last applied, so a deploy that changes no port leaves the filter alone.
 
 ### Locks
 
@@ -94,6 +97,7 @@ After a successful run, the agent keeps the newest `releases.keep` releases that
 |---|---|---|
 | `dockflow-switch` | The switch: Caddy, which routes traffic to your services ([Switch and edges](/concepts/switch-and-edges/)) | Permanent, `restart: unless-stopped`. Absent with `--edge none` |
 | `dockflow-registry` | The server-local registry that receives the images you build | Permanent, `restart: unless-stopped`. Absent with `--no-registry` |
+| `dockflow-watchdog` | The [watchdog](/guides/health-checks/#after-the-deploy-the-watchdog): restarts the containers that stay unhealthy, and brings apps back after a reboot | Permanent, `restart: unless-stopped`, no network. Absent with `--no-watchdog` |
 | `dockflow-run-<run-id>` | The agent of one run ([How it works](/concepts/how-it-works/)) | Exits when the run ends. The 10 most recent finished ones are kept for `dockflow attach`, older ones are removed by the next run |
 | `dockflow-upload-<run-id>-<n>` | A helper that writes an upload to its destination | Removed as soon as it finishes |
 | `<stack>-<service>-<seq>-<n>` | The `n`-th container of a service, created by release `<seq>`: `shop-production-web-42-1` | Until a later release replaces it. A service left unchanged by a deploy keeps the containers of an older release |

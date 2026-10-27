@@ -1,7 +1,7 @@
 # ADR-0012: Secrets: CI variables, a local file, optionally SOPS; delivered by interpolation or as secret files
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (CI secrets as in 1.x, after review by the project owner)
+- Date: 2026-10-25, revised 2026-10-26 (CI secrets as in 1.x, after review by the project owner), revised 2026-10-27 (root-only copies of secret files, by decision of the project owner)
 
 ## Context
 
@@ -47,7 +47,7 @@ Everywhere interpolation applies ([ADR-0006](0006-compose-as-written.md)):
 There are two ways to hand a secret to a container:
 
 1. **Interpolation**, `${DB_PASSWORD}` in `environment:`. This is what 1.x does and what most images expect. The value sits in the container's configuration, readable by anyone with Docker access, and in the release record under `/var/lib/dockflow`, readable by root only.
-2. **Compose `secrets:`**, with source `environment: DB_PASSWORD`. The value is written to a file on a tmpfs, `/run/dockflow/secrets/<stack>/<name>-<hash12>`, readable by root only, never on disk, and mounted read-only at `/run/secrets/<name>`, as Compose itself does. It does not appear in `docker inspect`. The documentation recommends it for anything sensitive, and shows the `*_FILE` variables that official images (Postgres, MySQL, …) support.
+2. **Compose `secrets:`**, with source `environment: DB_PASSWORD`. The value is written to a file on a tmpfs, `/run/dockflow/secrets/<stack>/<name>-<hash12>`, readable by root only, and mounted read-only at `/run/secrets/<name>`, as Compose itself does. It does not appear in `docker inspect`, nor in the container's environment. A copy is kept in the app's state directory, `0600`, readable by root only like the release records that hold interpolated values: without it, a reboot would leave the services that mount a secret stopped until the next deploy, since the values exist only in the CI. The documentation recommends it for anything sensitive, and shows the `*_FILE` variables that official images (Postgres, MySQL, …) support.
 
 **At build time**, Compose `build.secrets` (handled by bake) pass a secret to a build without leaving it in the image history. `build.args` still work, as in 1.x.
 
@@ -57,7 +57,7 @@ Every output Dockflow shows or stores masks the values of the environment's secr
 
 ### Rotation
 
-Changing a secret used through Compose `secrets:` changes its hash: a new secret file is written, the services move to it in the normal rollout, and the old one is removed once no retained release references it. `dockflow secrets revoke <env> <KEY>` removes old versions at once. The tmpfs is emptied by a reboot: the agent rewrites the files of the current release when it finds them missing, and the watchdog does it at boot.
+Changing a secret used through Compose `secrets:` changes its hash: a new secret file is written, the services move to it in the normal rollout, and the old one is removed once no retained release references it. `dockflow secrets revoke <env> <KEY>` removes old versions at once. The tmpfs is emptied by a reboot: the watchdog writes the files of the current releases again from their copies, and a rollback finds the files of its release the same way. Revoking or pruning a file deletes its copy.
 
 ### Commands
 

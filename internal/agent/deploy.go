@@ -852,6 +852,9 @@ func (r *runner) pruneReleases(ctx context.Context) {
 		return
 	}
 	r.pruneUploads(kept)
+	for _, rel := range kept {
+		r.keepCopies(&rel.Desired)
+	}
 	r.pruneFiles(kept)
 	if err := r.syncFilter(ctx); err != nil {
 		r.warn("filter.failed", err.Error())

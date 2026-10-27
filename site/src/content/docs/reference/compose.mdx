@@ -214,6 +214,7 @@ A routed service that also publishes a fixed host port (`ports: ["8080:3000"]`) 
 |---|---|---|---|
 | `grace` | duration | `10s` | For a container without a `healthcheck` and without `http`: how long it must keep running to count as healthy. |
 | `http` | map | none | An HTTP check of each new container, made from the server before the switch. |
+| `restart_after` | duration | `2m` | How long a container of the current release may stay `unhealthy` before the watchdog restarts it. `0` never restarts. |
 
 `http`:
 
@@ -227,8 +228,6 @@ A routed service that also publishes a fixed host port (`ports: ["8080:3000"]`) 
 | `interval` | duration | `3s` | Time between two attempts. |
 
 A failed `http` check follows [`on_failure`](/reference/dockflow-yml/#on_failure). A routed service with neither a `healthcheck` nor `http` gets a warning: it counts as healthy after `grace`. See the [health checks guide](/guides/health-checks/).
-
-`health.restart_after`, the watchdog, is <Badge text="Coming in M3" variant="caution" /> and refused for now.
 
 ### `stateful`
 
@@ -250,7 +249,6 @@ A service that another one waits for with `depends_on: { condition: service_comp
 | Key | Arrives with |
 |---|---|
 | `backup` | <Badge text="Coming in M4" variant="caution" /> |
-| `health.restart_after` | <Badge text="Coming in M3" variant="caution" /> |
 | Route options other than those listed under [routes](#routes) | <Badge text="Coming in M3" variant="caution" /> |
 
 ## Refused combinations

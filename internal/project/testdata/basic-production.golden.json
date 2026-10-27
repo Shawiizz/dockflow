@@ -97,7 +97,8 @@
           }
         ],
         "drain": "30s",
-        "health_grace": "10s"
+        "health_grace": "10s",
+        "restart_after": "30s"
       },
       {
         "name": "worker",

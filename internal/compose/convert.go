@@ -674,6 +674,15 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 		}
 		svc.HealthGrace = domain.Duration(d)
 	}
+	if x.Health != nil && x.Health.RestartAfter != "" {
+		d, err := time.ParseDuration(x.Health.RestartAfter)
+		if err != nil || d < 0 {
+			return nil, nil, errs.Config("%s: x-dockflow.health.restart_after %q is not a duration", at, x.Health.RestartAfter).
+				WithHint("write it like 2m; 0 never restarts")
+		}
+		v := domain.Duration(d)
+		svc.RestartAfter = &v
+	}
 	if x.Health != nil && x.Health.HTTP != nil {
 		c, err := httpCheck(at, x.Health.HTTP, x.Routes)
 		if err != nil {

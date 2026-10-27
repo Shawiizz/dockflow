@@ -6,6 +6,7 @@ package agent
 import (
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/engine"
+	"github.com/Shawiizz/dockflow/internal/state"
 	"github.com/Shawiizz/dockflow/internal/upload"
 )
 
@@ -112,6 +113,8 @@ type Request struct {
 	// in on (server.init).
 	NoPortFilter bool `json:"no_port_filter,omitempty"`
 	SSHPort      int  `json:"ssh_port,omitempty"`
+	// NoWatchdog leaves the watchdog out (ADR-0010).
+	NoWatchdog bool `json:"no_watchdog,omitempty"`
 	// Edge and SwitchImage configure the server (server.init).
 	Edge           string   `json:"edge,omitempty"`
 	SwitchImage    string   `json:"switch_image,omitempty"`
@@ -142,6 +145,8 @@ type Status struct {
 	// DiskFree and DiskTotal are the bytes of the filesystem holding Dockflow's state.
 	DiskFree  uint64 `json:"disk_free,omitempty"`
 	DiskTotal uint64 `json:"disk_total,omitempty"`
+	// Watchdog are the watchdog's most recent restarts, oldest first.
+	Watchdog []state.WatchdogRestart `json:"watchdog,omitempty"`
 }
 
 // ServiceStatus is one service in status.

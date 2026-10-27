@@ -214,6 +214,13 @@ func renderStatus(w io.Writer, st agent.Status) {
 	if st.Lock != nil {
 		fmt.Fprintf(w, "  locked by %s since %s: %s\n", st.Lock.By, st.Lock.Since.Format("2006-01-02 15:04"), st.Lock.Message)
 	}
+	for _, r := range st.Watchdog {
+		what := "restarted, unhealthy"
+		if r.Reason == "boot" {
+			what = "started again after a reboot"
+		}
+		fmt.Fprintf(w, "  watchdog: %s %s on %s\n", r.Container, what, r.At.Local().Format("2006-01-02 15:04"))
+	}
 	if len(st.Services) == 0 {
 		return
 	}
@@ -436,11 +443,11 @@ func (a *app) serverCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "server", Short: "Manage servers"}
 	var edge, switchImage, registryImage, switchListen string
 	var trusted []string
-	var noRegistry, noFilter bool
+	var noRegistry, noFilter, noWatchdog bool
 	var pf provisionFlags
 	initCmd := &cobra.Command{
 		Use:   "init [<env> | <admin>@<host>[:port]]",
-		Short: "Prepare a server: Docker, the deploy user and its key, the switch and the registry",
+		Short: "Prepare a server: Docker, the deploy user and its key, the switch, the registry and the watchdog",
 		Long: "With <admin>@<host>, connects as root or as a user with passwordless sudo, installs Docker when it is " +
 			"missing (Debian, Ubuntu), creates the deploy user with a key generated on this machine, then installs " +
 			"the switch and the registry as that user, and prints the connection string for your CI. The server's " +
@@ -454,6 +461,7 @@ func (a *app) serverCmd() *cobra.Command {
 				req.Edge, req.SwitchImage, req.SwitchListen, req.TrustedProxies = edge, switchImage, switchListen, trusted
 				req.Registry, req.RegistryImage = !noRegistry, registryImage
 				req.NoPortFilter = noFilter
+				req.NoWatchdog = noWatchdog
 			}
 			pf.noFilter = noFilter
 			if len(args) == 0 && !inProject(a.dir) {
@@ -479,6 +487,7 @@ func (a *app) serverCmd() *cobra.Command {
 			req.Registry = !noRegistry
 			req.RegistryImage = registryImage
 			req.NoPortFilter = noFilter
+			req.NoWatchdog = noWatchdog
 			req.SSHPort = s.target.Server.Port
 			_, err = s.runAgent(cmd.Context(), req)
 			if err == nil && !a.json {
@@ -494,6 +503,7 @@ func (a *app) serverCmd() *cobra.Command {
 	initCmd.Flags().BoolVar(&noRegistry, "no-registry", false, "no server-local registry: every built image goes to registry.url")
 	initCmd.Flags().StringVar(&registryImage, "registry-image", "", "the image of the server-local registry (default registry:3, pinned by digest)")
 	initCmd.Flags().BoolVar(&noFilter, "no-port-filter", false, "no published-port filter: every port Docker publishes on a public address is open")
+	initCmd.Flags().BoolVar(&noWatchdog, "no-watchdog", false, "no watchdog: unhealthy containers are not restarted, and apps with Compose secrets wait for a deploy after a reboot")
 	f := initCmd.Flags()
 	f.StringVarP(&pf.key, "key", "k", "", "with <admin>@<host>: the administrator's private key (default: ssh-agent, ~/.ssh)")
 	f.StringVar(&pf.passwordFile, "password-file", "", "with <admin>@<host>: a file holding the administrator's password")

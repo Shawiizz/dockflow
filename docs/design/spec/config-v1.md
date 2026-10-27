@@ -238,7 +238,7 @@ services:
         drain: 30s                   # switch only: time given to requests in flight
       health:                        # ADR-0010
         grace: 10s                   # without a HEALTHCHECK: running this long counts as healthy
-        restart_after: 2m            # the watchdog restarts the container after this long unhealthy
+        restart_after: 2m            # the watchdog restarts the container after this long unhealthy; 0 never
         http:                        # internal check, before the switch
           path: /healthz             # default /
           port: 3000                 # default: the first route's port

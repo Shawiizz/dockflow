@@ -5,7 +5,7 @@ sidebar:
   order: 4
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+import { Aside, Steps } from '@astrojs/starlight/components';
 
 A deploy moves traffic to new containers only once they are healthy, and keeps the old ones until the new release has passed every check. Three kinds of checks gate a rollout: the container's own healthcheck, an optional HTTP check that the agent runs from inside the app's network before the switch, and optional checks of your public URLs after it.
 
@@ -192,6 +192,35 @@ The checks run in order, and the first that fails stops the run. Redirects are n
 `dockflow deploy --no-rollback` does what `fail` does, for one run, to look at a failing release before it goes away.
 
 A failure of the rollout itself, such as a container that exits, crash-loops, turns `unhealthy` or times out, always rolls back, whatever `on_failure` says: a half-switched service is never a useful state.
+
+## After the deploy: the watchdog
+
+Docker restarts a container that exits, but not one that keeps running while its healthcheck fails: an app stuck on a deadlock or a lost database connection stays `unhealthy` until someone restarts it. The **watchdog**, a small container `server init` installs, does it:
+
+```yaml
+# compose.yml (fragment)
+services:
+  api:
+    image: ghcr.io/acme/api:2.1
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+      interval: 10s
+    x-dockflow:
+      health:
+        restart_after: 1m           # default 2m; 0 never restarts
+```
+
+<Steps>
+
+1. Every 10 seconds, the watchdog looks at the containers of each environment's current release.
+2. A container that stays `unhealthy` for `restart_after` is stopped and started again, with the service's `stop_grace_period`.
+3. Each restart is recorded: `dockflow status` shows the latest ones, and `docker logs dockflow-watchdog` all of them.
+
+</Steps>
+
+The watchdog never acts while a run holds the environment's lock, and never on the containers of a rollout in progress: a deploy decides about its own containers. It needs a `healthcheck`, in Compose or in the image: without one, a container is never `unhealthy`.
+
+It also brings apps back after a reboot: see [secrets and configs](/guides/secrets/#how-a-new-value-reaches-the-containers). To go without it, run `server init --no-watchdog`.
 
 ## Seeing the checks
 

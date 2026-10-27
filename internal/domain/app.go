@@ -135,11 +135,25 @@ type Service struct {
 	Drain Duration `json:"drain"`
 	// HealthGrace is how long a container without a healthcheck must run to count as healthy.
 	HealthGrace Duration `json:"health_grace"`
+	// RestartAfter is how long a container may stay unhealthy before the watchdog restarts it
+	// (ADR-0010): nil for the default, 0 for never.
+	RestartAfter *Duration `json:"restart_after,omitempty"`
 	// HTTPCheck is checked on every new container, from inside the app's network, before the
 	// switch.
 	HTTPCheck *HTTPCheck `json:"http_check,omitempty"`
 	// ContainerName is Compose's container_name, which forces stop-first and one replica.
 	ContainerName string `json:"container_name,omitempty"`
+}
+
+// DefaultRestartAfter is how long a container stays unhealthy before the watchdog restarts it.
+const DefaultRestartAfter = 2 * time.Minute
+
+// RestartDelay is the service's RestartAfter, or the default.
+func (s *Service) RestartDelay() time.Duration {
+	if s.RestartAfter == nil {
+		return DefaultRestartAfter
+	}
+	return s.RestartAfter.D()
 }
 
 // Hash identifies everything that makes containers of this service different: a service whose

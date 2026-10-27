@@ -80,6 +80,13 @@ Each service gets one of three strategies, chosen automatically and overridable 
 
 Hooks run locally, on the server or inside running containers ([ADR-0022](0022-hooks.md)). Work that needs the new image runs as a job.
 
+### Implementation (M3)
+
+- **What it looks at.** Every 10 seconds, the containers of each environment's current release; never those of a rollout in progress, nor while a run holds the environment's lock, which the watchdog takes for the time of a restart.
+- **Unhealthy.** A container first seen `unhealthy` is restarted (stop with the service's `stop_grace_period`, then start) once `restart_after` has passed since, `2m` by default; `0` disables it for the service.
+- **Reboots.** It writes again the Compose secret files of each current release from their root-only copies ([ADR-0012](0012-secrets-sops.md)), then starts the containers of the current release that are stopped although their restart policy is `unless-stopped` or `always` and they mount a secret: Docker could not start them at boot without their files, and records no error that would tell.
+- **Records.** Each restart is a `watchdog.restarted` event on its output and an entry of `watchdog.json`, which `dockflow status` shows. The container runs the agent's image, with Docker's socket, the state directory and `/run/dockflow`, and no network.
+
 ## Consequences
 
 - Zero downtime for web services, without an orchestrator, and a rollback that is a switch rather than a redeploy.

@@ -99,13 +99,13 @@ Secrets come from your CI's variables (`PRODUCTION_*`, or `DOCKFLOW_SECRETS`) an
 - **Files.** A secret you render into a template or an upload is written into that file on the server.
 - **Interactive commands.** `dockflow exec`, `dockflow run` and `dockflow ssh` connect your terminal to the command. Their output is the command's own and is not masked.
 
-- **Secret files.** Compose `secrets:` are written to `/run/dockflow/secrets/<app>-<env>/`, on a tmpfs (never on disk; Dockflow refuses to write them elsewhere), in a `0700` directory, and mounted read-only. They appear neither in `docker inspect` nor in release records, which keep only their hash. See [Secrets and configs](/guides/secrets/).
+- **Secret files.** Compose `secrets:` are written to `/run/dockflow/secrets/<app>-<env>/`, on a tmpfs (Dockflow refuses to write them elsewhere), in a `0700` directory, and mounted read-only. They appear neither in `docker inspect` nor in release records, which keep only their hash. A copy of each is kept in `/var/lib/dockflow/apps/<app>-<env>/secrets/`, root's only, so the watchdog can write them again after a reboot; `secrets revoke` and `destroy` delete the copies with the files. See [Secrets and configs](/guides/secrets/).
 
 - **SOPS files.** Secrets can be kept in git in a SOPS file encrypted with age. The CLI decrypts it in memory and never writes it in clear, except for `secrets edit`, in a temporary file it deletes.
 
 ## State on the server
 
-Dockflow's state lives in `/var/lib/dockflow`, a `0700` directory owned by root, with `0600` files. Only the agent writes there. It holds the release records, which contain your services' full configuration, including interpolated values. See [Server layout](/reference/server-layout/).
+Dockflow's state lives in `/var/lib/dockflow`, a `0700` directory owned by root, with `0600` files. Only the agent writes there. It holds the release records, which contain your services' full configuration, including interpolated values, and the copies of the Compose secret files. See [Server layout](/reference/server-layout/).
 
 ## Verified downloads
 

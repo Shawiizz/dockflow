@@ -118,8 +118,6 @@ func readExtension(s types.ServiceConfig) (Extension, error) {
 	switch {
 	case x.Backup != nil:
 		return x, notYetExt(s.Name, "backup", "M4")
-	case x.Health != nil && x.Health.RestartAfter != "":
-		return x, notYetExt(s.Name, "health.restart_after", "M3")
 	}
 	for _, r := range x.Routes {
 		if o := r.later(); o != "" {

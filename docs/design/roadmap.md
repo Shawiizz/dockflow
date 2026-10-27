@@ -65,7 +65,7 @@ Exit criteria: **shawiizz.dev and Dockflow's docs site deploy with v2 in product
 - **Plugins:** the project's own and the built-in `nginx` and `systemd`, plus `plugins list` (done; `server init --nginx` comes with provisioning).
 - **Security:** the published-port filter with `public_ports` and `from` (done), and the Cloudflare ranges timer.
 - **Secrets:** Compose `secrets:` and `configs:`, the SOPS file and the `secrets` commands (done).
-- **Self-healing:** the watchdog.
+- **Self-healing:** the watchdog (done).
 - **Shared servers:** shared networks and volume plugins.
 - **`init`** with CI workflows.
 - **Real-server tests** on fresh DigitalOcean droplets: provisioning, cloud-init, Let's Encrypt staging, the Cloudflare edge, nginx in front of the switch, the filter.
