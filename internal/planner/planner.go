@@ -43,7 +43,7 @@ func Plan(desired domain.App, actual domain.Actual, restart ...string) (*domain.
 		}
 		if n.External {
 			return nil, errs.Plan("plan.network_missing", "the external network %s does not exist", n.Name).
-				WithHint("create it on the server, or remove `external: true`")
+				WithHint("create it with `dockflow server network create %s`, or remove `external: true`", n.Name)
 		}
 		add(domain.ActionCreateNetwork, n.Name, "does not exist", "")
 	}
@@ -54,6 +54,10 @@ func Plan(desired domain.App, actual domain.Actual, restart ...string) (*domain.
 		if v.External {
 			return nil, errs.Plan("plan.volume_missing", "the external volume %s does not exist", v.Name).
 				WithHint("create it on the server, or remove `external: true`")
+		}
+		if d := v.Driver; d != "" && d != "local" && actual.VolumeDrivers != nil && !actual.VolumeDrivers[d] {
+			return nil, errs.Plan("plan.volume_driver", "the volume %s needs the volume plugin %s, which the server does not have", v.Name, d).
+				WithHint("install it with `dockflow server plugin install <plugin> --alias %s`", d)
 		}
 		add(domain.ActionCreateVolume, v.Name, "does not exist", "")
 	}

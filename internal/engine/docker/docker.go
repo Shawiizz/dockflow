@@ -21,6 +21,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/plugin"
 	"github.com/moby/moby/api/types/registry"
 	"github.com/moby/moby/client"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -474,6 +475,30 @@ func (e *Engine) RemoveNetwork(ctx context.Context, name string) error {
 	return nil
 }
 
+func (e *Engine) LabeledNetworks(ctx context.Context, label string) ([]engine.NetworkInfo, error) {
+	f := client.Filters{}
+	f.Add("label", label)
+	r, err := e.c.NetworkList(ctx, client.NetworkListOptions{Filters: f})
+	if err != nil {
+		return nil, apiErr("list networks", err)
+	}
+	out := []engine.NetworkInfo{}
+	for _, n := range r.Items {
+		in, err := e.c.NetworkInspect(ctx, n.ID, client.NetworkInspectOptions{})
+		if err != nil {
+			return nil, apiErr("inspect network "+n.Name, err)
+		}
+		info := engine.NetworkInfo{Name: n.Name, Labels: n.Labels, Containers: []string{}}
+		for _, c := range in.Network.Containers {
+			info.Containers = append(info.Containers, c.Name)
+		}
+		sort.Strings(info.Containers)
+		out = append(out, info)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
 func (e *Engine) PruneNetworks(ctx context.Context) ([]string, error) {
 	f := client.Filters{}
 	f.Add("label!", domain.LabelManagedBy)
@@ -600,6 +625,82 @@ func (e *Engine) pull(ctx context.Context, ref string, auth *engine.RegistryAuth
 	if err != nil {
 		return errs.Plan("plan.image_missing", "cannot pull %s", ref).WithCause(err).
 			WithHint("check the image name and that the server can reach the registry (and is logged in to it)")
+	}
+	return nil
+}
+
+func (e *Engine) Plugins(ctx context.Context) ([]engine.Plugin, error) {
+	r, err := e.c.PluginList(ctx, client.PluginListOptions{})
+	if err != nil {
+		return nil, apiErr("list plugins", err)
+	}
+	out := []engine.Plugin{}
+	for _, p := range r.Items {
+		pl := engine.Plugin{Name: p.Name, Reference: p.PluginReference, Enabled: p.Enabled}
+		// the keys only: a setting can hold a credential
+		for _, env := range p.Settings.Env {
+			k, _, _ := strings.Cut(env, "=")
+			pl.Settings = append(pl.Settings, k)
+		}
+		for _, t := range p.Config.Interface.Types {
+			pl.Types = append(pl.Types, t.String())
+		}
+		out = append(out, pl)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+func (e *Engine) InstallPlugin(ctx context.Context, ref, alias string, settings []string, auth *engine.RegistryAuth) ([]string, error) {
+	var granted []string
+	r, err := e.c.PluginInstall(ctx, alias, client.PluginInstallOptions{
+		RemoteRef: ref, RegistryAuth: encodeAuth(ref, auth), Args: settings,
+		AcceptPermissionsFunc: func(_ context.Context, ps plugin.Privileges) (bool, error) {
+			for _, p := range ps {
+				granted = append(granted, p.Name+": "+strings.Join(p.Value, " "))
+			}
+			return true, nil
+		},
+	})
+	if err == nil {
+		// the stream ends once the plugin is pulled, set and enabled, or with the error
+		dec := json.NewDecoder(r)
+		for {
+			var m struct {
+				Error string `json:"error"`
+			}
+			if derr := dec.Decode(&m); derr != nil {
+				if derr != io.EOF {
+					err = derr
+				}
+				break
+			}
+			if m.Error != "" {
+				err = errors.New(m.Error)
+				break
+			}
+		}
+		r.Close()
+	}
+	if err != nil {
+		return nil, errs.Newf("plugin.install", errs.ExitPlan, "cannot install the plugin %s", ref).WithCause(err).
+			WithHint("check the plugin's name, that the server can reach its registry, and its settings")
+	}
+	return granted, nil
+}
+
+func (e *Engine) RemovePlugin(ctx context.Context, name string) error {
+	if _, err := e.c.PluginDisable(ctx, name, client.PluginDisableOptions{}); err != nil && !cerrdefs.IsNotFound(err) {
+		if strings.Contains(err.Error(), "in use") {
+			return errs.Newf("plugin.in_use", errs.ExitPlan, "volumes still use the plugin %s", name).
+				WithHint("destroy the app environments whose volumes use it, with --volumes, first")
+		}
+		if !strings.Contains(err.Error(), "already disabled") {
+			return apiErr("disable plugin "+name, err)
+		}
+	}
+	if _, err := e.c.PluginRemove(ctx, name, client.PluginRemoveOptions{}); err != nil && !cerrdefs.IsNotFound(err) {
+		return apiErr("remove plugin "+name, err)
 	}
 	return nil
 }

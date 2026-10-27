@@ -42,6 +42,13 @@ const (
 	OpDetails     = "details"
 	OpUploadHave  = "upload.have"
 	OpRevoke      = "secrets.revoke"
+	// Server-wide operations (ADR-0018).
+	OpNetworkCreate = "server.network.create"
+	OpNetworkList   = "server.network.list"
+	OpNetworkRemove = "server.network.remove"
+	OpPluginInstall = "server.plugin.install"
+	OpPluginList    = "server.plugin.list"
+	OpPluginRemove  = "server.plugin.remove"
 )
 
 // Request is the agent's input. Secret values reach the agent only here, on stdin, never in its
@@ -97,8 +104,12 @@ type Request struct {
 	// Services are the services restart, stop, scale, destroy and rollback act on; none means
 	// all.
 	Services []string `json:"services,omitempty"`
-	// Name is the Compose secret secrets.revoke removes the old files of.
+	// Name is the Compose secret secrets.revoke removes the old files of, the shared network of
+	// server.network.*, or the plugin of server.plugin.*.
 	Name string `json:"name,omitempty"`
+	// Alias and Settings are a plugin's local name and its key=value settings.
+	Alias    string   `json:"alias,omitempty"`
+	Settings []string `json:"settings,omitempty"`
 	// Replicas is scale's count.
 	Replicas int `json:"replicas,omitempty"`
 	// Volumes also deletes the app's volumes (destroy).

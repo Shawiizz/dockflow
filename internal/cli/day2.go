@@ -521,7 +521,7 @@ func (a *app) serverCmd() *cobra.Command {
 	f.BoolVar(&pf.skipDocker, "skip-docker-install", false, "when preparing a server: refuse one without Docker instead of installing it")
 	f.StringVar(&pf.host, "host", "", "on the server itself: the address or domain name the CI reaches it at (default: its public address)")
 	f.IntVar(&pf.port, "port", 0, "on the server itself: the SSH port the CI uses (default: the Port of sshd_config, or 22)")
-	cmd.AddCommand(initCmd, a.connectionCmd())
+	cmd.AddCommand(initCmd, a.connectionCmd(), a.networkCmd(), a.volumePluginCmd())
 	return cmd
 }
 

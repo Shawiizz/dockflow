@@ -232,3 +232,47 @@ func TestContainerOptionsReachTheEngine(t *testing.T) {
 		t.Fatalf("a container with a subpath must start: %v", err)
 	}
 }
+
+func TestLabeledNetworksAndPlugins(t *testing.T) {
+	e := newEngine(t)
+	ctx := context.Background()
+	p := project(t)
+	cleanup(t, e, p)
+	shared := domain.Network{Name: p + "-shared", Driver: "bridge", Labels: map[string]string{domain.LabelShared: "true"}}
+	if err := e.CreateNetwork(ctx, shared, ""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { e.RemoveNetwork(context.Background(), shared.Name) })
+	img, err := e.ResolveImage(ctx, testImage, "missing", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := e.Create(ctx, p+"-on-shared", domain.ContainerSpec{
+		Image: img, Command: []string{"sleep", "300"}, Networks: []domain.Attachment{{Network: shared.Name}},
+	}, map[string]string{domain.LabelProject: p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Start(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	list, err := e.LabeledNetworks(ctx, domain.LabelShared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found *engine.NetworkInfo
+	for i := range list {
+		if list[i].Name == shared.Name {
+			found = &list[i]
+		}
+	}
+	if found == nil || len(found.Containers) != 1 || found.Containers[0] != p+"-on-shared" {
+		t.Fatalf("the shared network is listed with its container: %+v", list)
+	}
+	if _, err := e.Plugins(ctx); err != nil {
+		t.Fatalf("plugins are listed: %v", err)
+	}
+	if err := e.RemovePlugin(ctx, p+"-none"); err != nil {
+		t.Fatalf("removing a plugin that is not installed must succeed: %v", err)
+	}
+}

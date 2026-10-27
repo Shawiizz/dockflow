@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/engine"
@@ -90,6 +91,19 @@ func observe(ctx context.Context, eng engine.Engine, app *state.App, stack strin
 	}
 	if o.actual.Networks, err = eng.Networks(ctx); err != nil {
 		return nil, err
+	}
+	plugins, err := eng.Plugins(ctx)
+	if err != nil {
+		return nil, err
+	}
+	o.actual.VolumeDrivers = map[string]bool{}
+	for _, p := range plugins {
+		for _, t := range p.Types {
+			if p.Enabled && strings.HasPrefix(t, "docker.volumedriver/") {
+				o.actual.VolumeDrivers[p.Name] = true
+				o.actual.VolumeDrivers[strings.TrimSuffix(p.Name, ":latest")] = true
+			}
+		}
 	}
 	if o.actual.Volumes, err = eng.Volumes(ctx); err != nil {
 		return nil, err

@@ -55,6 +55,7 @@ Dockflow's own labels:
 |---|---|
 | `dockflow.schema` | `1` |
 | `dockflow.release` | The release sequence number the container belongs to |
+| `dockflow.shared` | `true` on a network shared between apps (`server network create`) |
 | `dockflow.kind` | `service`, `job`, `run` (agent), `oneoff` (`dockflow run`), `switch`, `registry`, `watchdog` or `helper` |
 
 **Naming:**

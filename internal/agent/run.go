@@ -83,7 +83,7 @@ func describe(req Request) string {
 }
 
 func (r *runner) dispatch(ctx context.Context) events.RunFinishedData {
-	if r.req.Op != OpServerInit {
+	if !serverOp(r.req.Op) {
 		if r.stack == "" {
 			return failed(errs.Usage("the request names no app environment"))
 		}
@@ -119,8 +119,21 @@ func (r *runner) dispatch(ctx context.Context) events.RunFinishedData {
 		return r.manualLock()
 	case OpServerInit:
 		return r.serverInit(ctx)
+	case OpNetworkCreate, OpNetworkList, OpNetworkRemove:
+		return r.networks(ctx)
+	case OpPluginInstall, OpPluginList, OpPluginRemove:
+		return r.plugins(ctx)
 	}
 	return failed(errs.Usage("unknown operation %q", r.req.Op))
+}
+
+// serverOp tells whether op acts on the server rather than on one app environment.
+func serverOp(op string) bool {
+	switch op {
+	case OpServerInit, OpNetworkCreate, OpNetworkList, OpNetworkRemove, OpPluginInstall, OpPluginList, OpPluginRemove:
+		return true
+	}
+	return false
 }
 
 func failed(err error) events.RunFinishedData {

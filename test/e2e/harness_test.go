@@ -91,7 +91,8 @@ func setup() (int, error) {
 	root, _ := filepath.Abs("../..")
 	binary = filepath.Join(workDir, "dockflow")
 	sshd := filepath.Join(workDir, "sshd")
-	for out, pkg := range map[string]string{binary: "./cmd/dockflow", sshd: "./test/e2e/sshd"} {
+	volplugin := filepath.Join(workDir, "volplugin")
+	for out, pkg := range map[string]string{binary: "./cmd/dockflow", sshd: "./test/e2e/sshd", volplugin: "./test/e2e/volplugin"} {
 		cmd := exec.Command("go", "build", "-o", out, pkg)
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
@@ -154,6 +155,9 @@ func setup() (int, error) {
 		return 1, err
 	}
 	if _, err := sh("docker", "cp", sshd, dind+":/sshd"); err != nil {
+		return 1, err
+	}
+	if _, err := sh("docker", "cp", volplugin, dind+":/volplugin"); err != nil {
 		return 1, err
 	}
 	if _, err := sh("docker", "exec", "-d", dind, "/sshd"); err != nil {

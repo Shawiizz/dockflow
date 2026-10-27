@@ -81,6 +81,8 @@ type Engine interface {
 	Disconnect(ctx context.Context, network, container string) error
 
 	RemoveNetwork(ctx context.Context, name string) error
+	// LabeledNetworks lists the networks that carry label, with the containers attached.
+	LabeledNetworks(ctx context.Context, label string) ([]NetworkInfo, error)
 	// PruneNetworks removes the unused networks Dockflow does not manage.
 	PruneNetworks(ctx context.Context) ([]string, error)
 
@@ -104,6 +106,31 @@ type Engine interface {
 	// PushImage pushes the image ref names to its registry (images built on the server).
 	PushImage(ctx context.Context, ref string, auth *RegistryAuth) error
 	RemoveImage(ctx context.Context, ref string) error
+
+	// Plugins lists the managed plugins (ADR-0018).
+	Plugins(ctx context.Context) ([]Plugin, error)
+	// InstallPlugin pulls the plugin ref under the local name alias, grants the privileges it
+	// asks for, sets its settings (key=value) and enables it. It returns the privileges granted.
+	InstallPlugin(ctx context.Context, ref, alias string, settings []string, auth *RegistryAuth) ([]string, error)
+	// RemovePlugin disables and removes a plugin; it fails while volumes use it.
+	RemovePlugin(ctx context.Context, name string) error
+}
+
+// NetworkInfo is a network and the names of the containers attached to it.
+type NetworkInfo struct {
+	Name       string            `json:"name"`
+	Labels     map[string]string `json:"-"`
+	Containers []string          `json:"containers"`
+}
+
+// Plugin is a managed plugin of the engine.
+type Plugin struct {
+	Name      string   `json:"name"`
+	Reference string   `json:"reference"`
+	Enabled   bool     `json:"enabled"`
+	Types     []string `json:"types"`
+	// Settings are the names of its settings, never their values.
+	Settings []string `json:"settings,omitempty"`
 }
 
 // LogOptions select a container's output.

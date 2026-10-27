@@ -40,6 +40,8 @@ const (
 	LabelKind      = "dockflow.kind"
 	LabelHash      = "dockflow.hash"
 	LabelManagedBy = "dockflow.managed"
+	// LabelShared marks a network shared between the apps of a server (ADR-0018).
+	LabelShared = "dockflow.shared"
 )
 
 // Kinds of Dockflow containers.

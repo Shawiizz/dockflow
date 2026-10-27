@@ -87,8 +87,8 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 | `dockflow server connection [<target>] [-k <key>] [--host-key <SHA256:…>] [--name <name>]` | Prints the connection string, after connecting: the host key it holds is the one SSH verified, against `--host-key` or known_hosts, never trusted on first use; the user must be able to use Docker |
 | `dockflow server status [<target>]` | The switch, the registry, the watchdog, the edge, the filter, the apps and their environments, disk usage |
 | `dockflow server edge <target> <mode> […]` | Changes the edge mode ([ADR-0011](../adr/0011-switch-and-edge.md)) |
-| `dockflow server network create\|list\|remove <target> [<name>]` | Shared networks between apps |
-| `dockflow server plugin install\|list\|remove <target> [<plugin>] [--alias <name>] [<key>=<value>…]` | Docker volume plugins (not to be confused with Dockflow plugins) |
+| `dockflow server network create\|list\|remove [<env>] [<name>]` | Shared networks between apps ([ADR-0018](../adr/0018-shared-servers.md)): bridge networks labelled `dockflow.shared=true`, which apps join as external networks; `remove` refuses while containers use one |
+| `dockflow server plugin install\|list\|remove [<env>] [<plugin>] [--alias <name>] [<key>=<value>…]` | Docker volume plugins (not to be confused with Dockflow plugins): `install` grants the privileges the plugin asks for and prints them; setting values are masked, and `list` shows their names only; `remove` refuses while volumes use one |
 | `dockflow server upgrade <target>` | Upgrades the switch, the registry and the watchdog to this CLI's version |
 | `dockflow server uninstall [<target>] [--volumes] [--yes]` | Removes Dockflow from a server: every app environment (with `--volumes`, their data), the switch, the registry, the watchdog, the port filter, `/var/lib/dockflow`; the deploy user and Docker stay |
 | `dockflow server proxy sync <target>` | Rebuilds the switch's configuration from the current releases |

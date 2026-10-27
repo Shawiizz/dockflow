@@ -58,6 +58,13 @@ Some apps need host-level storage: the MohistMC backend mounts S3 with rclone an
 - The switch joins each routed app's network separately, so routed services of different apps cannot reach each other through it. This is stricter than the Swarm design, where every routed service shared one ingress network.
 - `deploy.resources` limits are applied, and the plan warns about services without limits on a shared server.
 
+## Implementation (M3)
+
+- **Commands.** `server network` and `server plugin` take an environment, whose server they act on, and hold the server lock (`server.lock`). Shared networks are labelled `dockflow.shared=true` and managed (`dockflow.managed=true`), so `prune` leaves them alone; `remove` refuses a network that containers use, or that is not shared.
+- **Plans.** A missing external network fails with `plan.network_missing` and the `server network create` command; a volume whose driver is not an enabled volume plugin fails with `plan.volume_driver` and the `server plugin install` command.
+- **Plugins.** `install` grants the privileges the plugin asks for, prints them, and refuses a name already installed. Docker keeps the settings in the plugin's configuration: Dockflow masks their values in its output and lists their names only.
+- **Limits.** The warning about services without `deploy.resources.limits` (`plan.no_limits`) appears when another app environment of the server has a current release.
+
 ## Consequences
 
 - One switch, one registry and one filter per server, managed in one place.

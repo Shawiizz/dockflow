@@ -44,6 +44,7 @@ func (r *runner) plan(ctx context.Context) events.RunFinishedData {
 	if err != nil {
 		return failed(err)
 	}
+	r.warnLimits(&desired)
 	r.showPlan(p)
 	if p.Empty() {
 		return events.RunFinishedData{Outcome: events.OutcomeNoop}
@@ -133,6 +134,9 @@ func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
 	p, err := planner.Plan(desired, o.actual, restart...)
 	if err != nil {
 		return failed(err)
+	}
+	if r.req.Op == OpDeploy {
+		r.warnLimits(&desired)
 	}
 	r.showPlan(p)
 	if r.req.Fingerprint != "" && r.req.Fingerprint != p.Fingerprint {

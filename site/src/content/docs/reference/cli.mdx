@@ -493,7 +493,24 @@ Running it again updates the server, and the switch keeps every app's routes. An
 dockflow server init root@203.0.113.10 --edge external
 ```
 
-SSH hardening, fail2ban, unattended updates, `server cloud-init`, `server check`, `server status`, `server edge`, `server upgrade`, `server network` and `server plugin` are <Badge text="Coming in M3" variant="caution" />, as is the `cloudflare` edge.
+SSH hardening, fail2ban, unattended updates, `server cloud-init`, `server check`, `server status`, `server edge`, `server upgrade` are <Badge text="Coming in M3" variant="caution" />, as is the `cloudflare` edge.
+
+### server network
+
+```sh
+dockflow server network create|list|remove [<env>] [<name>]
+```
+
+Networks shared between the apps of a server, which their Compose files join as `external` networks. `create` makes a bridge network owned by the server; `remove` refuses while containers use it; `list` shows each one with its containers. See [several apps on one server](/guides/shared-servers/#shared-networks).
+
+### server plugin
+
+```sh
+dockflow server plugin install [<env>] <plugin> [--alias <name>] [<key>=<value>…]
+dockflow server plugin list|remove [<env>] [<plugin>]
+```
+
+Docker volume plugins, which Compose volumes use with `driver`. `install` pulls the plugin, grants the privileges it asks for and prints them, applies its settings and enables it; `--alias` is its name on the server. `remove` refuses while volumes use it. Setting values are masked, and `list` shows only their names. See [several apps on one server](/guides/shared-servers/#volume-plugins).
 
 ### server connection
 

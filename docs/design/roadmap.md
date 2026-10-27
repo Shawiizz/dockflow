@@ -66,7 +66,7 @@ Exit criteria: **shawiizz.dev and Dockflow's docs site deploy with v2 in product
 - **Security:** the published-port filter with `public_ports` and `from` (done), and the Cloudflare ranges timer.
 - **Secrets:** Compose `secrets:` and `configs:`, the SOPS file and the `secrets` commands (done).
 - **Self-healing:** the watchdog (done).
-- **Shared servers:** shared networks and volume plugins.
+- **Shared servers:** shared networks and volume plugins (done).
 - **`init`** with CI workflows.
 - **Real-server tests** on fresh DigitalOcean droplets: provisioning, cloud-init, Let's Encrypt staging, the Cloudflare edge, nginx in front of the switch, the filter.
 
