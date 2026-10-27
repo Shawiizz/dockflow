@@ -110,6 +110,25 @@
           }
         }
       }
+    },
+    "tls": {
+      "automation": {
+        "policies": [
+          {
+            "issuers": [
+              {
+                "email": "ops@example.com",
+                "module": "acme"
+              },
+              {
+                "ca": "https://acme.zerossl.com/v2/DV90",
+                "email": "ops@example.com",
+                "module": "acme"
+              }
+            ]
+          }
+        ]
+      }
     }
   }
 }

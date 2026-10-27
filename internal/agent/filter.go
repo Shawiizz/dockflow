@@ -120,36 +120,48 @@ func (r *runner) clearFilter(ctx context.Context) error {
 // runFilter runs `dockflow filter apply` in a helper container on the host's network.
 func (r *runner) runFilter(ctx context.Context, fr FilterRequest) error {
 	b, _ := json.Marshal(fr)
+	if _, err := r.runHelper(ctx, "filter", []string{"filter", "apply"}, []string{FilterEnv + "=" + string(b)}, true); err != nil {
+		return errs.Newf("filter.failed", errs.ExitInternal, "the port filter could not be applied: %s", err.Error()).
+			WithHint("check that iptables works on the server, or run server init --no-port-filter")
+	}
+	return nil
+}
+
+// runHelper runs the Dockflow binary with args in a short helper container on the host's
+// network; with hostRoot, as root of the host, whose root it mounts at /host (ADR-0014). It
+// returns the helper's output, or an error with its last line.
+func (r *runner) runHelper(ctx context.Context, name string, args, env []string, hostRoot bool) (string, error) {
 	spec := domain.ContainerSpec{
-		Image: r.req.AgentImage, Entrypoint: []string{"/dockflow", "filter", "apply"},
-		Env: []string{FilterEnv + "=" + string(b)}, Restart: "no", NetworkMode: "host",
-		CapAdd: []string{"NET_ADMIN", "NET_RAW", "SYS_CHROOT"},
-		// the host's own iptables, run in a chroot: the agent's image holds the binary only
-		Mounts: []domain.Mount{{Type: "bind", Source: "/", Target: "/host"}},
+		Image: r.req.AgentImage, Entrypoint: append([]string{"/dockflow"}, args...),
+		Env: env, Restart: "no", NetworkMode: "host",
+	}
+	if hostRoot {
+		spec.CapAdd = []string{"NET_ADMIN", "NET_RAW", "SYS_CHROOT"}
+		// the host's own tools, run in a chroot: the agent's image holds the binary only
+		spec.Mounts = []domain.Mount{{Type: "bind", Source: "/", Target: "/host"}}
 	}
 	labels := map[string]string{
 		domain.LabelKind: domain.KindHelper, domain.LabelSchema: "1", domain.LabelManagedBy: "true", domain.LabelOneOff: "True",
 	}
-	id, err := r.Engine.Create(ctx, "dockflow-filter-"+r.req.Run, spec, labels)
+	id, err := r.Engine.Create(ctx, "dockflow-"+name+"-"+r.req.Run, spec, labels)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() { _ = r.Engine.Remove(context.WithoutCancel(ctx), id) }()
 	if err := r.Engine.Start(ctx, id); err != nil {
-		return err
+		return "", err
 	}
 	code, err := r.Engine.Wait(ctx, id)
 	if err != nil {
-		return err
+		return "", err
+	}
+	var out []byte
+	if logs, _ := r.Engine.Logs(context.WithoutCancel(ctx), id, engine.LogOptions{Stderr: true}); logs != nil {
+		out, _ = io.ReadAll(logs)
+		logs.Close()
 	}
 	if code != 0 {
-		var out []byte
-		if logs, _ := r.Engine.Logs(context.WithoutCancel(ctx), id, engine.LogOptions{Stderr: true}); logs != nil {
-			out, _ = io.ReadAll(logs)
-			logs.Close()
-		}
-		return errs.Newf("filter.failed", errs.ExitInternal, "the port filter could not be applied: %s", lastLine(string(out))).
-			WithHint("check that iptables works on the server, or run server init --no-port-filter")
+		return string(out), errs.Internal("%s", lastLine(string(out)))
 	}
-	return nil
+	return string(out), nil
 }

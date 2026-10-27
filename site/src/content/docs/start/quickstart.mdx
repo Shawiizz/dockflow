@@ -136,6 +136,8 @@ This guide deploys a small web app, an nginx container behind a route with HTTPS
              port: 80
    ```
 
+   `dockflow init --domain hello.example.com` writes these two files for you, and with `--ci github` or `--ci gitlab` a CI workflow (see [`init`](/reference/cli/#init)).
+
    `${DOMAIN}` takes its value from the environment's `vars`. The route sends `https://hello.example.com` to port 80 of the container, and the healthcheck tells Dockflow when a new container is ready for traffic.
 
    Check the project without touching the server:

@@ -92,6 +92,10 @@ type Config struct {
 	// TrustedProxies are the CIDRs whose X-Forwarded-For is believed (external edge), or whose
 	// CF-Connecting-IP is (cloudflare edge: Cloudflare's ranges).
 	TrustedProxies []string
+	// ACMEEmail is the address given to the certificate authority, if any.
+	ACMEEmail string
+	// ACMECA is the ACME directory to use instead of Let's Encrypt's, then ZeroSSL's.
+	ACMECA string
 	// Reload loads the configuration even when its routes did not change: the switch was just
 	// (re)installed.
 	Reload bool

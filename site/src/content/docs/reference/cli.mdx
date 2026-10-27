@@ -30,6 +30,28 @@ This page lists every command of `dockflow` v4.0.0-alpha.5, with the options its
 | `-y, --yes` | `false` | Never prompt. |
 | `-h, --help` | | Help for any command. |
 
+## init
+
+```sh
+dockflow init [flags]
+```
+
+Start a project in the current directory (or `-C <dir>`):
+
+- `dockflow.yml`, with the app's name and a `production` environment whose `DOMAIN` is `--domain`;
+- `compose.yml`, when the directory has no Compose file: a `web` service built from the `Dockerfile`, on the port its `EXPOSE` gives (80 without one), or `nginx` when there is no `Dockerfile`, with a route to `${DOMAIN}`;
+- `.env.dockflow` added to `.gitignore`, which is created if needed;
+- with `--ci github`, `.github/workflows/deploy.yml`; with `--ci gitlab`, `.gitlab-ci.yml`. The workflow builds on every branch and deploys on tags, with the CLI pinned to the version that wrote it. See [Deploying from CI](/guides/ci/#complete-workflows); the other providers' workflows are there.
+
+On a terminal, it asks for the name, the domain and the CI provider, unless the flags give them. It replaces no file without `--force` (`init.exists`, exit code 2). Check the result with `dockflow validate`.
+
+| Option | Default | Description |
+|---|---|---|
+| `--app string` | the directory's name | The app's name: lower case letters, digits and hyphens, at most 24 characters. |
+| `--domain string` | `<app>.example.com` | The domain the app is served at. |
+| `--ci string` | none | Write a CI workflow: `github` or `gitlab`. |
+| `--force` | `false` | Replace the files that exist. `.gitignore` only ever gets the lines it lacks. |
+
 ## validate
 
 ```sh
@@ -477,7 +499,9 @@ Running it again updates the server, and the switch keeps every app's routes. An
 
 | Option | Default | Description |
 |---|---|---|
-| `--edge string` | the server's, or `builtin` | How traffic reaches the switch: `builtin`, `external` or `none`. |
+| `--edge string` | the server's, or `builtin` | How traffic reaches the switch: `builtin`, `cloudflare`, `external` or `none`. |
+| `--acme-email string` | the server's, or none | The address Let's Encrypt writes to about the switch's certificates (expiry, revocation). `--acme-email ""` removes it. |
+| `--acme-ca string` | the server's, or Let's Encrypt then ZeroSSL | The ACME directory the switch gets its certificates from, such as Let's Encrypt's staging, `https://acme-staging-v02.api.letsencrypt.org/directory`, for a test server. `--acme-ca ""` goes back to the default. |
 | `--no-registry` | `false` | No server-local registry: every built image goes to `registry.url`. |
 | `--registry-image string` | `registry:3`, pinned by digest | The image of the server-local registry. |
 | `--switch-image string` | `caddy:2`, pinned by digest | The Caddy image of the switch. |
@@ -502,7 +526,61 @@ Running it again updates the server, and the switch keeps every app's routes. An
 dockflow server init root@203.0.113.10 --edge external
 ```
 
-`server check`, `server status`, `server edge`, `server upgrade` and `server uninstall` are <Badge text="Coming in M3" variant="caution" />.
+### server status
+
+```sh
+dockflow server status [<env>]
+```
+
+The server as a whole: its settings (edge, port filter, the Dockflow version that last ran `server init`), the Docker version, the switch, the registry and the watchdog with their state and image, every app environment on the server with its current release and how many of its containers run, and the free disk space. `--json` prints it as one document. Without `<env>`, the server of the only environment of `dockflow.yml`, or of `--connection`.
+
+### server check
+
+```sh
+dockflow server check [<env>]
+```
+
+Checks what Dockflow needs on the server, each check `ok`, a warning or a failure, with what to do:
+
+- Docker 27 or newer;
+- `/run/dockflow` on a tmpfs, for [Compose secrets](/guides/secrets/);
+- `/var/lib/dockflow` readable by root only;
+- the free disk space;
+- whether `server init` ran, and the switch, the registry and the watchdog are running;
+- the port filter, applied or off;
+- ports 80 and 443, when the edge needs them and the switch is not running: free, or held by another program.
+
+It exits with code 0 when no check failed, and 9 (`check.failed`) when one did. Warnings do not change the exit code.
+
+### server edge
+
+```sh
+dockflow server edge [<env>] builtin|cloudflare|external|none [--switch-listen <addr:port>] [--trusted-proxy <cidr>…]
+```
+
+Changes how traffic reaches the server's switch, and keeps every other setting: it is `server init <env> --edge <mode>`. The switch container is replaced, which interrupts traffic for a moment, and every app's routes are loaded into the new one. `none` is refused while routes go through the switch. See [the switch and edges](/concepts/switch-and-edges/).
+
+### server upgrade
+
+```sh
+dockflow server upgrade [<env>]
+```
+
+Pulls the images of the switch and of the registry again (the tags `server init` installed, `caddy:2` and `registry:3` unless you chose others) and replaces their containers when the image changed; the watchdog runs this CLI's agent. Every setting stays. When the server cannot pull an image, it keeps the one it has and warns (`upgrade.pull`). Run it after installing a new Dockflow, or to get Caddy's fixes.
+
+### server uninstall
+
+```sh
+dockflow server uninstall [<env>] [--volumes]
+```
+
+Removes Dockflow from the server: every app environment (their containers, networks, Compose secrets and releases; with `--volumes`, their volumes and data), the switch with its certificates, the registry with its images, the watchdog, the shared networks, the port filter's rules, the finished agents and `/var/lib/dockflow`. The deploy user, Docker, the containers Dockflow did not create and Docker's volume plugins stay.
+
+On a terminal, it asks you to type the server's name. Without a terminal, it needs `--yes`. Running `server init` afterwards installs Dockflow again, on an empty server.
+
+| Option | Default | Description |
+|---|---|---|
+| `--volumes` | `false` | Also delete the volumes of the app environments, with their data. |
 
 ### server cloud-init
 

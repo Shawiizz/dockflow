@@ -92,9 +92,28 @@ func Build(c proxy.Config) ([]byte, error) {
 			srv["client_ip_headers"] = []string{"CF-Connecting-IP"}
 		}
 	}
+	apps := obj{"http": obj{"servers": servers}}
+	var issuers []any
+	switch {
+	case c.ACMECA != "":
+		issuer := obj{"module": "acme", "ca": c.ACMECA}
+		if c.ACMEEmail != "" {
+			issuer["email"] = c.ACMEEmail
+		}
+		issuers = []any{issuer}
+	case c.ACMEEmail != "":
+		// Let's Encrypt, then ZeroSSL, as without an address, both told the address
+		issuers = []any{
+			obj{"module": "acme", "email": c.ACMEEmail},
+			obj{"module": "acme", "ca": "https://acme.zerossl.com/v2/DV90", "email": c.ACMEEmail},
+		}
+	}
+	if issuers != nil {
+		apps["tls"] = obj{"automation": obj{"policies": []any{obj{"issuers": issuers}}}}
+	}
 	cfg := obj{
 		"admin": obj{"listen": "unix/" + AdminSocket},
-		"apps":  obj{"http": obj{"servers": servers}},
+		"apps":  apps,
 	}
 	return json.MarshalIndent(cfg, "", "  ")
 }

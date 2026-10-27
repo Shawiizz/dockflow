@@ -135,8 +135,10 @@ The codes below are the ones you are most likely to meet. A few errors use a gen
 | `upload.failed` | 8 | An upload could not be written on the server. | Check the destination path and its permissions. |
 | `rollback.failed` | 9 | The run failed, and restoring the previous release failed too. The environment is degraded. | Fix the cause and deploy again. `dockflow status` and `dockflow diagnose` show the state. |
 | `run.cancelled` | 130 | The run was cancelled (Ctrl+C or `dockflow cancel`) and rolled back. | Nothing: the previous release is running. |
+| `init.exists` | 2 | `dockflow init` would replace a file that exists. | Run it with `--force`, or move the file. |
 | `run.declined` | 130 | You answered no at the confirmation prompt. | Nothing was changed. |
 | `run.detached` | 130 | A second Ctrl+C detached the CLI while the agent rolls back on the server. | Follow it with `dockflow attach <env> <run>`. |
+| `check.failed` | 9 | `dockflow server check` found a failure on the server. | Each failed check says what to do. |
 | `agent.died` | 1 | The agent stopped before finishing. | The next run finds the unfinished release and restores the environment. |
 
 <Aside type="caution">
@@ -156,3 +158,5 @@ Warnings never change the exit code. They appear as [`warning` events](/referenc
 | `run.abandoned`, `run.leftover`, `run.restarted` | An earlier run stopped before finishing; this run marked its release abandoned, removed its leftover containers or restarted the containers it had stopped |
 | `cleanup.failed`, `destroy.network`, `state.write_failed` | A cleanup step (old containers, images, registry manifests, release files, networks) or a state write failed; it does not change the outcome of the run |
 | `agent.signal_failed` | The CLI could not forward Ctrl+C to the agent |
+| `upgrade.pull` | `server upgrade` could not pull an image; the server keeps the one it has |
+| `uninstall.network`, `uninstall.volume`, `uninstall.filter` | `server uninstall` could not remove a network, a volume or the port filter's rules; the message says which |

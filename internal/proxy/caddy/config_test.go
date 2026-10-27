@@ -69,7 +69,7 @@ func TestBuildAppRoutesAndErrorPages(t *testing.T) {
 }
 
 func TestBuildCloudflare(t *testing.T) {
-	b, err := Build(proxy.Config{Edge: proxy.EdgeCloudflare, TrustedProxies: []string{"173.245.48.0/20", "2400:cb00::/32"}, Routes: []proxy.Route{
+	b, err := Build(proxy.Config{Edge: proxy.EdgeCloudflare, ACMEEmail: "ops@example.com", TrustedProxies: []string{"173.245.48.0/20", "2400:cb00::/32"}, Routes: []proxy.Route{
 		{Stack: "web-production", Service: "web", Domains: []string{"example.com"}, Path: "/", Port: 80, TLS: true,
 			Upstreams: []string{"web-production-web-2-1"}},
 		{Stack: "flex-production", Service: "web", Domains: []string{"flexible.example.com"}, Path: "/", Port: 80,
@@ -103,5 +103,31 @@ func TestBuildRefusesDuplicates(t *testing.T) {
 	}})
 	if err == nil {
 		t.Fatal("want a conflict")
+	}
+}
+
+func TestBuildACMECA(t *testing.T) {
+	b, err := Build(proxy.Config{Edge: proxy.EdgeBuiltin, ACMECA: "https://acme-staging-v02.api.letsencrypt.org/directory", Routes: []proxy.Route{
+		{Stack: "web-production", Service: "web", Domains: []string{"example.com"}, Path: "/", Port: 80, TLS: true, Upstreams: []string{"web-1"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Apps struct {
+			TLS struct {
+				Automation struct {
+					Policies []struct {
+						Issuers []map[string]string `json:"issuers"`
+					} `json:"policies"`
+				} `json:"automation"`
+			} `json:"tls"`
+		} `json:"apps"`
+	}
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if p := cfg.Apps.TLS.Automation.Policies; len(p) != 1 || len(p[0].Issuers) != 1 || p[0].Issuers[0]["ca"] != "https://acme-staging-v02.api.letsencrypt.org/directory" {
+		t.Fatalf("one issuer, the directory given:\n%s", b)
 	}
 }

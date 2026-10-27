@@ -111,10 +111,14 @@ type Server struct {
 	Edge        string `json:"edge"`
 	SwitchImage string `json:"switch_image,omitempty"`
 	// SwitchListen and TrustedProxies configure the external edge.
-	SwitchListen    string   `json:"switch_listen,omitempty"`
-	TrustedProxies  []string `json:"trusted_proxies,omitempty"`
-	RegistryImage   string   `json:"registry_image,omitempty"`
-	DockflowVersion string   `json:"dockflow_version"`
+	SwitchListen   string   `json:"switch_listen,omitempty"`
+	TrustedProxies []string `json:"trusted_proxies,omitempty"`
+	// ACMEEmail is the address given to Let's Encrypt with the switch's certificates.
+	ACMEEmail string `json:"acme_email,omitempty"`
+	// ACMECA is the ACME directory of the switch's certificates, when not the default ones.
+	ACMECA          string `json:"acme_ca,omitempty"`
+	RegistryImage   string `json:"registry_image,omitempty"`
+	DockflowVersion string `json:"dockflow_version"`
 	// NoPortFilter tells that server init was asked to leave the published-port filter out
 	// (ADR-0014); SSHPort is let in, and FilterRules is the digest of the rules last applied.
 	NoPortFilter bool   `json:"no_port_filter,omitempty"`

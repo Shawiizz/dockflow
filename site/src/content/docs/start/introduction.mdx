@@ -63,11 +63,10 @@ What works today:
 - hooks, templates, incremental uploads, webhooks;
 - releases, `dockflow rollback`, locks, and the day-2 commands: `logs`, `exec`, `run`, `cp`, `ssh`, `ps`, `status`, `details`, `diagnose`, `restart`, `stop`, `scale`, `prune`, `destroy`;
 - deploys from CI with the version and environment taken from the tag.
-- in the next release: Compose `secrets:` and `configs:`, SOPS files, the published-port filter, plugins with the built-in `nginx` and `systemd`, the watchdog, shared networks and volume plugins, the `cloudflare` edge, route options and error pages, redirect, proxy and files routes, and full provisioning: SSH hardening, fail2ban, security updates, `--nginx`, `server cloud-init`.
+- in the next release: Compose `secrets:` and `configs:`, SOPS files, the published-port filter, plugins with the built-in `nginx` and `systemd`, the watchdog, shared networks and volume plugins, the `cloudflare` edge, route options and error pages, redirect, proxy and files routes, and full provisioning: SSH hardening, fail2ban, security updates, `--nginx`, `server cloud-init`, `server status`, `check`, `edge`, `upgrade` and `uninstall`, and `dockflow init` with CI workflows.
 
 What comes next:
 
-- <Badge text="Coming in M3" variant="caution" /> `server check`, `server status`, `server upgrade`, `server uninstall` and `dockflow init`.
 - <Badge text="Coming in M4" variant="caution" /> backups with restic.
 - <Badge text="Coming in M5" variant="caution" /> the local web UI, the MCP server, the GitHub Action and preview environments.
 

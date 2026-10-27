@@ -51,7 +51,7 @@ v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no featu
 | `setup swarm` | None: no Swarm ([ADR-0003](adr/0003-single-host-docker.md)) | dropped by decision of the project owner | – |
 | `setup check` | `server check` | same | M3 |
 | `setup connection`, `--connection` | `server connection <env>`, `--connection` | same ([ADR-0013](adr/0013-servers-access-security.md)) | M3 |
-| (none) | `plan`, `cancel`, `attach`, `destroy`, `secrets`, `server status`, `server edge`, `server network`, `server plugin`, `server upgrade`, `mcp` | new | – |
+| (none) | `plan`, `cancel`, `attach`, `destroy`, `secrets`, `server status`, `server edge`, `server network`, `server plugin`, `server upgrade`, `server uninstall`, `mcp` | new | – |
 
 ## Configuration
 

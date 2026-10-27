@@ -443,7 +443,7 @@ func (a *app) configCmd() *cobra.Command {
 
 func (a *app) serverCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "server", Short: "Manage servers"}
-	var edge, switchImage, registryImage, switchListen string
+	var edge, switchImage, registryImage, switchListen, acmeEmail, acmeCA string
 	var trusted []string
 	var noRegistry, noFilter, noWatchdog bool
 	var pf provisionFlags
@@ -484,6 +484,12 @@ func (a *app) serverCmd() *cobra.Command {
 				if flags.Changed("trusted-proxy") {
 					req.TrustedProxies = trusted
 				}
+				if flags.Changed("acme-email") {
+					req.ACMEEmail = &acmeEmail
+				}
+				if flags.Changed("acme-ca") {
+					req.ACMECA = &acmeCA
+				}
 				req.Registry = on("no-registry", noRegistry)
 				req.PortFilter = on("no-port-filter", noFilter)
 				req.Watchdog = on("no-watchdog", noWatchdog)
@@ -517,6 +523,8 @@ func (a *app) serverCmd() *cobra.Command {
 	initCmd.Flags().StringVar(&edge, "edge", "", "how traffic reaches the switch: builtin, cloudflare, external or none (default: the server's, or builtin)")
 	initCmd.Flags().StringVar(&switchListen, "switch-listen", "", "with --edge external: the address the switch listens on (default 127.0.0.1:8080)")
 	initCmd.Flags().StringSliceVar(&trusted, "trusted-proxy", nil, "with --edge external: CIDRs whose X-Forwarded-For is trusted (default: private ranges)")
+	initCmd.Flags().StringVar(&acmeEmail, "acme-email", "", "the address Let's Encrypt writes to about the switch's certificates (\"\" removes it)")
+	initCmd.Flags().StringVar(&acmeCA, "acme-ca", "", "the ACME directory of the switch's certificates, such as Let's Encrypt's staging (\"\" goes back to Let's Encrypt, then ZeroSSL)")
 	initCmd.Flags().StringVar(&switchImage, "switch-image", "", "the Caddy image of the switch (default caddy:2, pinned by digest)")
 	initCmd.Flags().BoolVar(&noRegistry, "no-registry", false, "no server-local registry: every built image goes to registry.url")
 	initCmd.Flags().StringVar(&registryImage, "registry-image", "", "the image of the server-local registry (default registry:3, pinned by digest)")
@@ -535,7 +543,8 @@ func (a *app) serverCmd() *cobra.Command {
 	f.StringSliceVar(&pf.from, "from", nil, "when preparing a server: the source addresses or CIDRs the deploy key accepts (from= of authorized_keys)")
 	f.StringVar(&pf.host, "host", "", "on the server itself: the address or domain name the CI reaches it at (default: its public address)")
 	f.IntVar(&pf.port, "port", 0, "on the server itself: the SSH port the CI uses (default: the Port of sshd_config, or 22)")
-	cmd.AddCommand(initCmd, a.connectionCmd(), a.networkCmd(), a.volumePluginCmd(), a.cloudInitCmd())
+	cmd.AddCommand(initCmd, a.connectionCmd(), a.networkCmd(), a.volumePluginCmd(), a.cloudInitCmd(),
+		a.serverStatusCmd(), a.serverCheckCmd(), a.serverEdgeCmd(), a.serverUpgradeCmd(), a.serverUninstallCmd())
 	return cmd
 }
 

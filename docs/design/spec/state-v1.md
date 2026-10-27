@@ -73,6 +73,8 @@ A service with `container_name` keeps that name and uses the `stop-first` strate
 
 **The watchdog** ([ADR-0010](../adr/0010-rollout-health-jobs.md)) is the container `dockflow-watchdog` (kind `watchdog`), whose image `server.json` records in `watchdog_image`. It takes an environment's lock, as `watchdog`, only to restart containers, and records each restart in `apps/<stack>/watchdog.json`: `{"schema": 1, "restarts": [{"service", "container", "at", "reason"}]}`, the 20 most recent, `reason` being `unhealthy` or `boot`.
 
+**The switch's certificates** are requested with the address `server.json` records in `acme_email` (`server init --acme-email`), when it has one, from the ACME directory in `acme_ca` (`--acme-ca`), or Let's Encrypt's then ZeroSSL's without one.
+
 **The cloudflare edge** records in `server.json` the ranges it lets in and trusts, `cloudflare_ranges`, as last downloaded.
 
 **The port filter** ([ADR-0014](../adr/0014-networking-port-filter.md)) is recorded in `server.json`: `no_port_filter` (set by `server init --no-port-filter`; the filter is on otherwise), `ssh_port` (the port it always lets in, from the connection string) and `filter_rules` (the hex sha256 of the rules last applied). A release records the app's `firewall.public_ports` in `desired.public_ports`; the filter lets in those of each app environment's current release.

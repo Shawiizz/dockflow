@@ -49,6 +49,33 @@ func (a *app) filterCmd() *cobra.Command {
 			return nil
 		},
 	})
+	cmd.AddCommand(&cobra.Command{
+		Use:  "remove",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := chrootHost("/host"); err != nil {
+				return errs.Internal("enter the host's root: %v", err)
+			}
+			if err := os.Setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"); err != nil {
+				return errs.Internal("set PATH: %v", err)
+			}
+			for _, bin := range []string{"iptables", "ip6tables"} {
+				if _, err := exec.LookPath(bin); err != nil {
+					continue
+				}
+				// each may fail when there is nothing to remove
+				_ = exec.Command(bin, "-w", "-D", "DOCKER-USER", "-j", filter.Chain).Run()
+				_ = exec.Command(bin, "-w", "-F", filter.Chain).Run()
+				_ = exec.Command(bin, "-w", "-X", filter.Chain).Run()
+			}
+			for _, f := range []string{"filter.rules", "filter6.rules"} {
+				if err := os.Remove(filepath.Join(FilterDir, f)); err != nil && !os.IsNotExist(err) {
+					return errs.Internal("remove %s: %v", f, err)
+				}
+			}
+			return nil
+		},
+	})
 	return cmd
 }
 

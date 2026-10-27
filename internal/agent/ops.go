@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/engine"
@@ -259,6 +262,20 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 	if srv.SSHPort == 0 {
 		srv.SSHPort = previous.SSHPort
 	}
+	srv.ACMEEmail = previous.ACMEEmail
+	if r.req.ACMEEmail != nil {
+		srv.ACMEEmail = *r.req.ACMEEmail
+		if srv.ACMEEmail != "" && !acmeEmail.MatchString(srv.ACMEEmail) {
+			return failed(errs.Usage("--acme-email %q is not an email address", srv.ACMEEmail))
+		}
+	}
+	srv.ACMECA = previous.ACMECA
+	if r.req.ACMECA != nil {
+		srv.ACMECA = *r.req.ACMECA
+		if u, err := url.Parse(srv.ACMECA); srv.ACMECA != "" && (err != nil || u.Scheme != "https" || u.Host == "") {
+			return failed(errs.Usage("--acme-ca %q is not the https URL of an ACME directory", srv.ACMECA))
+		}
+	}
 	if edge == proxy.EdgeCloudflare {
 		srv.CloudflareRanges = r.cloudflareRanges(ctx, previous.CloudflareRanges)
 	}
@@ -277,6 +294,7 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 		if image == "" {
 			image = DefaultRegistryImage
 		}
+		image = r.upgraded(image, r.req.RegistryImage)
 		pinned, err := r.ensure(ctx, RegistryContainer, domain.KindRegistry, image, registrySpec,
 			"port 5959 must be free on the server's loopback")
 		if err != nil {
@@ -304,6 +322,7 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 		if image == "" {
 			image = DefaultSwitchImage
 		}
+		image = r.upgraded(image, r.req.SwitchImage)
 		hint := "ports 80 and 443 must be free on the server"
 		if edge == proxy.EdgeExternal {
 			hint = listen + " must be free on the server"
@@ -360,10 +379,31 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
 }
 
+// upgraded is the image to run: with server upgrade, the server's image is pulled again by its
+// name, unless the run names an image.
+func (r *runner) upgraded(image, given string) string {
+	if !r.req.Upgrade || given != "" {
+		return image
+	}
+	if i := strings.Index(image, "@sha256:"); i > 0 {
+		return image[:i] + "#pull"
+	}
+	return image
+}
+
 // ensure runs the system container name from image, replacing it when its spec changed. It
-// returns the pinned image.
+// returns the pinned image. An image marked #pull is pulled again: an upgrade.
 func (r *runner) ensure(ctx context.Context, name, kind, image string, specOf func(string) domain.ContainerSpec, startHint string) (string, error) {
-	pinned, err := r.Engine.ResolveImage(ctx, image, "missing", nil)
+	policy := "missing"
+	if ref, ok := strings.CutSuffix(image, "#pull"); ok {
+		image, policy = ref, "always"
+	}
+	pinned, err := r.Engine.ResolveImage(ctx, image, policy, nil)
+	if err != nil && policy == "always" {
+		// no registry to reach: the image the server has stays
+		r.warn("upgrade.pull", "cannot pull "+image+", the server's image stays: "+err.Error())
+		pinned, err = r.Engine.ResolveImage(ctx, image, "missing", nil)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -437,11 +477,14 @@ func registrySpec(image string) domain.ContainerSpec {
 	}
 }
 
+// acmeEmail is what an ACME account's contact looks like.
+var acmeEmail = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+
 // switchConfig is the switch's configuration for a server's settings and routes.
 func switchConfig(srv *state.Server, routes []proxy.Route) proxy.Config {
 	c := proxy.Config{Edge: proxy.EdgeBuiltin, Routes: routes}
 	if srv != nil && srv.Edge != "" {
-		c.Edge, c.TrustedProxies = srv.Edge, srv.TrustedProxies
+		c.Edge, c.TrustedProxies, c.ACMEEmail, c.ACMECA = srv.Edge, srv.TrustedProxies, srv.ACMEEmail, srv.ACMECA
 	}
 	if c.Edge == proxy.EdgeCloudflare {
 		c.TrustedProxies = srv.CloudflareRanges

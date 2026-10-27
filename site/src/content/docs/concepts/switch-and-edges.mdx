@@ -181,7 +181,7 @@ Moving a server to `none` is refused while apps on it still have routes (`server
 | `--switch-image <image>` | `caddy:2` | The Caddy image of the switch, pinned by digest when installed |
 | `--no-registry` | – | No server-local registry: every built image goes to `registry.url` |
 | `--registry-image <image>` | `registry:3` | The image of the server-local registry, pinned by digest when installed |
+| `--acme-email <address>` | none | The address Let's Encrypt writes to about the switch's certificates. `""` removes it |
+| `--acme-ca <url>` | Let's Encrypt, then ZeroSSL | Another ACME directory, such as Let's Encrypt's staging for a test server. `""` goes back to the default |
 
-To change the edge of a server, run `server init` again with another `--edge`. The switch container is replaced, which interrupts traffic for a moment, and every app's routes are loaded into the new one.
-
-<Badge text="Coming in M3" variant="caution" /> SSH hardening and the rest of provisioning, `--acme-email` and the `server status`, `server edge` and `server upgrade` commands.
+To change the edge of a server, run `dockflow server edge <env> <mode>`, or `server init` again with another `--edge`. The switch container is replaced, which interrupts traffic for a moment, and every app's routes are loaded into the new one. `dockflow server upgrade` pulls the switch's image again, and `dockflow server status` shows the edge and the switch's state.

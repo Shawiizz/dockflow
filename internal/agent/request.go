@@ -51,6 +51,9 @@ const (
 	OpPluginRemove  = "server.plugin.remove"
 	// OpCloudflareRefresh is run by the weekly timer of provisioning (ADR-0014).
 	OpCloudflareRefresh = "server.cloudflare.refresh"
+	OpServerStatus      = "server.status"
+	OpServerCheck       = "server.check"
+	OpServerUninstall   = "server.uninstall"
 )
 
 // Request is the agent's input. Secret values reach the agent only here, on stdin, never in its
@@ -133,6 +136,12 @@ type Request struct {
 	SwitchImage    string   `json:"switch_image,omitempty"`
 	SwitchListen   string   `json:"switch_listen,omitempty"`
 	TrustedProxies []string `json:"trusted_proxies,omitempty"`
+	// ACMEEmail is the address the certificate authority writes to about the switch's
+	// certificates (server.init); nil keeps the server's, "" removes it.
+	ACMEEmail *string `json:"acme_email,omitempty"`
+	// ACMECA is the ACME directory the switch gets its certificates from (server.init); nil
+	// keeps the server's, "" goes back to Let's Encrypt, then ZeroSSL.
+	ACMECA *string `json:"acme_ca,omitempty"`
 
 	// RegistryAuth are the credentials of the external registry, when the app uses one.
 	RegistryAuth *engine.RegistryAuth `json:"registry_auth,omitempty"`
@@ -140,6 +149,8 @@ type Request struct {
 	// server has; RegistryImage is its image.
 	Registry      *bool  `json:"registry,omitempty"`
 	RegistryImage string `json:"registry_image,omitempty"`
+	// Upgrade pulls the server's images again by their names (server upgrade).
+	Upgrade bool `json:"upgrade,omitempty"`
 
 	// Mask lists the secret values to mask in every event.
 	Mask []string `json:"mask,omitempty"`

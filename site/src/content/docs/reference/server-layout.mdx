@@ -186,7 +186,7 @@ The switch's admin API listens on no port at all, only on a unix socket.
 
 ## Removing everything by hand
 
-`dockflow destroy` removes one environment: its containers, routes, networks and state, and with `--volumes` its data. To remove Dockflow from a server entirely:
+`dockflow destroy` removes one environment: its containers, routes, networks and state, and with `--volumes` its data. [`dockflow server uninstall`](/reference/cli/#server-uninstall) removes Dockflow from a server entirely, in one command. By hand, it does this:
 
 <Steps>
 
