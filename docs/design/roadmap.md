@@ -68,10 +68,10 @@ Exit criteria: **shawiizz.dev and Dockflow's docs site deploy with v2 in product
 - **Self-healing:** the watchdog (done).
 - **Shared servers:** shared networks and volume plugins (done).
 - **`init`** with CI workflows (done).
-- **Real-server tests** on fresh DigitalOcean droplets: provisioning, cloud-init, Let's Encrypt staging, the Cloudflare edge, nginx in front of the switch, the filter (written: `test/real/`, run by hand with a DigitalOcean token).
+- **Real-server tests** on fresh DigitalOcean droplets: provisioning, cloud-init, Let's Encrypt staging, the Cloudflare edge, nginx in front of the switch, the filter (done: `test/real/`, run by hand with the "Real servers" workflow; green on 2026-10-27).
 
 Exit criteria:
-- a new DigitalOcean droplet goes from blank to serving an app over HTTPS with `server init` and `deploy` only;
+- a new DigitalOcean droplet goes from blank to serving an app over HTTPS with `server init` and `deploy` only (met: `TestProvisionAndDeploy`, with Let's Encrypt's staging);
 - **ValientRP's frontend, backend and Minecraft server run on one server with v2**: the shared network to Postgres, TCP and UDP ports, the graceful stop through an `exec` hook, Cloudflare in front.
 
 ## M4: Data — MohistMC

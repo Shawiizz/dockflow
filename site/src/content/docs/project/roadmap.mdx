@@ -61,7 +61,7 @@ Take a blank server to a hardened production host, and cover the needs of larger
 - **Shared servers** <Badge text="Done" variant="success" />: networks shared between apps, Docker volume plugins, and a warning about services without limits.
 - **`dockflow init`** <Badge text="Done" variant="success" />, which writes a starting configuration and CI workflows.
 
-- **Real-server tests**: fresh DigitalOcean droplets for provisioning, cloud-init, Let's Encrypt staging certificates, the `cloudflare` edge, nginx in front of the switch and the port filter. The tests are written; they run by hand before a release.
+- **Real-server tests** <Badge text="Done" variant="success" />: fresh DigitalOcean droplets for provisioning, cloud-init, Let's Encrypt staging certificates, the `cloudflare` edge, nginx in front of the switch and the port filter, run by hand before a release.
 
 Exit criteria include a fresh cloud server going from blank to serving an app over HTTPS with `server init` and `deploy` only, tested on real servers.
 
