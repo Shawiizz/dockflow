@@ -90,6 +90,7 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 | `dockflow server network create\|list\|remove <target> [<name>]` | Shared networks between apps |
 | `dockflow server plugin install\|list\|remove <target> [<plugin>] [--alias <name>] [<key>=<value>…]` | Docker volume plugins (not to be confused with Dockflow plugins) |
 | `dockflow server upgrade <target>` | Upgrades the switch, the registry and the watchdog to this CLI's version |
+| `dockflow server uninstall [<target>] [--volumes] [--yes]` | Removes Dockflow from a server: every app environment (with `--volumes`, their data), the switch, the registry, the watchdog, the port filter, `/var/lib/dockflow`; the deploy user and Docker stay |
 | `dockflow server proxy sync <target>` | Rebuilds the switch's configuration from the current releases |
 
 ## Interfaces
