@@ -461,7 +461,7 @@ Without an argument, in a directory without `dockflow.yml`, prepares the server 
 
 With an environment, installs or updates the switch and the registry on the server of that environment, reached as for a deploy.
 
-Running it again applies the new options, and the switch keeps every app's routes. See [the switch and edges](/concepts/switch-and-edges/).
+Running it again updates the server, and the switch keeps every app's routes. An option you don't give keeps what the server has: `sudo dockflow server init` alone, after a new Dockflow is installed, upgrades the watchdog and keeps the edge, its address, the registry and the filter as they were. Give an option to change it; `--no-registry=false`, `--no-port-filter=false` and `--no-watchdog=false` install again what an earlier run left out. See [the switch and edges](/concepts/switch-and-edges/).
 
 | Edge | Effect |
 |---|---|
@@ -471,12 +471,12 @@ Running it again applies the new options, and the switch keeps every app's route
 
 | Option | Default | Description |
 |---|---|---|
-| `--edge string` | `"builtin"` | How traffic reaches the switch: `builtin`, `external` or `none`. |
+| `--edge string` | the server's, or `builtin` | How traffic reaches the switch: `builtin`, `external` or `none`. |
 | `--no-registry` | `false` | No server-local registry: every built image goes to `registry.url`. |
 | `--registry-image string` | `registry:3`, pinned by digest | The image of the server-local registry. |
 | `--switch-image string` | `caddy:2`, pinned by digest | The Caddy image of the switch. |
-| `--no-watchdog` | `false` | No [watchdog](/guides/health-checks/#after-the-deploy-the-watchdog): unhealthy containers are not restarted, and apps with Compose secrets wait for a deploy after a reboot. Without it, a new run installs the watchdog again. |
-| `--no-port-filter` | `false` | No [port filter](/project/security/#the-port-filter): every port Docker publishes on a public address is open. Without it, a new run turns the filter back on. |
+| `--no-watchdog` | `false` | No [watchdog](/guides/health-checks/#after-the-deploy-the-watchdog): unhealthy containers are not restarted, and apps with Compose secrets wait for a deploy after a reboot. |
+| `--no-port-filter` | `false` | No [port filter](/project/security/#the-port-filter): every port Docker publishes on a public address is open. |
 | `--switch-listen string` | `127.0.0.1:8080` | With `--edge external`: the address the switch listens on. |
 | `--trusted-proxy strings` | private ranges | With `--edge external`: CIDRs whose `X-Forwarded-For` is trusted. |
 | `-k, --key string` | `ssh-agent`, `~/.ssh` | With `<admin>@<host>`: the administrator's private key. |

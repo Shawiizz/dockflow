@@ -160,14 +160,15 @@ func (a *app) finishProvisioning(ctx context.Context, connect *connection.Target
 	}
 	init(&req)
 	req.SSHPort = public.Port
-	if _, err := s.runAgent(ctx, req); err != nil {
+	res, err := s.runAgent(ctx, req)
+	if err != nil {
 		return err
 	}
 	cs := connection.ConnString{Servers: []connection.Server{public}, PrivateKey: key.PrivatePEM}.Encode()
 	if a.json {
 		return json.NewEncoder(a.stdout).Encode(map[string]any{"connection": cs, "host": public.Host, "port": public.Port, "host_key": public.HostKey, "user": public.User})
 	}
-	fmt.Fprintf(a.stdout, "✓ %s is ready (edge: %s, deploy user: %s)\n\n", net.JoinHostPort(public.Host, strconv.Itoa(public.Port)), edgeName(req.Edge), public.User)
+	fmt.Fprintf(a.stdout, "✓ %s is ready (%s, deploy user: %s)\n\n", net.JoinHostPort(public.Host, strconv.Itoa(public.Port)), describeServer(res), public.User)
 	fmt.Fprintf(a.stdout, "The connection string below holds the deploy key: store it as the <ENV>_CONNECTION secret\n")
 	fmt.Fprintf(a.stdout, "(PRODUCTION_CONNECTION, ...) of your CI, or in .env.dockflow, and nowhere else. The key exists\n")
 	fmt.Fprintf(a.stdout, "only there: if you lose it, run server init again, which installs a new one.\n\n%s\n", cs)

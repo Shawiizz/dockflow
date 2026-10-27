@@ -115,12 +115,14 @@ type Server struct {
 	TrustedProxies  []string `json:"trusted_proxies,omitempty"`
 	RegistryImage   string   `json:"registry_image,omitempty"`
 	DockflowVersion string   `json:"dockflow_version"`
-	// Filter tells whether the published-port filter is on (ADR-0014); SSHPort is let in, and
-	// FilterRules is the digest of the rules last applied.
-	Filter      bool   `json:"filter,omitempty"`
-	SSHPort     int    `json:"ssh_port,omitempty"`
-	FilterRules string `json:"filter_rules,omitempty"`
-	// WatchdogImage is the watchdog's image; empty without the watchdog (ADR-0010).
+	// NoPortFilter tells that server init was asked to leave the published-port filter out
+	// (ADR-0014); SSHPort is let in, and FilterRules is the digest of the rules last applied.
+	NoPortFilter bool   `json:"no_port_filter,omitempty"`
+	SSHPort      int    `json:"ssh_port,omitempty"`
+	FilterRules  string `json:"filter_rules,omitempty"`
+	// NoWatchdog tells that server init was asked to leave the watchdog out (ADR-0010), and
+	// WatchdogImage is the watchdog's image.
+	NoWatchdog    bool   `json:"no_watchdog,omitempty"`
 	WatchdogImage string `json:"watchdog_image,omitempty"`
 }
 

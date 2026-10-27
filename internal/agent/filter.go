@@ -75,7 +75,7 @@ func (r *runner) allowed(srv *state.Server) ([]filter.Allow, error) {
 // the host's network writes /etc/dockflow/filter*.rules and loads them with the host's iptables.
 func (r *runner) syncFilter(ctx context.Context) error {
 	srv, err := r.Store.Server()
-	if err != nil || srv == nil || !srv.Filter {
+	if err != nil || srv == nil || srv.NoPortFilter {
 		return err
 	}
 	allowed, err := r.allowed(srv)

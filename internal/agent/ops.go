@@ -194,7 +194,18 @@ const SwitchAdminDir = proxy.SharedDir
 // serverInit installs or updates the switch, the registry and the watchdog, and records the
 // server's settings.
 func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
+	// an option the run does not give keeps what the server has
+	previous, err := r.Store.Server()
+	if err != nil {
+		return failed(err)
+	}
+	if previous == nil {
+		previous = &state.Server{}
+	}
 	edge := r.req.Edge
+	if edge == "" {
+		edge = previous.Edge
+	}
 	if edge == "" {
 		edge = proxy.EdgeBuiltin
 	}
@@ -206,6 +217,14 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 		}
 	case proxy.EdgeExternal:
 		listen = r.req.SwitchListen
+		if previous.Edge == proxy.EdgeExternal {
+			if listen == "" {
+				listen = previous.SwitchListen
+			}
+			if trusted == nil {
+				trusted = previous.TrustedProxies
+			}
+		}
 		if listen == "" {
 			listen = proxy.DefaultListen
 		}
@@ -230,18 +249,28 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 		return failed(err)
 	}
 	srv := state.Server{Name: r.req.Server, Edge: edge, DockflowVersion: r.req.DockflowVersion, SwitchListen: listen, TrustedProxies: trusted,
-		Filter: !r.req.NoPortFilter, SSHPort: r.req.SSHPort}
-	previous, err := r.Store.Server()
-	if err != nil {
-		return failed(err)
+		NoPortFilter: previous.NoPortFilter, NoWatchdog: previous.NoWatchdog, SSHPort: r.req.SSHPort}
+	if r.req.PortFilter != nil {
+		srv.NoPortFilter = !*r.req.PortFilter
 	}
-	if previous != nil && srv.SSHPort == 0 {
+	if r.req.Watchdog != nil {
+		srv.NoWatchdog = !*r.req.Watchdog
+	}
+	if srv.SSHPort == 0 {
 		srv.SSHPort = previous.SSHPort
+	}
+	// a server that was initialised without a registry has no registry image
+	registry := previous.Edge == "" || previous.RegistryImage != ""
+	if r.req.Registry != nil {
+		registry = *r.req.Registry
 	}
 
 	// the registry first: it needs no network, and the switch's ports are the likelier failure
-	if r.req.Registry {
+	if registry {
 		image := r.req.RegistryImage
+		if image == "" {
+			image = previous.RegistryImage
+		}
 		if image == "" {
 			image = DefaultRegistryImage
 		}
@@ -267,6 +296,9 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 	} else {
 		image := r.req.SwitchImage
 		if image == "" {
+			image = previous.SwitchImage
+		}
+		if image == "" {
 			image = DefaultSwitchImage
 		}
 		hint := "ports 80 and 443 must be free on the server"
@@ -278,7 +310,7 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 			return failed(err)
 		}
 	}
-	if r.req.NoWatchdog {
+	if srv.NoWatchdog {
 		if err := r.removeKind(ctx, domain.KindWatchdog); err != nil {
 			return failed(err)
 		}
@@ -308,11 +340,11 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 		}
 	}
 	switch {
-	case srv.Filter:
+	case !srv.NoPortFilter:
 		if err := r.syncFilter(ctx); err != nil {
 			return failed(err)
 		}
-	case previous != nil && previous.Filter:
+	case previous.Edge != "" && !previous.NoPortFilter:
 		// --no-port-filter on a server that had it: an empty chain lets everything in
 		if err := r.clearFilter(ctx); err != nil {
 			return failed(err)

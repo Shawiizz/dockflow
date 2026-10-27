@@ -80,7 +80,7 @@ It catches a `5432:5432` written out of habit: the port stays published, but onl
 
 The filter is an iptables chain, `DOCKFLOW-FILTER`, that Docker's `DOCKER-USER` chain jumps to. It matches the port a connection was sent to, before Docker translated it, and leaves alone the traffic of Docker's bridges, loopback, and the ports the host itself listens on (your own nginx or sshd). A deploy, a rollback or a `destroy` that changes the ports applies the new rules, through a short helper container on the host's network, and writes them to `/etc/dockflow/filter.rules` and `filter6.rules`. The `dockflow-filter` systemd unit loads them again at boot, before Docker.
 
-To go without it, run `server init --no-port-filter`; running `server init` again without the option turns it back on. The filter applies to every container of the server, Dockflow's or not: publish ports you need open and that no app lists on loopback, or opt out.
+To go without it, run `server init --no-port-filter`; `server init --no-port-filter=false` turns it back on. The filter applies to every container of the server, Dockflow's or not: publish ports you need open and that no app lists on loopback, or opt out.
 
 ## Secrets
 

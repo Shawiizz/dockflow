@@ -109,13 +109,13 @@ type Request struct {
 	// Lock describes a manual lock (lock.acquire).
 	Lock *domain.LockInfo `json:"lock,omitempty"`
 
-	// NoPortFilter leaves the published-port filter out, and SSHPort is the port it lets SSH
-	// in on (server.init).
-	NoPortFilter bool `json:"no_port_filter,omitempty"`
-	SSHPort      int  `json:"ssh_port,omitempty"`
-	// NoWatchdog leaves the watchdog out (ADR-0010).
-	NoWatchdog bool `json:"no_watchdog,omitempty"`
-	// Edge and SwitchImage configure the server (server.init).
+	// PortFilter and Watchdog turn the published-port filter (ADR-0014) and the watchdog
+	// (ADR-0010) on or off; nil keeps what the server has, on for a new server. SSHPort is the
+	// port the filter lets SSH in on (server.init).
+	PortFilter *bool `json:"port_filter,omitempty"`
+	Watchdog   *bool `json:"watchdog,omitempty"`
+	SSHPort    int   `json:"ssh_port,omitempty"`
+	// Edge and SwitchImage configure the server (server.init); empty keeps what the server has.
 	Edge           string   `json:"edge,omitempty"`
 	SwitchImage    string   `json:"switch_image,omitempty"`
 	SwitchListen   string   `json:"switch_listen,omitempty"`
@@ -123,8 +123,9 @@ type Request struct {
 
 	// RegistryAuth are the credentials of the external registry, when the app uses one.
 	RegistryAuth *engine.RegistryAuth `json:"registry_auth,omitempty"`
-	// Registry installs the server-local registry (server.init); RegistryImage is its image.
-	Registry      bool   `json:"registry,omitempty"`
+	// Registry installs or removes the server-local registry (server.init), nil keeping what the
+	// server has; RegistryImage is its image.
+	Registry      *bool  `json:"registry,omitempty"`
 	RegistryImage string `json:"registry_image,omitempty"`
 
 	// Mask lists the secret values to mask in every event.

@@ -17,6 +17,8 @@ import (
 	"github.com/Shawiizz/dockflow/internal/events"
 	"github.com/Shawiizz/dockflow/internal/launcher"
 	"github.com/Shawiizz/dockflow/internal/project"
+	"github.com/Shawiizz/dockflow/internal/proxy"
+	"github.com/Shawiizz/dockflow/internal/state"
 	"github.com/Shawiizz/dockflow/internal/version"
 )
 
@@ -457,11 +459,23 @@ func (a *app) serverCmd() *cobra.Command {
 			"With an environment, installs or updates the switch and the registry on its server, reached as for a deploy.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// an option not given keeps what the server has: running it again only updates
+			flags := cmd.Flags()
+			on := func(name string, off bool) *bool {
+				if !flags.Changed(name) {
+					return nil
+				}
+				v := !off
+				return &v
+			}
 			init := func(req *agent.Request) {
-				req.Edge, req.SwitchImage, req.SwitchListen, req.TrustedProxies = edge, switchImage, switchListen, trusted
-				req.Registry, req.RegistryImage = !noRegistry, registryImage
-				req.NoPortFilter = noFilter
-				req.NoWatchdog = noWatchdog
+				req.Edge, req.SwitchImage, req.SwitchListen, req.RegistryImage = edge, switchImage, switchListen, registryImage
+				if flags.Changed("trusted-proxy") {
+					req.TrustedProxies = trusted
+				}
+				req.Registry = on("no-registry", noRegistry)
+				req.PortFilter = on("no-port-filter", noFilter)
+				req.Watchdog = on("no-watchdog", noWatchdog)
 			}
 			pf.noFilter = noFilter
 			if len(args) == 0 && !inProject(a.dir) {
@@ -480,23 +494,16 @@ func (a *app) serverCmd() *cobra.Command {
 			defer s.Close()
 			req := s.request(agent.OpServerInit)
 			req.Stack = ""
-			req.Edge = edge
-			req.SwitchImage = switchImage
-			req.SwitchListen = switchListen
-			req.TrustedProxies = trusted
-			req.Registry = !noRegistry
-			req.RegistryImage = registryImage
-			req.NoPortFilter = noFilter
-			req.NoWatchdog = noWatchdog
+			init(&req)
 			req.SSHPort = s.target.Server.Port
-			_, err = s.runAgent(cmd.Context(), req)
+			res, err := s.runAgent(cmd.Context(), req)
 			if err == nil && !a.json {
-				fmt.Fprintf(a.stdout, "✓ %s is ready (edge: %s)\n", s.target.Server.Name, edgeName(edge))
+				fmt.Fprintf(a.stdout, "✓ %s is ready (%s)\n", s.target.Server.Name, describeServer(res))
 			}
 			return err
 		},
 	}
-	initCmd.Flags().StringVar(&edge, "edge", "builtin", "how traffic reaches the switch: builtin, external or none")
+	initCmd.Flags().StringVar(&edge, "edge", "", "how traffic reaches the switch: builtin, external or none (default: the server's, or builtin)")
 	initCmd.Flags().StringVar(&switchListen, "switch-listen", "", "with --edge external: the address the switch listens on (default 127.0.0.1:8080)")
 	initCmd.Flags().StringSliceVar(&trusted, "trusted-proxy", nil, "with --edge external: CIDRs whose X-Forwarded-For is trusted (default: private ranges)")
 	initCmd.Flags().StringVar(&switchImage, "switch-image", "", "the Caddy image of the switch (default caddy:2, pinned by digest)")
@@ -518,9 +525,24 @@ func (a *app) serverCmd() *cobra.Command {
 	return cmd
 }
 
-func edgeName(e string) string {
-	if e == "" {
-		return "builtin"
+// describeServer sums up the settings server init left on a server.
+func describeServer(res *launcher.Result) string {
+	var srv state.Server
+	if res != nil && len(res.Results) > 0 {
+		_ = json.Unmarshal(res.Results[len(res.Results)-1], &srv)
 	}
-	return e
+	parts := []string{"edge: " + srv.Edge}
+	if srv.Edge == proxy.EdgeExternal {
+		parts[0] += " on " + srv.SwitchListen
+	}
+	if srv.RegistryImage == "" {
+		parts = append(parts, "no registry")
+	}
+	if srv.NoPortFilter {
+		parts = append(parts, "no port filter")
+	}
+	if srv.NoWatchdog {
+		parts = append(parts, "no watchdog")
+	}
+	return strings.Join(parts, ", ")
 }

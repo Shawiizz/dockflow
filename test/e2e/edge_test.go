@@ -32,7 +32,7 @@ func TestExternalEdgeBehindNginx(t *testing.T) {
 			t.Logf("nginx:\n%s", logs)
 		}
 		inServer("docker rm -f e2e-nginx")
-		if r := serverInit(); r.code != 0 {
+		if r := serverInit("--edge", "builtin"); r.code != 0 {
 			t.Errorf("restoring the builtin edge: exit %d\n%s", r.code, r.out)
 		}
 	})
@@ -70,4 +70,11 @@ func TestExternalEdgeBehindNginx(t *testing.T) {
 	writeProject(t, dir, app, strings.Replace(compose, "whoami-e2e:v1", "whoami-e2e:v2", 1))
 	mustSucceed(t, dockflow(t, dir, "deploy"), "deploy behind nginx under load")
 	l.stop(t)
+
+	// server init again, without options: the server keeps its external edge
+	mustSucceed(t, serverInit(), "server init without options")
+	if got, _ := inServer("cat /var/lib/dockflow/server.json"); !strings.Contains(got, `"edge": "external"`) || !strings.Contains(got, `"switch_listen": "127.0.0.1:8080"`) {
+		t.Fatalf("server init keeps the edge it is not given:\n%s", got)
+	}
+	waitServing(t, host)
 }
