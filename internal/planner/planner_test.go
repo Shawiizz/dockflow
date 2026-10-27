@@ -142,6 +142,27 @@ func TestBeforeJobRunsAfterItsDependencies(t *testing.T) {
 	}
 }
 
+func TestStatefulServicesFirst(t *testing.T) {
+	a := app()
+	a.Services[0].Name, a.Services[1].DependsOn = "store", nil
+	admin := a.Services[1]
+	admin.Name, admin.Routes = "admin", nil
+	a.Services = append(a.Services, admin)
+	p, err := Plan(a, domain.Actual{Services: map[string]domain.ActualService{}, Networks: map[string]string{}, Volumes: map[string]bool{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, a := range p.Actions {
+		if a.Kind == "service.create" {
+			order = append(order, a.Target)
+		}
+	}
+	if got := strings.Join(order, ", "); got != "store, admin, web" {
+		t.Fatalf("the stateful service first, without depends_on: %s", got)
+	}
+}
+
 func TestJobsDoNotRunWithoutAChange(t *testing.T) {
 	p, err := Plan(withJobs(), deployed(app(), 3))
 	if err != nil {

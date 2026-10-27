@@ -263,7 +263,7 @@ A failed `http` check follows [`on_failure`](/reference/dockflow-yml/#on_failure
 
 ### `stateful`
 
-`stateful: true` marks a service that holds data: it runs as a single container and is replaced with `stop-first`, so two containers never write the same volume.
+`stateful: true` marks a service that holds data: it runs as a single container and is replaced with `stop-first`, so two containers never write the same volume. A deploy updates the stateful services before the others, after what they depend on, so the data is there before what uses it. Only stateful services take [`backup`](#backup), and `destroy` keeps their volumes unless `--volumes`.
 
 ### `run`
 

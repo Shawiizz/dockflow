@@ -860,12 +860,18 @@ func Order(a *domain.App) ([]string, error) {
 		out = append(out, n)
 		return nil
 	}
-	names := make([]string, 0, len(a.Services))
+	// stateful services first, so the data is there before what uses it (ADR-0008)
+	var stateful, others []string
 	for _, s := range a.Services {
-		names = append(names, s.Name)
+		if s.Stateful {
+			stateful = append(stateful, s.Name)
+		} else {
+			others = append(others, s.Name)
+		}
 	}
-	sort.Strings(names)
-	for _, n := range names {
+	sort.Strings(stateful)
+	sort.Strings(others)
+	for _, n := range append(stateful, others...) {
 		if err := visit(n); err != nil {
 			return nil, err
 		}
