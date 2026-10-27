@@ -276,3 +276,18 @@ func TestLabeledNetworksAndPlugins(t *testing.T) {
 		t.Fatalf("removing a plugin that is not installed must succeed: %v", err)
 	}
 }
+
+// Docker 27's container list has no health field: it is read from the status text.
+func TestHealthFromStatus(t *testing.T) {
+	for status, want := range map[string]string{
+		"Up 2 minutes (healthy)":         "healthy",
+		"Up 5 seconds (unhealthy)":       "unhealthy",
+		"Up 1 second (health: starting)": "starting",
+		"Up 3 hours":                     "",
+		"Exited (1) 2 minutes ago":       "",
+	} {
+		if got := healthFromStatus(status); got != want {
+			t.Errorf("%q: %q, want %q", status, got, want)
+		}
+	}
+}

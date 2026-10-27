@@ -108,12 +108,28 @@ func (e *Engine) Containers(ctx context.Context, f engine.Filter) ([]engine.Cont
 		c.State = string(s.State)
 		if s.Health != nil {
 			c.Health = string(s.Health.Status)
+		} else {
+			// the list gives the health from Docker 28 on; before, only in the status text
+			c.Health = healthFromStatus(s.Status)
 		}
 		fillFromLabels(&c)
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+// healthFromStatus reads the health in a container list's status: "Up 2 minutes (unhealthy)".
+func healthFromStatus(status string) string {
+	switch {
+	case strings.HasSuffix(status, "(healthy)"):
+		return "healthy"
+	case strings.HasSuffix(status, "(unhealthy)"):
+		return "unhealthy"
+	case strings.HasSuffix(status, "(health: starting)"):
+		return "starting"
+	}
+	return ""
 }
 
 func fillFromLabels(c *engine.Container) {
