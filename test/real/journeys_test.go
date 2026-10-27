@@ -94,11 +94,7 @@ func TestProvisionAndDeploy(t *testing.T) {
 		return nil
 	})
 
-	r = dockflow(t, dir, conn, "--json", "server", "check")
-	mustSucceed(t, r, "server check")
-	if compact := strings.Join(strings.Fields(r.out), ""); !strings.Contains(compact, `"name":"clock","level":"ok"`) || !strings.Contains(compact, `"name":"updates"`) {
-		t.Fatalf("server check reads the clock and the automatic updates:\n%s", r.out)
-	}
+	mustSucceed(t, dockflow(t, dir, conn, "server", "check"), "server check")
 
 	// the cloudflare edge: only Cloudflare's ranges reach ports 80 and 443
 	mustSucceed(t, dockflow(t, dir, conn, "server", "edge", "cloudflare"), "server edge cloudflare")

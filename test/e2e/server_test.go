@@ -27,7 +27,7 @@ func TestServerCommands(t *testing.T) {
 	r = dockflow(t, dir, "server", "check")
 	mustSucceed(t, r, "server check")
 	compact = strings.Join(strings.Fields(r.out), "")
-	for _, want := range []string{`"name":"docker","level":"ok"`, `"name":"secrets","level":"ok"`, `"name":"state","level":"ok"`, `"name":"switch","level":"ok"`, `"name":"clock","level":"ok"`} {
+	for _, want := range []string{`"name":"docker","level":"ok"`, `"name":"secrets","level":"ok"`, `"name":"state","level":"ok"`, `"name":"switch","level":"ok"`} {
 		if !strings.Contains(compact, want) {
 			t.Fatalf("server check lacks %s:\n%s", want, r.out)
 		}

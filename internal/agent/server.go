@@ -193,34 +193,21 @@ func (r *runner) serverCheck(ctx context.Context) events.RunFinishedData {
 			add("filter", "warn", "never applied", "run dockflow server init <env>")
 		}
 	}
-	// from the host: its automatic updates, and the switch's ports when the edge needs them and
-	// the switch does not hold them yet
-	args := []string{"probe", "--updates"}
-	ports := (srv == nil || srv.Edge == proxy.EdgeBuiltin || srv.Edge == proxy.EdgeCloudflare) && !running[domain.KindSwitch]
-	if ports {
-		args = append(args, "80", "443")
-	}
-	out, err := r.runHelper(ctx, "probe", args, nil, true)
-	var probe map[string]string
-	if err == nil && json.Unmarshal([]byte(lastLine(out)), &probe) == nil {
-		// the server's administration is not Dockflow's: it only says (ADR-0024)
-		switch probe["updates"] {
-		case "on":
-			add("updates", "ok", "automatic security updates are on", "")
-		case "off":
-			add("updates", "warn", "no automatic security updates", "apt install unattended-upgrades")
-		}
-		for _, p := range []string{"80", "443"} {
-			switch {
-			case !ports:
-			case probe[p] == "free":
-				add("port "+p, "ok", "free for the switch", "")
-			default:
-				add("port "+p, "fail", "held by another program", "stop it, or use --edge external behind it")
+	// the switch's ports, when the edge needs them and the switch does not hold them yet
+	if (srv == nil || srv.Edge == proxy.EdgeBuiltin || srv.Edge == proxy.EdgeCloudflare) && !running[domain.KindSwitch] {
+		out, err := r.runHelper(ctx, "probe", []string{"probe", "80", "443"}, nil, false)
+		var ports map[string]string
+		if err == nil && json.Unmarshal([]byte(lastLine(out)), &ports) == nil {
+			for _, p := range []string{"80", "443"} {
+				if ports[p] == "free" {
+					add("port "+p, "ok", "free for the switch", "")
+				} else {
+					add("port "+p, "fail", "held by another program", "stop it, or use --edge external behind it")
+				}
 			}
 		}
 	}
-	r.result(map[string]any{"checks": checks, "server_time": r.Now().UTC()})
+	r.result(map[string]any{"checks": checks})
 	for _, c := range checks {
 		if c.Level == "fail" {
 			return events.RunFinishedData{Outcome: events.OutcomeFailed, ExitCode: errs.ExitDegraded,

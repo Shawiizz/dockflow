@@ -475,7 +475,7 @@ With `<admin>@<host>`, prepares a server from an administrator's account (`root`
 
 1. installs Docker from Docker's repository when it is missing (Debian and Ubuntu; elsewhere, install Docker Engine 27 or later first, or pass `--skip-docker-install` to be told so);
 2. creates the deploy user (`dockflow`), adds it to the `docker` group, and installs a key generated on this machine, with `restrict,port-forwarding,pty`, and `from=` with `--from`;
-3. hardens SSH, unless `--no-hardening`: a drop-in that refuses passwords and lets root in by key only (passwords stay while the administrator's account has no key, so you are never locked out). fail2ban, automatic updates and time synchronisation are left to you; `server check` warns when updates or the clock look wrong;
+3. hardens SSH, unless `--no-hardening`: a drop-in that refuses passwords and lets root in by key only (passwords stay while the administrator's account has no key, so you are never locked out). The rest of the server's administration (fail2ban, automatic updates, time synchronisation) is left to you;
 4. with `--nginx`, installs nginx, which refuses the host names no vhost serves, with the sudo rules of the [nginx plugin](/guides/plugins/#the-nginx-plugin);
 5. installs the boot units of the port filter and of Cloudflare's ranges;
 6. reconnects as the deploy user and installs the switch, the server-local registry and the watchdog.
@@ -548,8 +548,6 @@ Checks what Dockflow needs on the server, each check `ok`, a warning or a failur
 - the free disk space;
 - whether `server init` ran, and the switch, the registry and the watchdog are running;
 - the port filter, applied or off;
-- automatic security updates (apt's `unattended-upgrades`), a warning when they are off;
-- the server's clock, a warning when it is more than 30 seconds off this machine's;
 - ports 80 and 443, when the edge needs them and the switch is not running: free, or held by another program.
 
 It exits with code 0 when no check failed, and 9 (`check.failed`) when one did. Warnings do not change the exit code.

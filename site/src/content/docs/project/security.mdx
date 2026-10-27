@@ -169,7 +169,7 @@ The administrator's account is used for this run only, and its credentials are n
 - add `/etc/ssh/sshd_config.d/50-dockflow.conf`: no password authentication, root by key only. While the administrator's account has no authorized key, passwords stay accepted, and the output says so: add your key, then run `server init` again;
 - rotate Docker's logs, when they install Docker.
 
-The rest of the server's administration stays yours: fail2ban, firewall rules outside Docker, automatic updates, time synchronisation. Ubuntu and Debian's cloud images turn automatic security updates and time synchronisation on already, and `dockflow server check` warns when either is off.
+The rest of the server's administration stays yours: fail2ban, firewall rules outside Docker, automatic updates, time synchronisation. Ubuntu's and Debian's cloud images turn automatic security updates and time synchronisation on already.
 
 `--from 203.0.113.0/24` restricts the deploy key to source addresses, with `from=` in `authorized_keys`. With `--nginx`, the deploy user gets two sudo rules, `nginx -t` and `systemctl reload nginx`, for the [nginx plugin](/guides/plugins/#the-nginx-plugin): a convenience, not containment, since the deploy user can reach Docker.
 

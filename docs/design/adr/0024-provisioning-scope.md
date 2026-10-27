@@ -15,10 +15,10 @@
 
 - **Provisioning installs what Dockflow uses:** Docker, the deploy user and its key, `/var/lib/dockflow`, the port filter's boot unit, the Cloudflare ranges' timer (it does nothing unless the edge is `cloudflare`, and only root can install it, while the edge can be changed later as the deploy user), nginx and its sudo rules with `--nginx`, and the switch, the registry and the watchdog.
 - **The one hardening step it keeps is SSH's:** the drop-in that refuses passwords and lets root in by key only, once the administrator's account has a key. Dockflow's access is by key, and this is what makes the server's SSH as strong as that access. `--no-hardening` leaves it out.
-- **fail2ban, unattended upgrades and time synchronisation are left to the server's administrator.** `server check` warns when apt installs no security updates on its own, and when the server's clock is more than 30 seconds off the CLI's machine, with the command that fixes it.
+- **fail2ban, unattended upgrades and time synchronisation are left to the server's administrator,** and so is checking them: `server check` checks what Dockflow needs (Docker, its tmpfs, its state, its containers, its filter, the switch's ports), not the server's security.
 
 ## Consequences
 
 - Provisioning changes less on a server, and nothing that bans a client.
-- A server where the administrator turned updates or time synchronisation off is reported by `server check`, not changed.
+- Dockflow neither changes nor reports the rest of the server's administration.
 - Servers provisioned by a development build of M3 that installed fail2ban keep it: Dockflow does not remove packages, and no release ever installed it.
