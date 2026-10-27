@@ -2,7 +2,7 @@ VERSION ?= dev
 LDFLAGS := -s -w -X github.com/Shawiizz/dockflow/internal/version.Version=$(VERSION)
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 
-.PHONY: build test contract e2e lint fmt snapshot clean
+.PHONY: build test contract e2e real lint fmt snapshot clean
 
 # A static binary: it also runs as the agent, in an image holding nothing else.
 build:
@@ -18,9 +18,13 @@ contract:
 e2e:
 	go test -tags e2e -count=1 -v -timeout 20m ./test/e2e/
 
+# Fresh DigitalOcean droplets (ADR-0019): needs DIGITALOCEAN_TOKEN, costs a few cents a run.
+real:
+	go test -tags real -count=1 -v -timeout 60m ./test/real/
+
 lint:
 	test -z "$$(gofmt -l .)" || (gofmt -l . && exit 1)
-	golangci-lint run --build-tags e2e ./...
+	golangci-lint run --build-tags e2e,real ./...
 
 fmt:
 	gofmt -w .

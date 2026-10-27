@@ -1,0 +1,24 @@
+name: Real servers
+
+# Fresh DigitalOcean droplets: provisioning, cloud-init, Let's Encrypt's staging, the edges, nginx
+# and the port filter (ADR-0019). Run by hand before a release; each run costs a few cents.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: real-server
+
+jobs:
+  real:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go test -tags real
+        env:
+          DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
+        run: go test -tags real -count=1 -v -timeout 60m ./test/real/

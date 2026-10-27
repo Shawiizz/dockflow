@@ -60,15 +60,15 @@ Exit criteria: **shawiizz.dev and Dockflow's docs site deploy with v2 in product
 
 ## M3: Production-ready — ValientRP
 
-- **Provisioning:** the full `server init` (interactive, hardening, `--nginx`) and `server cloud-init` (done); `check`, `connection`, `status`, `edge`, `upgrade`, `uninstall`.
+- **Provisioning:** the full `server init` (interactive, hardening, `--nginx`, `--acme-email`) and `server cloud-init`; `check`, `connection`, `status`, `edge`, `upgrade`, `uninstall` (done).
 - **Edges:** `cloudflare`, route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks, (domain, path) uniqueness (done; `none` shipped with M2).
 - **Plugins:** the project's own and the built-in `nginx` and `systemd`, plus `plugins list` (done; `server init --nginx` comes with provisioning).
 - **Security:** the published-port filter with `public_ports` and `from` (done), and the Cloudflare ranges timer (done).
 - **Secrets:** Compose `secrets:` and `configs:`, the SOPS file and the `secrets` commands (done).
 - **Self-healing:** the watchdog (done).
 - **Shared servers:** shared networks and volume plugins (done).
-- **`init`** with CI workflows.
-- **Real-server tests** on fresh DigitalOcean droplets: provisioning, cloud-init, Let's Encrypt staging, the Cloudflare edge, nginx in front of the switch, the filter.
+- **`init`** with CI workflows (done).
+- **Real-server tests** on fresh DigitalOcean droplets: provisioning, cloud-init, Let's Encrypt staging, the Cloudflare edge, nginx in front of the switch, the filter (written: `test/real/`, run by hand with a DigitalOcean token).
 
 Exit criteria:
 - a new DigitalOcean droplet goes from blank to serving an app over HTTPS with `server init` and `deploy` only;
