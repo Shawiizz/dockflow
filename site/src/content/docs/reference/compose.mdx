@@ -182,10 +182,40 @@ Each route sends HTTP traffic from the server's switch to the service's containe
 | `path` | string | `/` | A path prefix, starting with `/`. The route matches the path and everything under it; the longest path wins. |
 | `strip_prefix` | boolean | `false` | Remove `path` from the request before it reaches the service. |
 | `tls` | boolean | `true` | With the `builtin` edge, serve the route over HTTPS with a certificate the switch obtains automatically, and redirect HTTP to it. `false` serves it over plain HTTP only. With the `external` edge, every route is served over HTTP to your own proxy. |
+| `headers` | map | none | Response headers to set. A name starting with `-` removes that header, with an empty value: `-Server: ""`. |
+| `encode` | list | none | Compressions offered to clients that accept them: `zstd`, `gzip`, in order of preference. |
+| `max_body` | size | none | The largest request body: `25MB`, `512k`, or a number of bytes, in powers of 1024. A larger one gets a 413. |
+| `timeouts` | map | Caddy's | `read`, `write` and `dial`: durations for the switch's connection to the containers. |
+| `auth` | map | none | HTTP basic authentication: `user`, and `password`, from a secret: `password: ${PANEL_PASSWORD}`. The switch keeps only a bcrypt hash. |
+| `caddy` | string | none | Raw Caddyfile directives, run before the request reaches the service. `{upstream}` is the name of the service's first container. They are checked by the switch when the plan is computed. |
 
-A domain and path pair can be routed only once per server: a second app or service claiming it makes the plan fail (exit code 6). Routes need a switch on the server, installed by [`dockflow server init`](/reference/cli/#server-init).
+```yaml
+# compose.yml (fragment)
+services:
+  panel:
+    image: ghcr.io/acme/panel:2.0
+    x-dockflow:
+      routes:
+        - domains: [panel.example.com]
+          port: 8080
+          headers:
+            X-Frame-Options: DENY
+            Strict-Transport-Security: max-age=31536000
+            -Server: ""
+          encode: [zstd, gzip]
+          max_body: 25MB
+          timeouts: { read: 90s }
+          auth: { user: admin, password: "${PANEL_PASSWORD}" }
+          caddy: |
+            @ws header Connection *Upgrade*
+            reverse_proxy @ws {upstream}:4327
+```
 
-Other route options of the format, raw Caddy directives, and routes that point elsewhere than a service (redirects, files) are <Badge text="Coming in M3" variant="caution" /> and refused for now.
+The options are applied by the switch, in every edge mode, behind nginx too. Changing them reloads the switch's configuration once; an ordinary deploy does not.
+
+A domain and path pair can be routed only once per server: a second app or service claiming it makes the plan fail with `plan.domain_conflict`, before anything changes. Routes need a switch on the server, installed by [`dockflow server init`](/reference/cli/#server-init).
+
+`error_pages`, and routes that point elsewhere than a service (redirects, proxies, files), are <Badge text="Coming in M3" variant="caution" /> and refused for now.
 
 ### `rollout`
 

@@ -2,7 +2,13 @@
 // (ADR-0011). The Caddy adapter lives in proxy/caddy.
 package proxy
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/Shawiizz/dockflow/internal/domain"
+	"github.com/Shawiizz/dockflow/internal/errs"
+)
 
 // Route is one route the switch serves, with the containers it sends traffic to.
 type Route struct {
@@ -18,6 +24,40 @@ type Route struct {
 	// Upstreams are container names, resolved by Docker's DNS in the networks the switch shares
 	// with the app.
 	Upstreams []string `json:"upstreams"`
+
+	// The route's options (ADR-0011).
+	Headers  map[string]string     `json:"headers,omitempty"`
+	Encode   []string              `json:"encode,omitempty"`
+	MaxBody  int64                 `json:"max_body,omitempty"`
+	Timeouts *domain.RouteTimeouts `json:"timeouts,omitempty"`
+	// AuthUser and AuthHash are basic authentication: the user, and the bcrypt hash of its
+	// password. AuthPassword is the password, until the agent hashes it; it is never stored.
+	AuthUser     string `json:"auth_user,omitempty"`
+	AuthHash     string `json:"auth_hash,omitempty"`
+	AuthPassword string `json:"-"`
+	// Caddy are raw Caddyfile directives; CaddyJSON are their handlers, adapted by the switch.
+	Caddy     string          `json:"caddy,omitempty"`
+	CaddyJSON json.RawMessage `json:"caddy_json,omitempty"`
+}
+
+// UpstreamMarker stands for the route's first container in raw Caddy directives, written
+// {upstream} by the user.
+const UpstreamMarker = "DOCKFLOW_UPSTREAM"
+
+// Unique refuses two routes of one (domain, path) on the server (ADR-0011).
+func Unique(routes []Route) error {
+	seen := map[string]string{}
+	for _, r := range routes {
+		for _, d := range r.Domains {
+			k := d + r.Path
+			if owner, ok := seen[k]; ok {
+				return errs.Plan("plan.domain_conflict", "%s%s is routed twice: by %s and by %s/%s", d, r.Path, owner, r.Stack, r.Service).
+					WithHint("routes are unique per domain and path on a server")
+			}
+			seen[k] = r.Stack + "/" + r.Service
+		}
+	}
+	return nil
 }
 
 // Edge modes (ADR-0011).
@@ -54,4 +94,6 @@ type Config struct {
 // route to other containers must not reload anything that holds client connections.
 type Switch interface {
 	Apply(ctx context.Context, c Config) error
+	// Adapt turns raw Caddyfile directives into the switch's handlers, or refuses them.
+	Adapt(ctx context.Context, directives string) (json.RawMessage, error)
 }

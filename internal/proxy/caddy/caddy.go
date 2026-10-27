@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Shawiizz/dockflow/internal/errs"
@@ -126,6 +128,50 @@ func (s *Switch) loadRetrying(ctx context.Context, body []byte) error {
 	}
 	return errs.New("switch.unreachable", errs.ExitInternal, "the switch's admin API does not answer").WithCause(last).
 		WithHint("check the dockflow-switch container on the server, or run `dockflow server init` again")
+}
+
+// Adapt turns raw Caddyfile directives into handlers with Caddy's own Caddyfile adapter: the
+// routes of a site holding only them. {upstream} stands for the route's first container.
+func (s *Switch) Adapt(ctx context.Context, directives string) (json.RawMessage, error) {
+	site := ":8999 {\n" + strings.ReplaceAll(directives, "{upstream}", proxy.UpstreamMarker) + "\n}\n"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://switch/adapt", strings.NewReader(site))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "text/caddyfile")
+	resp, err := s.http.Do(req)
+	if err != nil {
+		return nil, errs.New("switch.unreachable", errs.ExitInternal, "the switch's admin API does not answer").WithCause(err).
+			WithHint("check the dockflow-switch container on the server, or run `dockflow server init` again")
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		var e struct {
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal(body, &e)
+		return nil, errs.Plan("plan.caddy", "the route's caddy directives do not parse: %s", strings.TrimSpace(e.Error)).
+			WithHint("they are Caddyfile directives, as inside a site block")
+	}
+	var out struct {
+		Result struct {
+			Apps struct {
+				HTTP struct {
+					Servers map[string]struct {
+						Routes json.RawMessage `json:"routes"`
+					} `json:"servers"`
+				} `json:"http"`
+			} `json:"apps"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, errs.Internal("the switch's adapter answered: %v", err)
+	}
+	for _, srv := range out.Result.Apps.HTTP.Servers {
+		return srv.Routes, nil
+	}
+	return json.RawMessage("[]"), nil
 }
 
 func (s *Switch) load(ctx context.Context, body []byte) error {

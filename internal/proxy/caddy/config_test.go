@@ -3,7 +3,9 @@ package caddy
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
+	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/proxy"
 	"github.com/Shawiizz/dockflow/internal/testutil"
 )
@@ -23,6 +25,27 @@ func TestBuild(t *testing.T) {
 	var v any
 	json.Unmarshal(b, &v)
 	testutil.Golden(t, "builtin", v)
+}
+
+func TestBuildOptions(t *testing.T) {
+	b, err := Build(proxy.Config{Edge: proxy.EdgeBuiltin, Routes: []proxy.Route{
+		{Stack: "panel-production", Service: "panel", Domains: []string{"panel.example.com"}, Path: "/", Port: 8080, TLS: true,
+			Upstreams: []string{"panel-production-panel-2-1"},
+			Headers:   map[string]string{"X-Frame-Options": "DENY", "-Server": ""},
+			Encode:    []string{"zstd", "gzip"}, MaxBody: 25 << 20,
+			Timeouts: &domain.RouteTimeouts{Read: domain.Duration(90 * time.Second), Dial: domain.Duration(10 * time.Second)},
+			AuthUser: "admin", AuthHash: "$2a$10$hash",
+			CaddyJSON: json.RawMessage(`[{"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"DOCKFLOW_UPSTREAM:4327"}]}]}]`)},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v any
+	json.Unmarshal(b, &v)
+	testutil.Golden(t, "options", v)
+	if up := Upstreams(proxy.Config{Routes: []proxy.Route{{Stack: "s", Service: "w", Port: 80, Upstreams: []string{"c1"}, CaddyJSON: json.RawMessage("[]")}}}); up["s.w.0/h0"] != "c1" {
+		t.Fatalf("raw directives get the first container's name: %v", up)
+	}
 }
 
 func TestBuildCloudflare(t *testing.T) {

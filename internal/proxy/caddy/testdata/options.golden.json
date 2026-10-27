@@ -1,0 +1,135 @@
+{
+  "admin": {
+    "listen": "unix//run/dockflow-switch/admin.sock"
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "http": {
+          "listen": [
+            ":80"
+          ],
+          "routes": [
+            {
+              "handle": [
+                {
+                  "abort": true,
+                  "handler": "static_response"
+                }
+              ]
+            }
+          ]
+        },
+        "https": {
+          "listen": [
+            ":443"
+          ],
+          "routes": [
+            {
+              "@id": "dockflow.panel-production.panel.0",
+              "handle": [
+                {
+                  "handler": "authentication",
+                  "providers": {
+                    "http_basic": {
+                      "accounts": [
+                        {
+                          "password": "JDJhJDEwJGhhc2g=",
+                          "username": "admin"
+                        }
+                      ],
+                      "hash": {
+                        "algorithm": "bcrypt"
+                      }
+                    }
+                  }
+                },
+                {
+                  "handler": "request_body",
+                  "max_size": 26214400
+                },
+                {
+                  "handler": "headers",
+                  "response": {
+                    "deferred": true,
+                    "delete": [
+                      "Server"
+                    ],
+                    "set": {
+                      "X-Frame-Options": [
+                        "DENY"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "encodings": {
+                    "gzip": {},
+                    "zstd": {}
+                  },
+                  "handler": "encode",
+                  "prefer": [
+                    "zstd",
+                    "gzip"
+                  ]
+                },
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "handler": "reverse_proxy",
+                          "upstreams": [
+                            {
+                              "dial": "{file./run/dockflow-switch/up/panel-production.panel.0/h0}:4327"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "handler": "reverse_proxy",
+                  "load_balancing": {
+                    "selection_policy": {
+                      "policy": "round_robin"
+                    },
+                    "try_duration": "2s"
+                  },
+                  "transport": {
+                    "dial_timeout": "10s",
+                    "protocol": "http",
+                    "read_timeout": "1m30s"
+                  },
+                  "upstreams": [
+                    {
+                      "dial": "{file./run/dockflow-switch/up/panel-production.panel.0/0}"
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "panel.example.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "abort": true,
+                  "handler": "static_response"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -87,7 +87,19 @@
             ],
             "path": "/",
             "port": 80,
-            "tls": true
+            "tls": true,
+            "headers": {
+              "-Server": "",
+              "X-Frame-Options": "DENY"
+            },
+            "encode": [
+              "zstd",
+              "gzip"
+            ],
+            "max_body": 26214400,
+            "timeouts": {
+              "read": "1m30s"
+            }
           }
         ],
         "depends_on": [

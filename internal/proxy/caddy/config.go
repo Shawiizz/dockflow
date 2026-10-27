@@ -3,14 +3,15 @@
 package caddy
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/proxy"
 )
 
@@ -30,16 +31,8 @@ type obj = map[string]any
 // Build returns Caddy's JSON configuration for c. Routes are unique per (domain, path), and the
 // longest path wins.
 func Build(c proxy.Config) ([]byte, error) {
-	seen := map[string]string{}
-	for _, r := range c.Routes {
-		for _, d := range r.Domains {
-			k := d + r.Path
-			if owner, ok := seen[k]; ok {
-				return nil, errs.Plan("plan.domain_conflict", "%s%s is routed twice: by %s and by %s/%s", d, r.Path, owner, r.Stack, r.Service).
-					WithHint("routes are unique per domain and path on a server")
-			}
-			seen[k] = r.Stack + "/" + r.Service
-		}
+	if err := proxy.Unique(c.Routes); err != nil {
+		return nil, err
 	}
 	routes := withIDs(c.Routes)
 	sort.SliceStable(routes, func(i, j int) bool {
@@ -143,6 +136,10 @@ func Upstreams(c proxy.Config) map[string]string {
 		for i, u := range r.Upstreams {
 			out[r.ID+"/"+strconv.Itoa(i)] = net.JoinHostPort(u, strconv.Itoa(r.Port))
 		}
+		if len(r.CaddyJSON) > 0 && len(r.Upstreams) > 0 {
+			// the first container, without its port, for {upstream} in raw directives
+			out[r.ID+"/h0"] = r.Upstreams[0]
+		}
 	}
 	return out
 }
@@ -154,18 +151,70 @@ func route(r identified) obj {
 		match["path"] = []string{p, p + "/*"}
 	}
 	var handle []any
+	if r.AuthUser != "" {
+		handle = append(handle, obj{"handler": "authentication", "providers": obj{"http_basic": obj{
+			"hash":     obj{"algorithm": "bcrypt"},
+			"accounts": []any{obj{"username": r.AuthUser, "password": base64.StdEncoding.EncodeToString([]byte(r.AuthHash))}},
+		}}})
+	}
+	if r.MaxBody > 0 {
+		handle = append(handle, obj{"handler": "request_body", "max_size": r.MaxBody})
+	}
+	if len(r.Headers) > 0 {
+		set, del := obj{}, []string{}
+		for name, value := range r.Headers {
+			if strings.HasPrefix(name, "-") {
+				del = append(del, strings.TrimPrefix(name, "-"))
+			} else {
+				set[name] = []string{value}
+			}
+		}
+		sort.Strings(del)
+		resp := obj{"deferred": true}
+		if len(set) > 0 {
+			resp["set"] = set
+		}
+		if len(del) > 0 {
+			resp["delete"] = del
+		}
+		handle = append(handle, obj{"handler": "headers", "response": resp})
+	}
+	if len(r.Encode) > 0 {
+		enc := obj{}
+		for _, e := range r.Encode {
+			enc[e] = obj{}
+		}
+		handle = append(handle, obj{"handler": "encode", "encodings": enc, "prefer": r.Encode})
+	}
 	if r.StripPrefix && r.Path != "" && r.Path != "/" {
 		handle = append(handle, obj{"handler": "rewrite", "strip_path_prefix": strings.TrimSuffix(r.Path, "/")})
+	}
+	if len(r.CaddyJSON) > 0 {
+		raw := strings.ReplaceAll(string(r.CaddyJSON), proxy.UpstreamMarker, fmt.Sprintf("{file.%s/%s/h0}", upstreamDir, r.ID))
+		var routes any
+		if err := json.Unmarshal([]byte(raw), &routes); err == nil {
+			handle = append(handle, obj{"handler": "subroute", "routes": routes})
+		}
 	}
 	ups := make([]any, 0, len(r.Upstreams))
 	for i := range r.Upstreams {
 		ups = append(ups, obj{"dial": fmt.Sprintf("{file.%s/%s/%d}", upstreamDir, r.ID, i)})
 	}
-	handle = append(handle, obj{
+	rp := obj{
 		"handler":        "reverse_proxy",
 		"upstreams":      ups,
 		"load_balancing": obj{"selection_policy": obj{"policy": "round_robin"}, "try_duration": "2s"},
-	})
+	}
+	if t := r.Timeouts; t != nil {
+		tr := obj{"protocol": "http"}
+		for k, d := range map[string]time.Duration{"read_timeout": t.Read.D(), "write_timeout": t.Write.D(), "dial_timeout": t.Dial.D()} {
+			if d > 0 {
+				tr[k] = d.String()
+			}
+		}
+		rp["transport"] = tr
+	}
+	handle = append(handle, rp)
 	return obj{
 		"@id":      "dockflow." + r.ID,
 		"match":    []any{match},

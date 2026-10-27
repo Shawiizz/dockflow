@@ -101,6 +101,7 @@ The codes below are the ones you are most likely to meet. A few errors use a gen
 |---|---|---|---|
 | `plan.stale` | 6 | The server changed between the plan you confirmed and the apply. | Run the command again to compute a new plan. |
 | `plan.image_missing` | 6 | The server cannot pull an image, or it is absent with `pull_policy: never`. | Check the image name, and that the server can reach the registry and is logged in to it. |
+| `plan.caddy` | 6 | A route's raw `caddy` directives do not parse. | Fix them: they are Caddyfile directives, as inside a site block. |
 | `plan.domain_conflict` | 6 | A domain and path is routed twice on the server, by two services or two apps. | Routes are unique per domain and path on a server: change one of them. |
 | `plan.no_switch` | 6 | The app declares routes, and the server has no switch. | Run `dockflow server init`. |
 | `plan.routes_without_switch` | 6 | The server was set up with `--edge none`, and the app declares routes. | Publish ports instead, or run `dockflow server init --edge builtin`. |

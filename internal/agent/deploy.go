@@ -341,6 +341,30 @@ func (r *runner) checkSwitch(ctx context.Context, a *domain.App) error {
 		return errs.Plan("plan.no_switch", "the app declares routes, and the server's switch is not installed").
 			WithHint("run `dockflow server init`")
 	}
+	// the routes must fit with every other app's, and their raw directives must parse
+	table, err := r.Store.SwitchRoutes()
+	if err != nil {
+		return err
+	}
+	serving := map[string][]string{}
+	for _, s := range a.Services {
+		serving[s.Name] = []string{s.Name}
+	}
+	mine := routesFor(r.stack, a, serving)
+	table[r.stack] = mine
+	if err := proxy.Unique(state.AllRoutes(table)); err != nil {
+		return err
+	}
+	for _, rt := range mine {
+		if rt.Caddy != "" {
+			if _, err := r.Switch.Adapt(ctx, rt.Caddy); err != nil {
+				if e, ok := errs.As(err); ok {
+					e.Message = "service " + rt.Service + ": " + e.Message
+				}
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -704,6 +728,10 @@ func routesFor(stack string, a *domain.App, serving map[string][]string) []proxy
 			route := proxy.Route{
 				Stack: stack, Service: s.Name, Domains: rt.Domains, Path: path, Port: rt.Port,
 				TLS: rt.TLS, StripPrefix: rt.StripPrefix, Upstreams: append([]string(nil), serving[s.Name]...),
+				Headers: rt.Headers, Encode: rt.Encode, MaxBody: rt.MaxBody, Timeouts: rt.Timeouts, Caddy: rt.Caddy,
+			}
+			if rt.Auth != nil {
+				route.AuthUser, route.AuthPassword = rt.Auth.User, rt.Auth.Password
 			}
 			if len(s.Spec.Networks) > 0 {
 				route.Network = s.Spec.Networks[0].Network
@@ -737,6 +765,9 @@ func (r *runner) applyRoutes(ctx context.Context, routes []proxy.Route) error {
 	}
 	if r.Switch == nil {
 		return errs.Plan("plan.no_switch", "the server's switch is not installed").WithHint("run `dockflow server init`")
+	}
+	if err := r.prepareRoutes(ctx, routes, table[r.stack]); err != nil {
+		return err
 	}
 	if err := r.joinNetworks(ctx, routes); err != nil {
 		return err

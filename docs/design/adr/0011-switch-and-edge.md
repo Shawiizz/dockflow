@@ -106,6 +106,13 @@ These options are applied by the switch, so they work in every edge mode, behind
 
 **Non-HTTP services** (a game server on TCP and UDP) don't go through the switch. They publish their ports and use `stop-first`.
 
+## Implementation of route options (M3)
+
+- The options become handlers of the route, in this order: `authentication` (basic, bcrypt), `request_body`, `headers` (deferred, so `-Server` removes Caddy's own), `encode`, the prefix rewrite, the raw directives in a `subroute`, then `reverse_proxy`, whose transport takes the `timeouts`.
+- The agent hashes a route's password with bcrypt, and adapts its raw directives through the switch's `/adapt` endpoint; both are kept in `switch/routes/<stack>.json` and reused while the password and the directives are unchanged, so a deploy that changes neither leaves the configuration, and Caddy, alone. The password itself never reaches the switch.
+- `{upstream}` in raw directives is the service's first container, from an upstream file (`<route>/h0`).
+- The plan refuses directives that do not adapt (`plan.caddy`) and a (domain, path) another app routes (`plan.domain_conflict`), before anything changes.
+
 ## Implementation of the cloudflare edge (M3)
 
 The switch is the `builtin` one, with `trusted_proxies` set to Cloudflare's ranges and `client_ip_headers` to `CF-Connecting-IP` on both of its servers; the port filter restricts 80 and 443 to the same ranges ([ADR-0014](0014-networking-port-filter.md#implementation-m3)).

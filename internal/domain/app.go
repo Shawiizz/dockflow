@@ -215,6 +215,34 @@ type Route struct {
 	Port        int      `json:"port"`
 	TLS         bool     `json:"tls"`
 	StripPrefix bool     `json:"strip_prefix,omitempty"`
+	RouteOptions
+}
+
+// RouteOptions are what the switch does to a route's requests and responses (ADR-0011).
+type RouteOptions struct {
+	// Headers are response headers to set; a name starting with "-" removes the header.
+	Headers map[string]string `json:"headers,omitempty"`
+	// Encode are the compressions offered, zstd and gzip, in order of preference.
+	Encode []string `json:"encode,omitempty"`
+	// MaxBody is the largest request body, in bytes; 0 for no limit.
+	MaxBody  int64          `json:"max_body,omitempty"`
+	Timeouts *RouteTimeouts `json:"timeouts,omitempty"`
+	Auth     *RouteAuth     `json:"auth,omitempty"`
+	// Caddy are raw Caddyfile directives, run before the request is proxied.
+	Caddy string `json:"caddy,omitempty"`
+}
+
+// RouteTimeouts bound the switch's connection to the containers.
+type RouteTimeouts struct {
+	Read  Duration `json:"read,omitempty"`
+	Write Duration `json:"write,omitempty"`
+	Dial  Duration `json:"dial,omitempty"`
+}
+
+// RouteAuth is HTTP basic authentication in front of a route.
+type RouteAuth struct {
+	User     string `json:"user"`
+	Password string `json:"password"`
 }
 
 // Network is a network of the app.

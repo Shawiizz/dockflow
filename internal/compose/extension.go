@@ -31,29 +31,49 @@ type RouteExt struct {
 	Port        int      `json:"port"`
 	TLS         *bool    `json:"tls"`
 	StripPrefix bool     `json:"strip_prefix"`
-	// the route options of the spec that arrive in M3, refused by name
-	Headers    *json.RawMessage `json:"headers"`
-	Encode     *json.RawMessage `json:"encode"`
-	MaxBody    *json.RawMessage `json:"max_body"`
-	Timeouts   *json.RawMessage `json:"timeouts"`
+	RouteOptionsExt
+	// the route options of the spec that arrive later, refused by name
 	ErrorPages *json.RawMessage `json:"error_pages"`
-	Auth       *json.RawMessage `json:"auth"`
-	Caddy      *json.RawMessage `json:"caddy"`
+}
+
+// RouteOptionsExt are the options of a route (ADR-0011).
+type RouteOptionsExt struct {
+	Headers  map[string]string `json:"headers"`
+	Encode   []string          `json:"encode"`
+	MaxBody  SizeExt           `json:"max_body"`
+	Timeouts *struct {
+		Read  string `json:"read"`
+		Write string `json:"write"`
+		Dial  string `json:"dial"`
+	} `json:"timeouts"`
+	Auth *struct {
+		User     string `json:"user"`
+		Password string `json:"password"`
+	} `json:"auth"`
+	Caddy string `json:"caddy"`
+}
+
+// SizeExt is a size, written as a number of bytes or a string: 25MB, 512k.
+type SizeExt string
+
+func (s *SizeExt) UnmarshalJSON(b []byte) error {
+	var n json.Number
+	if err := json.Unmarshal(b, &n); err == nil {
+		*s = SizeExt(n.String())
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(b, &str); err != nil {
+		return err
+	}
+	*s = SizeExt(str)
+	return nil
 }
 
 // later is the first route option set that arrives in a later milestone.
 func (r RouteExt) later() string {
-	for _, o := range []struct {
-		name string
-		set  bool
-	}{
-		{"headers", r.Headers != nil}, {"encode", r.Encode != nil}, {"max_body", r.MaxBody != nil},
-		{"timeouts", r.Timeouts != nil}, {"error_pages", r.ErrorPages != nil}, {"auth", r.Auth != nil},
-		{"caddy", r.Caddy != nil},
-	} {
-		if o.set {
-			return o.name
-		}
+	if r.ErrorPages != nil {
+		return "error_pages"
 	}
 	return ""
 }

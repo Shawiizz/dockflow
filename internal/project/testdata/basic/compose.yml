@@ -16,6 +16,10 @@ services:
       routes:
         - domains: ["${DOMAIN}"]
           port: 80
+          headers: { X-Frame-Options: DENY, -Server: "" }
+          encode: [zstd, gzip]
+          max_body: 25MB
+          timeouts: { read: 90s }
       health:
         restart_after: 30s
   worker:
