@@ -27,7 +27,7 @@ type provisionFlags struct {
 	key, passwordFile, hostKey, name string
 	user, deployKey                  string
 	skipDocker, noFilter             bool
-	// noHarden leaves SSH, fail2ban, updates and time as they are; nginx installs nginx; from
+	// noHarden leaves SSH's settings as they are; nginx installs nginx; from
 	// restricts the deploy key's source addresses (ADR-0013)
 	noHarden, nginx bool
 	from            []string

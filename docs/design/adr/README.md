@@ -31,3 +31,4 @@ Records use this layout: Status, Context, Decision, Consequences, Alternatives c
 | [0021](0021-uploads-and-templates.md) | Uploads: files to servers and volumes, incremental and atomic | Accepted |
 | [0022](0022-hooks.md) | Hooks: local, on hosts, and inside running containers | Accepted |
 | [0023](0023-several-servers-later.md) | Several servers, later: independent servers, no orchestrator | Proposed |
+| [0024](0024-provisioning-scope.md) | Provisioning stays within what Dockflow needs | Accepted |

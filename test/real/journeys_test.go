@@ -43,9 +43,9 @@ func TestProvisionAndDeploy(t *testing.T) {
 	}
 	conn := init.Connection
 
-	// hardening: root has a key, so SSH takes keys only
-	if out, _ := sshRun(t, ip, "root", rootKey.signer, fp, "sshd -T | grep -i '^passwordauthentication'; systemctl is-active fail2ban", time.Minute); !strings.Contains(out, "passwordauthentication no") || !strings.Contains(out, "active") {
-		t.Fatalf("SSH refuses passwords and fail2ban runs:\n%s", out)
+	// hardening: root has a key, so SSH takes keys only; the rest is the administrator's
+	if out, _ := sshRun(t, ip, "root", rootKey.signer, fp, "sshd -T | grep -i '^passwordauthentication'; command -v fail2ban-server || echo no-fail2ban", time.Minute); !strings.Contains(out, "passwordauthentication no") || !strings.Contains(out, "no-fail2ban") {
+		t.Fatalf("SSH refuses passwords, and nothing else is installed:\n%s", out)
 	}
 
 	domain := strings.ReplaceAll(ip, ".", "-") + ".sslip.io"
@@ -94,7 +94,11 @@ func TestProvisionAndDeploy(t *testing.T) {
 		return nil
 	})
 
-	mustSucceed(t, dockflow(t, dir, conn, "server", "check"), "server check")
+	r = dockflow(t, dir, conn, "--json", "server", "check")
+	mustSucceed(t, r, "server check")
+	if compact := strings.Join(strings.Fields(r.out), ""); !strings.Contains(compact, `"name":"clock","level":"ok"`) || !strings.Contains(compact, `"name":"updates"`) {
+		t.Fatalf("server check reads the clock and the automatic updates:\n%s", r.out)
+	}
 
 	// the cloudflare edge: only Cloudflare's ranges reach ports 80 and 443
 	mustSucceed(t, dockflow(t, dir, conn, "server", "edge", "cloudflare"), "server edge cloudflare")
@@ -132,8 +136,7 @@ func TestCloudInitBehindNginx(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.out), &doc); err != nil {
 		t.Fatalf("%v\n%s", err, r.out)
 	}
-	// root waits for the first boot: a deploy user tried before it exists fails, and fail2ban,
-	// installed by that boot, bans the address after five failures
+	// root waits for the first boot: the deploy user does not exist before it ends
 	rootKey := newKey(t)
 	ip := createDroplet(t, "cloudinit", doc.UserData, &rootKey)
 

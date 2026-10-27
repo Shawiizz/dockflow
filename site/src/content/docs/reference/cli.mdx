@@ -475,7 +475,7 @@ With `<admin>@<host>`, prepares a server from an administrator's account (`root`
 
 1. installs Docker from Docker's repository when it is missing (Debian and Ubuntu; elsewhere, install Docker Engine 27 or later first, or pass `--skip-docker-install` to be told so);
 2. creates the deploy user (`dockflow`), adds it to the `docker` group, and installs a key generated on this machine, with `restrict,port-forwarding,pty`, and `from=` with `--from`;
-3. hardens the server, unless `--no-hardening`: an SSH drop-in that refuses passwords and lets root in by key only (passwords stay while the administrator's account has no key, so you are never locked out), fail2ban for SSH, unattended security updates and time synchronisation (Debian and Ubuntu);
+3. hardens SSH, unless `--no-hardening`: a drop-in that refuses passwords and lets root in by key only (passwords stay while the administrator's account has no key, so you are never locked out). fail2ban, automatic updates and time synchronisation are left to you; `server check` warns when updates or the clock look wrong;
 4. with `--nginx`, installs nginx, which refuses the host names no vhost serves, with the sudo rules of the [nginx plugin](/guides/plugins/#the-nginx-plugin);
 5. installs the boot units of the port filter and of Cloudflare's ranges;
 6. reconnects as the deploy user and installs the switch, the server-local registry and the watchdog.
@@ -516,7 +516,7 @@ Running it again updates the server, and the switch keeps every app's routes. An
 | `--deploy-key string` | a new key | When preparing a server: a private key to use for the deploy user instead of generating one. |
 | `--name string` | `main` | When preparing a server: its name in the connection string. |
 | `--skip-docker-install` | `false` | When preparing a server: refuse one without Docker instead of installing it. |
-| `--no-hardening` | `false` | When preparing a server: leave SSH, fail2ban, security updates and time synchronisation as they are. |
+| `--no-hardening` | `false` | When preparing a server: leave SSH's settings as they are. |
 | `--nginx` | `false` | When preparing a server: install nginx in front of the switch (`--edge external` unless given), refusing unknown host names, with the sudo rules of the nginx plugin. |
 | `--from strings` | none | When preparing a server: the addresses or CIDRs the deploy key is accepted from (`from=` of `authorized_keys`). Keep it off with hosted CI runners, whose addresses change. |
 | `--host string` | its public address | On the server itself: the address or domain name the CI reaches it at. |
@@ -548,6 +548,8 @@ Checks what Dockflow needs on the server, each check `ok`, a warning or a failur
 - the free disk space;
 - whether `server init` ran, and the switch, the registry and the watchdog are running;
 - the port filter, applied or off;
+- automatic security updates (apt's `unattended-upgrades`), a warning when they are off;
+- the server's clock, a warning when it is more than 30 seconds off this machine's;
 - ports 80 and 443, when the edge needs them and the switch is not running: free, or held by another program.
 
 It exits with code 0 when no check failed, and 9 (`check.failed`) when one did. Warnings do not change the exit code.
@@ -594,7 +596,7 @@ Prints the cloud-init user-data of a new server, to give your provider (DigitalO
 - The server's SSH host key is generated here too, and is in the user-data: the connection string pins it before the server exists. Keep the user-data as you would the server's disk, or write it with `-o user-data.yml` (mode 600).
 - `--host` is required: the address the CI will reach the server at, a reserved IP or a domain name.
 
-Once the first boot has finished, install the switch, the registry and the watchdog with `dockflow server init <env>`. The first boot takes a few minutes (Docker, fail2ban, security updates): `cloud-init status --wait` on the server returns when it is done. Before that, the deploy user does not exist yet, and fail2ban, installed by the same boot, bans an address after five failed SSH logins for ten minutes, so don't retry `server init <env>` in a loop. Options: `--host`, `--port`, `--user`, `--deploy-key`, `--name`, `--skip-docker-install`, `--no-port-filter`, `--no-hardening`, `--nginx`, `--from`, `-o`.
+Once the first boot has finished, install the switch, the registry and the watchdog with `dockflow server init <env>`. The first boot takes a few minutes, mostly to install Docker: `cloud-init status --wait` on the server returns when it is done. Before that, the deploy user does not exist yet. Options: `--host`, `--port`, `--user`, `--deploy-key`, `--name`, `--skip-docker-install`, `--no-port-filter`, `--no-hardening`, `--nginx`, `--from`, `-o`.
 
 ### server network
 

@@ -96,7 +96,7 @@ func TestUserNameIsChecked(t *testing.T) {
 }
 
 // Contract test: hardening and --nginx in Debian, with stand-ins for what needs the network or
-// systemd (apt-get, dpkg, systemctl, timedatectl, sshd, visudo, nginx), which log their calls.
+// systemd (apt-get, dpkg, systemctl, sshd, visudo, nginx), which log their calls.
 func TestScriptHardensAndInstallsNginx(t *testing.T) {
 	if err := exec.Command("docker", "version").Run(); err != nil {
 		if os.Getenv("DOCKFLOW_CONTRACT") != "" {
@@ -129,7 +129,6 @@ stub docker 'echo 27.5.1'
 stub dpkg '[ -e /tmp/pkgs/$2 ]'
 stub apt-get 'echo "apt-get $*" >>/tmp/calls; for p in "$@"; do touch /tmp/pkgs/$p; [ "$p" = nginx ] && printf "#!/bin/sh\necho nginx \$*>>/tmp/calls\n" >/usr/local/bin/nginx && chmod +x /usr/local/bin/nginx; done; true'
 stub systemctl 'echo "systemctl $*" >>/tmp/calls'
-stub timedatectl '[ "$1" = show ] && { [ -e /tmp/ntp ] && echo yes || echo no; exit 0; }; touch /tmp/ntp; echo "timedatectl $*" >>/tmp/calls'
 stub sshd 'exit 0'
 stub visudo 'exit 0'
 mkdir -p /etc/nginx/sites-enabled && ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
@@ -139,7 +138,7 @@ sh /tmp/first.sh >/tmp/out1
 sh /tmp/second.sh >/tmp/out2
 cat /tmp/out1; echo ---; cat /tmp/out2; echo ---
 cat /etc/ssh/sshd_config.d/50-dockflow.conf; echo ---
-cat /etc/fail2ban/jail.d/dockflow.conf /etc/apt/apt.conf.d/20auto-upgrades; echo ---
+ls /etc/fail2ban /etc/apt/apt.conf.d/20auto-upgrades 2>&1 || true; echo ---
 cat /etc/nginx/conf.d/00-dockflow-default.conf; ls /etc/nginx/sites-enabled; echo ---
 cat /etc/sudoers.d/dockflow-nginx; echo ---
 cat /home/dockflow/.ssh/authorized_keys; echo ---
@@ -156,9 +155,8 @@ cat /tmp/calls
 	if len(parts) < 8 {
 		t.Fatalf("unexpected output:\n%s", out)
 	}
-	run1, run2, sshd, jails, nginx, sudoers, keys, calls := parts[0], parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7]
-	for _, want := range []string{"hardening SSH", "installing fail2ban python3-systemd unattended-upgrades", "banning SSH brute force",
-		"enabling unattended security updates", "enabling time synchronisation", "installing nginx", "refusing unknown host names", "allowing dockflow to check and reload nginx"} {
+	run1, run2, sshd, system, nginx, sudoers, keys, calls := parts[0], parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7]
+	for _, want := range []string{"hardening SSH", "installing nginx", "refusing unknown host names", "allowing dockflow to check and reload nginx"} {
 		if !strings.Contains(run1, want) {
 			t.Errorf("first run: no %q", want)
 		}
@@ -169,8 +167,9 @@ cat /tmp/calls
 	if !strings.Contains(sshd, "PasswordAuthentication no") || !strings.Contains(sshd, "PermitRootLogin prohibit-password") {
 		t.Errorf("the SSH drop-in, with root's key there:\n%s", sshd)
 	}
-	if !strings.Contains(jails, "backend = systemd") || !strings.Contains(jails, `Unattended-Upgrade "1"`) {
-		t.Errorf("fail2ban and unattended upgrades:\n%s", jails)
+	// the server's administration is not Dockflow's (ADR-0024)
+	if strings.Count(system, "No such file") != 2 {
+		t.Errorf("no fail2ban, no automatic updates' settings:\n%s", system)
 	}
 	if !strings.Contains(nginx, "return 444") || !strings.Contains(nginx, "ssl_reject_handshake on") || strings.Contains(nginx, "default\n") {
 		t.Errorf("nginx refuses unknown hosts, without the distribution's default site:\n%s", nginx)
@@ -181,7 +180,7 @@ cat /tmp/calls
 	if strings.TrimSpace(keys) != restricted.Authorized {
 		t.Errorf("the restricted key, once:\n%s", keys)
 	}
-	if !strings.Contains(calls, "systemctl restart fail2ban") || !strings.Contains(calls, "timedatectl set-ntp true") {
+	if strings.Contains(calls, "fail2ban") || strings.Contains(calls, "unattended-upgrades") {
 		t.Errorf("calls:\n%s", calls)
 	}
 }

@@ -119,8 +119,7 @@ func (a *app) cloudInitCmd() *cobra.Command {
 			fmt.Fprintf(a.stderr, ". Its host key is %s.\n", server.HostKey)
 			fmt.Fprintf(a.stderr, "Store the connection string below as the <ENV>_CONNECTION secret of your CI, or in .env.dockflow.\n")
 			fmt.Fprintf(a.stderr, "Once its first boot has finished (a few minutes; cloud-init status --wait on the server tells), install the\n")
-			fmt.Fprintf(a.stderr, "switch, the registry and the watchdog: dockflow server init <env>. Don't retry it in a loop before:\n")
-			fmt.Fprintf(a.stderr, "fail2ban, installed by that boot, bans an address after five failed SSH logins.\n\n%s\n", cs)
+			fmt.Fprintf(a.stderr, "switch, the registry and the watchdog: dockflow server init <env>.\n\n%s\n", cs)
 			return nil
 		},
 	}
@@ -132,7 +131,7 @@ func (a *app) cloudInitCmd() *cobra.Command {
 	f.StringVar(&pf.name, "name", "", "the server's name in the connection string (default main)")
 	f.BoolVar(&pf.skipDocker, "skip-docker-install", false, "for an image that has Docker: refuse to install it")
 	f.BoolVar(&pf.noFilter, "no-port-filter", false, "do not install the published-port filter's boot unit")
-	f.BoolVar(&pf.noHarden, "no-hardening", false, "leave SSH, fail2ban, security updates and time synchronisation as they are")
+	f.BoolVar(&pf.noHarden, "no-hardening", false, "leave SSH's settings as they are")
 	f.BoolVar(&pf.nginx, "nginx", false, "install nginx, with the sudo rules of the nginx plugin")
 	f.StringSliceVar(&pf.from, "from", nil, "the source addresses or CIDRs the deploy key accepts")
 	f.StringVarP(&output, "output", "o", "", "write the user-data to this file (mode 600) instead of the standard output")

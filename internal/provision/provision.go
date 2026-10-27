@@ -48,9 +48,8 @@ type Options struct {
 	// PortFilter installs the systemd unit that loads the published-port filter at boot, before
 	// Docker (ADR-0014). The agent writes and applies the rules themselves.
 	PortFilter bool
-	// Harden adds the SSH hardening drop-in, fail2ban, unattended security updates and time
-	// synchronisation (ADR-0013). Admin is the account provisioning runs from: SSH keeps
-	// accepting passwords while it has no key, so that it is not locked out.
+	// Harden adds the SSH hardening drop-in (ADR-0024). Admin is the account provisioning runs
+	// from: SSH keeps accepting passwords while it has no key, so that it is not locked out.
 	Harden bool
 	Admin  string
 	// Nginx installs nginx, which refuses the host names it does not serve, and the sudo rules
@@ -225,30 +224,6 @@ if [ "$DF_HARDEN" = 1 ]; then
 			fi
 			grep -q PasswordAuthentication "$dropin" 2>/dev/null || say "SSH still accepts passwords: $DF_ADMIN has no authorized key yet"
 		fi
-	fi
-	if command -v apt-get >/dev/null 2>&1; then
-		export DEBIAN_FRONTEND=noninteractive
-		missing=""
-		for p in fail2ban python3-systemd unattended-upgrades; do
-			dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"
-		done
-		if [ -n "$missing" ]; then
-			say "installing$missing"
-			apt-get update -q >/dev/null
-			apt-get install -yq $missing >/dev/null
-		fi
-		mkdir -p /etc/fail2ban/jail.d /etc/apt/apt.conf.d
-		printf '[sshd]\nenabled = true\nbackend = systemd\n' >/etc/fail2ban/jail.d/dockflow.conf.tmp
-		if install_file /etc/fail2ban/jail.d/dockflow.conf.tmp /etc/fail2ban/jail.d/dockflow.conf "banning SSH brute force with fail2ban"; then
-			systemctl enable fail2ban >/dev/null 2>&1 || true
-			systemctl restart fail2ban >/dev/null 2>&1 || true
-		fi
-		printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' >/etc/apt/apt.conf.d/20auto-upgrades.tmp
-		install_file /etc/apt/apt.conf.d/20auto-upgrades.tmp /etc/apt/apt.conf.d/20auto-upgrades "enabling unattended security updates" || true
-	fi
-	if command -v timedatectl >/dev/null 2>&1 && [ "$(timedatectl show -p NTP --value 2>/dev/null || true)" = no ]; then
-		say "enabling time synchronisation"
-		timedatectl set-ntp true >/dev/null 2>&1 || true
 	fi
 fi
 

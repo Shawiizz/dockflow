@@ -7,7 +7,11 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -95,15 +99,21 @@ func (a *app) serverCheckCmd() *cobra.Command {
 			a.quiet()
 			req := s.request(agent.OpServerCheck)
 			req.Stack = ""
+			sent := time.Now()
 			res, runErr := s.runAgent(cmd.Context(), req)
+			received := time.Now()
 			var out struct {
-				Checks []agent.Check `json:"checks"`
+				Checks     []agent.Check `json:"checks"`
+				ServerTime time.Time     `json:"server_time"`
 			}
 			if res != nil && len(res.Results) > 0 {
 				_ = json.Unmarshal(res.Results[len(res.Results)-1], &out)
 			}
 			if len(out.Checks) == 0 {
 				return runErr
+			}
+			if c := clockCheck(out.ServerTime, sent, received); c != nil {
+				out.Checks = append(out.Checks, *c)
 			}
 			a.printResult(out, func(w io.Writer) {
 				tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
@@ -125,6 +135,26 @@ func (a *app) serverCheckCmd() *cobra.Command {
 			return runErr
 		},
 	}
+}
+
+// clockCheck compares the server's clock with this machine's: the server read it between sent
+// and received. Certificates and release dates need a clock that is right.
+func clockCheck(server, sent, received time.Time) *agent.Check {
+	if server.IsZero() {
+		return nil
+	}
+	const tolerance = 30 * time.Second
+	var off time.Duration
+	switch {
+	case server.Before(sent.Add(-tolerance)):
+		off = sent.Sub(server)
+	case server.After(received.Add(tolerance)):
+		off = server.Sub(received)
+	default:
+		return &agent.Check{Name: "clock", Level: "ok", Detail: "the same as this machine's"}
+	}
+	return &agent.Check{Name: "clock", Level: "warn", Detail: fmt.Sprintf("%s off this machine's", off.Round(time.Second)),
+		Hint: "turn time synchronisation on: timedatectl set-ntp true"}
 }
 
 // serverEdgeCmd is `dockflow server edge`: server init with a new edge, the rest kept.
@@ -254,13 +284,18 @@ func describeServerRaw(raw json.RawMessage) string {
 	return describeServer(&launcher.Result{Results: []json.RawMessage{raw}})
 }
 
-// probeCmd is `dockflow probe <port>…`, run by the agent in a helper container on the host's
-// network: it tells which ports are free to listen on. Hidden.
+// probeCmd is `dockflow probe [--updates] <port>…`, run by the agent in a helper container on
+// the host's network, with the host's root at /host: it tells which ports are free to listen
+// on and, with --updates, whether apt installs security updates on its own. Hidden.
 func (a *app) probeCmd() *cobra.Command {
-	return &cobra.Command{
-		Use: "probe", Hidden: true, Args: cobra.MinimumNArgs(1),
+	var updates bool
+	cmd := &cobra.Command{
+		Use: "probe", Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := map[string]string{}
+			if updates {
+				out["updates"] = autoUpdates("/host")
+			}
 			for _, p := range args {
 				l, err := net.Listen("tcp", ":"+p)
 				if err != nil {
@@ -273,4 +308,36 @@ func (a *app) probeCmd() *cobra.Command {
 			return json.NewEncoder(os.Stdout).Encode(out)
 		},
 	}
+	cmd.Flags().BoolVar(&updates, "updates", false, "tell whether automatic security updates are on")
+	return cmd
 }
+
+// autoUpdates is on when apt runs unattended-upgrades on its own, off when it does not, and
+// unknown without apt.
+func autoUpdates(root string) string {
+	if _, err := os.Stat(filepath.Join(root, "usr/bin/apt-get")); err != nil {
+		return "unknown"
+	}
+	if _, err := os.Stat(filepath.Join(root, "usr/bin/unattended-upgrade")); err != nil {
+		return "off"
+	}
+	on := false
+	files, _ := filepath.Glob(filepath.Join(root, "etc/apt/apt.conf.d/*"))
+	sort.Strings(files)
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		// the last file that sets it wins, as apt reads them in order
+		for _, m := range unattendedSetting.FindAllStringSubmatch(string(b), -1) {
+			on = m[1] == "1"
+		}
+	}
+	if on {
+		return "on"
+	}
+	return "off"
+}
+
+var unattendedSetting = regexp.MustCompile(`(?m)^\s*APT::Periodic::Unattended-Upgrade\s+"(\d+)"`)

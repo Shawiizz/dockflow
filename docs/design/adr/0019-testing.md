@@ -28,7 +28,7 @@ Rules:
 
 `test/real/`, behind the `real` build tag, creates one droplet per journey through DigitalOcean's API, tagged `dockflow-real`, and deletes it when the journey ends; a run first deletes the tagged droplets older than three hours, left by an interrupted run. Without `DIGITALOCEAN_TOKEN`, it skips. Domains are `<ip>.sslip.io`, so no DNS is needed, and the switch takes its certificates from Let's Encrypt's staging (`server init --acme-ca`). The journeys:
 
-- `server init root@<ip>` on a blank droplet, `deploy`, HTTPS with a staging certificate and the redirect from HTTP; SSH refusing passwords and fail2ban running; a published port closed until `firewall.public_ports` lists it; `server check`; the cloudflare edge closing port 443 to the test machine; `server uninstall`;
+- `server init root@<ip>` on a blank droplet, `deploy`, HTTPS with a staging certificate and the redirect from HTTP; SSH refusing passwords; a published port closed until `firewall.public_ports` lists it; `server check`; the cloudflare edge closing port 443 to the test machine; `server uninstall`;
 - `server cloud-init --nginx` as the droplet's user-data, then `server init <env> --edge external` and a deploy with the `nginx` plugin, nginx refusing unknown host names.
 
 `make real` runs them, and the "Real servers" workflow, started by hand, with the repository secret `DIGITALOCEAN_TOKEN`.

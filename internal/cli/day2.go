@@ -538,7 +538,7 @@ func (a *app) serverCmd() *cobra.Command {
 	f.StringVar(&pf.deployKey, "deploy-key", "", "when preparing a server: use this private key for the deploy user instead of generating one")
 	f.StringVar(&pf.name, "name", "", "when preparing a server: its name in the connection string (default main)")
 	f.BoolVar(&pf.skipDocker, "skip-docker-install", false, "when preparing a server: refuse one without Docker instead of installing it")
-	f.BoolVar(&pf.noHarden, "no-hardening", false, "when preparing a server: leave SSH, fail2ban, security updates and time synchronisation as they are")
+	f.BoolVar(&pf.noHarden, "no-hardening", false, "when preparing a server: leave SSH's settings as they are")
 	f.BoolVar(&pf.nginx, "nginx", false, "when preparing a server: install nginx in front of the switch (edge external by default), with the sudo rules of the nginx plugin")
 	f.StringSliceVar(&pf.from, "from", nil, "when preparing a server: the source addresses or CIDRs the deploy key accepts (from= of authorized_keys)")
 	f.StringVar(&pf.host, "host", "", "on the server itself: the address or domain name the CI reaches it at (default: its public address)")
