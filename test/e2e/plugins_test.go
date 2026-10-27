@@ -10,17 +10,24 @@ import (
 	"testing"
 )
 
-// fakeHostTools stands in for the server's sudo, nginx and systemctl: nginx -t refuses a vhost
-// that names broken.test, and systemctl logs its arguments.
-const fakeHostTools = `mkdir -p /etc/nginx/sites-enabled
+// hostTools stands in for the server's sudo, nginx and systemctl: nginx -t is a real nginx's,
+// in a container, on the server's vhosts; systemctl logs its arguments.
+func hostTools() string {
+	return `mkdir -p /etc/nginx/sites-enabled
 printf '#!/bin/sh\nexec "$@"\n' > /usr/local/bin/sudo
-printf '#!/bin/sh\nif grep -q broken.test /etc/nginx/sites-enabled/*.conf; then echo "nginx: [emerg] broken" >&2; exit 1; fi\necho "nginx: the configuration file syntax is ok"\n' > /usr/local/bin/nginx
+printf '#!/bin/sh\n[ "$1" = -t ] || exit 1\nexec docker run --rm -v /etc/nginx/sites-enabled:/etc/nginx/conf.d:ro --entrypoint nginx ` + nginxImage + ` -t\n' > /usr/local/bin/nginx
 printf '#!/bin/sh\necho "$@" >> /tmp/systemctl.log\n' > /usr/local/bin/systemctl
 chmod +x /usr/local/bin/sudo /usr/local/bin/nginx /usr/local/bin/systemctl
 rm -f /tmp/systemctl.log`
+}
 
 func pluginsProject(t *testing.T, dir, app, domains, greeting string) {
 	t.Helper()
+	// nginx cannot listen on IPv6 where the kernel has none, as on some servers
+	ipv6 := "true"
+	if _, err := inServer("test -e /proc/net/if_inet6"); err != nil {
+		ipv6 = "false"
+	}
 	writeProject(t, dir, app, webApp(app, "whoami-e2e:v1", ""))
 	cfg := fmt.Sprintf(`version: 1
 app: %s
@@ -28,13 +35,14 @@ plugins:
   - use: nginx
     with:
       domain: [%s]
+      ipv6: %s
   - use: ./deploy/plugins/motd
     with: { greeting: "%s" }
 environments:
   production:
     deploy:
       timeout: 60s
-`, app, domains, greeting)
+`, app, domains, ipv6, greeting)
 	files := map[string]string{
 		"dockflow.yml": cfg,
 		"deploy/plugins/motd/plugin.yml": `description: A message of the day
@@ -64,7 +72,7 @@ hooks:
 }
 
 func TestPlugins(t *testing.T) {
-	if _, err := inServer(fakeHostTools); err != nil {
+	if _, err := inServer(hostTools()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -102,12 +110,15 @@ func TestPlugins(t *testing.T) {
 	}
 
 	// a vhost nginx -t refuses rolls the deploy back, and the rollback restores the vhost
-	pluginsProject(t, dir, app, "shop.test, broken.test", "hello")
+	pluginsProject(t, dir, app, "shop.test, broken;test", "hello")
 	r = dockflow(t, dir, "deploy", "--version", "broken")
 	if r.code != 8 || !r.has("rollback.started") {
 		t.Fatalf("a refused vhost must roll back (exit 8), got %d:\n%s", r.code, r.out)
 	}
-	if got, _ := inServer("cat " + vhost); strings.Contains(got, "broken.test") || !strings.Contains(got, "server_name shop.test;") {
+	if !strings.Contains(r.out, "unknown directive") {
+		t.Fatalf("the hook's output shows nginx's error:\n%s", r.out)
+	}
+	if got, _ := inServer("cat " + vhost); strings.Contains(got, "broken") || !strings.Contains(got, "server_name shop.test;") {
 		t.Fatalf("the rollback restores the vhost:\n%s", got)
 	}
 

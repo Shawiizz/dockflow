@@ -20,6 +20,10 @@ inputs:
     type: boolean
     default: false
     description: behind Cloudflare, take the client's address and scheme from Cloudflare's headers
+  - name: ipv6
+    type: boolean
+    default: true
+    description: listen on IPv6 too; turn it off on a server whose kernel has no IPv6
   - name: max_body_size
     default: 25m
     description: nginx's client_max_body_size

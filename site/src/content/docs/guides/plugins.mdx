@@ -51,6 +51,7 @@ plugins:
 | `tls` | `false` | Listen on 443 with the certificate in `certificate_dir`, and redirect 80 to 443. Without it, the vhost listens on 80 only, as behind Cloudflare's flexible mode. |
 | `certificate_dir` | `/etc/letsencrypt/live/<first domain>` | The directory of `fullchain.pem` and `privkey.pem`. |
 | `cloudflare` | `false` | Behind Cloudflare: the client's address from `CF-Connecting-IP`, trusted from Cloudflare's ranges only, and the scheme from Cloudflare's `X-Forwarded-Proto`. |
+| `ipv6` | `true` | Listen on IPv6 too. Turn it off on a server whose kernel has no IPv6 (booted with `ipv6.disable=1`), where nginx refuses `listen [::]`. |
 | `max_body_size` | `25m` | nginx's `client_max_body_size`. |
 | `dir` | `/etc/nginx/sites-enabled` | The directory nginx includes vhosts from; `/etc/nginx/conf.d` on Red Hat systems. |
 | `name` | `<app>-<env>.conf`, with `-<id>` for an id other than `nginx` | The vhost's file name. |
@@ -65,7 +66,7 @@ dockflow ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload ngin
 To get the certificate first, without letting certbot edit the vhost: `sudo certbot certonly --nginx -d shop.example.com -d www.shop.example.com`.
 
 <Aside>
-Cloudflare's ranges are written into the vhost, as Dockflow knows them when it is built. A deploy with a newer Dockflow writes the newer list.
+Cloudflare's ranges are those Dockflow knows when it is built, written into the vhost's `server` block, so several apps behind Cloudflare can share one nginx. A deploy with a newer Dockflow writes the newer list.
 </Aside>
 
 ## The systemd plugin

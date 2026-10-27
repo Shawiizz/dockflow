@@ -78,6 +78,12 @@ func TestNginxTLSCloudflare(t *testing.T) {
 	testutil.GoldenText(t, "nginx-tls-cloudflare.conf", file(t, e, "api", "vhost.conf"))
 }
 
+// a second app behind Cloudflare, on the same nginx as the one above, without IPv6
+func TestNginxCloudflare(t *testing.T) {
+	e, _ := expand(t, config.PluginUse{Use: "nginx", With: map[string]any{"domain": "www.example.com", "cloudflare": true, "ipv6": false}})
+	testutil.GoldenText(t, "nginx-cloudflare.conf", file(t, e, "nginx", "vhost.conf"))
+}
+
 func TestNginxOwnTemplate(t *testing.T) {
 	e, _ := expand(t, config.PluginUse{Use: "nginx", With: map[string]any{"domain": "api.example.com", "template": "deploy/api.conf"}})
 	testutil.GoldenText(t, "nginx-own.conf", file(t, e, "nginx", "vhost.conf"))
