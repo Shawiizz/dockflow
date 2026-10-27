@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh |
 This installs the newest release. To install a given version, pass `--version`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.6
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.7
 ```
 
 </TabItem>
@@ -64,7 +64,7 @@ It needs `curl` or `wget`, and `sha256sum` or `shasum`.
 
 | Option | Environment variable | Default | Effect |
 |---|---|---|---|
-| `--version <tag>` | `DOCKFLOW_VERSION` | The newest release | The release to install, such as `v4.0.0-alpha.6` |
+| `--version <tag>` | `DOCKFLOW_VERSION` | The newest release | The release to install, such as `v4.0.0-alpha.7` |
 | `--dir <path>` | `DOCKFLOW_INSTALL_DIR` | `/usr/local/bin`, or `~/.local/bin` | Where to install `dockflow` |
 | – | `DOCKFLOW_RELEASES_URL` | `https://github.com/Shawiizz/dockflow/releases/download` | Where releases are downloaded from: a mirror holding `<version>/<file>` |
 
@@ -85,7 +85,7 @@ dockflow version
 ```
 
 ```text
-dockflow v4.0.0-alpha.6
+dockflow v4.0.0-alpha.7
 ```
 
 With an environment, `dockflow version production` prints the version deployed there instead. `dockflow --help` lists the commands, and `dockflow <command> --help` shows the options of one.
