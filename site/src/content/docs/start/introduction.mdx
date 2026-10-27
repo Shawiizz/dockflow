@@ -52,7 +52,7 @@ These are deliberate choices, not missing features:
 
 ## Status
 
-<Badge text="Alpha" variant="caution" /> The current release is **v4.0.0-alpha.5**. The configuration format is `version: 1`, and it may still change before the 1.0 release.
+<Badge text="Alpha" variant="caution" /> The current release is **v4.0.0-alpha.6**. The configuration format is `version: 1`, and it may still change before the 1.0 release.
 
 What works today:
 
@@ -62,8 +62,10 @@ What works today:
 - jobs (migrations) through `depends_on` conditions, internal and public health checks, `on_failure`;
 - hooks, templates, incremental uploads, webhooks;
 - releases, `dockflow rollback`, locks, and the day-2 commands: `logs`, `exec`, `run`, `cp`, `ssh`, `ps`, `status`, `details`, `diagnose`, `restart`, `stop`, `scale`, `prune`, `destroy`;
-- deploys from CI with the version and environment taken from the tag.
-- in the next release: Compose `secrets:` and `configs:`, SOPS files, the published-port filter, plugins with the built-in `nginx` and `systemd`, the watchdog, shared networks and volume plugins, the `cloudflare` edge, route options and error pages, redirect, proxy and files routes, and full provisioning: SSH hardening, `--nginx`, `server cloud-init`, `server status`, `check`, `edge`, `upgrade` and `uninstall`, and `dockflow init` with CI workflows.
+- deploys from CI with the version and environment taken from the tag;
+- Compose `secrets:` and `configs:`, SOPS files, the published-port filter, plugins with the built-in `nginx` and `systemd`, the watchdog, shared networks and volume plugins, the `cloudflare` edge, route options and error pages, redirect, proxy and files routes, and full provisioning: SSH hardening, `--nginx`, `server cloud-init`, `server status`, `check`, `edge`, `upgrade` and `uninstall`, and `dockflow init` with CI workflows.
+
+M3 ends once a real production project, ValientRP, runs on it.
 
 What comes next:
 
