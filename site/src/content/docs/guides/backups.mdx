@@ -128,7 +128,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh
-      - run: dockflow backup run production
+      - run: dockflow backup run production && dockflow backup run production --server
         env:
           DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 ```
@@ -161,6 +161,26 @@ dockflow backup prune production db --keep-last 3  # db keeps its 3 most recent 
 ```
 
 Options: `--keep-last`, `--keep-hourly`, `--keep-daily`, `--keep-weekly`, `--keep-monthly`.
+
+## The server's state
+
+`/var/lib/dockflow` holds every release record, so the history `rollback` and `releases` read, the uploads, the routes and the server's settings. `--server` backs it up to the environment's repository:
+
+```sh
+dockflow backup run production --server     # /var/lib/dockflow, to production's repository
+dockflow backup list production --server
+dockflow backup prune production --server --keep-last 7
+```
+
+The snapshots are tagged with the server's name, apart from the services'; the default retention applies. The passwords in `/var/lib/dockflow/backups/` stay out: a snapshot that holds its own repository's password protects nothing. The point is to rebuild a lost server, so send these backups off-site.
+
+On a new server, after `dockflow server install`, restic puts the state back:
+
+```sh
+restic -r <repository> restore latest --tag server=<name> --target /
+```
+
+Then `dockflow deploy` of each app runs on its history.
 
 ## Without Dockflow
 

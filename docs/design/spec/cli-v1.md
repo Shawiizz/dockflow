@@ -71,10 +71,10 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 | `dockflow secrets list [<env>]` | Keys and where each comes from (CI variable, `.env.dockflow`, SOPS), never values |
 | `dockflow secrets set\|edit [<env>] [<KEY>] [--age <recipient>…]` | Changes the environment's SOPS file (`secrets_file`, default `secrets/<env>.sops.yaml`), creating it for `--age` or `.sops.yaml`'s recipients; `set` reads the value from stdin (without echo on a terminal), `edit` opens the decrypted values in `$VISUAL` or `$EDITOR` |
 | `dockflow secrets revoke [<env>] <name>` | Removes from the server every file of the Compose secret `<name>` that the current release does not use |
-| `dockflow backup run [<env>] [<service>] [--wait-lock <duration>]` | Backs up the services of the current release that declare `backup`, under the environment's lock, then applies each one's retention and checks 1% of the repository's data. A failed backup exits 12 after the others |
-| `dockflow backup list [<env>] [<service>]` | Lists snapshots, oldest first: short id, time, service, release, size |
+| `dockflow backup run [<env>] [<service>] [--server] [--wait-lock <duration>]` | Backs up the services of the current release that declare `backup`, under the environment's lock, then applies each one's retention and checks 1% of the repository's data. A failed backup exits 12 after the others. `--server` backs up `/var/lib/dockflow` instead, without `backups/`, tagged `server=<name>`, with no lock |
+| `dockflow backup list [<env>] [<service>] [--server]` | Lists snapshots, oldest first: short id, time, service, release, size; `--server`, the server's state's |
 | `dockflow backup restore [<env>] <service> [--snapshot <id\|latest\|date>] [--from <env>] [--wait-lock <duration>]` | Restores a snapshot into the current release under the lock: dumps streamed into `pg_restore --clean --if-exists --single-transaction --exit-on-error` (or `restore`), volumes with the service stopped and `restic restore --delete`. `--snapshot` is an id prefix, `latest` (default), or a date or RFC 3339 time for the newest snapshot by then. `--from` reads another environment's snapshots, with its repository and secrets. Confirmation on a terminal, `--yes` otherwise |
-| `dockflow backup prune [<env>] [<service>] [--keep-last n] [--keep-hourly n] [--keep-daily n] [--keep-weekly n] [--keep-monthly n]` | Applies the services' retention, or the one given, with `--prune` |
+| `dockflow backup prune [<env>] [<service>] [--server] [--keep-last n] [--keep-hourly n] [--keep-daily n] [--keep-weekly n] [--keep-monthly n]` | Applies the services' retention, or the one given, with `--prune` |
 
 ## Servers
 

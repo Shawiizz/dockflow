@@ -79,6 +79,9 @@ type BackupRequest struct {
 	From string `json:"from,omitempty"`
 	// Keep replaces the services' retention (prune).
 	Keep *domain.Keep `json:"keep,omitempty"`
+	// Server makes run, list and prune about the server's state, /var/lib/dockflow, rather
+	// than the services.
+	Server bool `json:"server,omitempty"`
 }
 
 // Request is the agent's input. Secret values reach the agent only here, on stdin, never in its

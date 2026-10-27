@@ -106,7 +106,7 @@ func (r *runner) backupRestore(ctx context.Context) events.RunFinishedData {
 			WithHint("backups of another server are restored from an off-site repository: backups.repository"))
 	}
 	defer rp.close()
-	snaps, err := r.snapshots(ctx, rp, from, svc.Name)
+	snaps, err := r.snapshots(ctx, rp, r.backupTagsOf(from, svc.Name))
 	if err != nil {
 		return failed(err)
 	}
@@ -291,6 +291,9 @@ func (r *runner) restoreVolumes(ctx context.Context, rp *repo, svc *domain.Servi
 
 // backupPrune applies a retention now, and reclaims the space of the forgotten snapshots.
 func (r *runner) backupPrune(ctx context.Context) events.RunFinishedData {
+	if r.req.Backup.Server {
+		return r.pruneServer(ctx)
+	}
 	rel, err := r.currentRelease()
 	if err != nil {
 		return failed(err)
@@ -311,7 +314,11 @@ func (r *runner) backupPrune(ctx context.Context) events.RunFinishedData {
 	total := 0
 	for i, svc := range svcs {
 		// the space is reclaimed once, with the last service's retention
-		n, err := r.forgetKeep(ctx, rp, svc, r.req.Backup.Keep, i == len(svcs)-1)
+		keep := r.req.Backup.Keep
+		if keep.Empty() {
+			keep = svc.Backup.Keep
+		}
+		n, err := r.forgetKeep(ctx, rp, r.backupTags(svc.Name), keep, i == len(svcs)-1)
 		if err != nil {
 			return failed(errs.Newf("backup.retention", errs.ExitBackup, "the retention of %s failed: %v", svc.Name, err))
 		}
@@ -319,5 +326,25 @@ func (r *runner) backupPrune(ctx context.Context) events.RunFinishedData {
 		total += n
 	}
 	r.result(map[string]any{"forgotten": total})
+	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
+}
+
+// pruneServer applies a retention to the snapshots of the server's state.
+func (r *runner) pruneServer(ctx context.Context) events.RunFinishedData {
+	rp, err := r.openRepo(ctx, false)
+	if err != nil {
+		return failed(err)
+	}
+	if rp == nil {
+		r.result(map[string]any{"forgotten": 0})
+		return events.RunFinishedData{Outcome: events.OutcomeSuccess}
+	}
+	defer rp.close()
+	n, err := r.forgetKeep(ctx, rp, r.serverTags(), r.req.Backup.Keep, true)
+	if err != nil {
+		return failed(errs.Newf("backup.retention", errs.ExitBackup, "the retention of the server's backups failed: %v", err))
+	}
+	r.ev.Info(events.Log, fmt.Sprintf("server: %d snapshots forgotten", n), map[string]any{"line": "forget server"})
+	r.result(map[string]any{"forgotten": n})
 	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
 }

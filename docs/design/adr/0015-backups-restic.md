@@ -73,6 +73,7 @@ There is no scheduler on the server in v1. Backups are triggered by the user's C
 - **check** reads 1% of the data after each `backup run` that made a snapshot.
 - A failed backup exits with code 12, a new code, after the other services are backed up.
 - **Restore** streams `restic dump` into the restore command in the running container; volumes are restored one by one, `restic restore <id>:/data<target> --target /data<target> --delete`, with the service stopped. `--from` is resolved by the CLI, which sends the other environment's repository and secrets.
+- **`--server`** backs up `/var/lib/dockflow`, mounted read-only, to the environment's repository, tagged `server=<name>`, with the default retention and no lock: its files are written atomically. `backups/` stays out, since a snapshot holding its own repository's password protects nothing. There is no `restore --server`: a lost server is rebuilt with `server install`, then `restic restore` of the latest snapshot.
 - **mysql, mongo, redis** dump and restore with small shell scripts run in the service's container, which read the credentials from the image's variables (`MYSQL_ROOT_PASSWORD`, `MARIADB_*`, `MONGO_INITDB_ROOT_*`, `REDIS_PASSWORD`) and give them to the tool in a temporary file (`--defaults-extra-file`, `--config`) or `REDISCLI_AUTH`, never in argv. Redis is restored by writing the RDB into the stopped container's `/data`, through the Engine API's archive endpoint, since Redis loads it at start.
 
 ## Consequences

@@ -410,18 +410,18 @@ Without a kind, removes stopped containers, untagged images and networks that Do
 ### backup run
 
 ```sh
-dockflow backup run [<env>] [<service>] [--wait-lock <duration>]
+dockflow backup run [<env>] [<service>] [--server] [--wait-lock <duration>]
 ```
 
-Back up the services of the current release that declare [`x-dockflow.backup`](/reference/compose/#backup), or the one named, to the environment's restic repository, then apply each one's retention and check a sample of the repository. It takes the environment's lock; `--wait-lock 10m` waits for a deploy to finish. A failed backup exits with code 12, after the other services. See [backups](/guides/backups/).
+Back up the services of the current release that declare [`x-dockflow.backup`](/reference/compose/#backup), or the one named, to the environment's restic repository, then apply each one's retention and check a sample of the repository. It takes the environment's lock; `--wait-lock 10m` waits for a deploy to finish. A failed backup exits with code 12, after the other services. `--server` backs up the server's state instead, `/var/lib/dockflow` without the backups' passwords, with no lock. See [backups](/guides/backups/) and [the server's state](/guides/backups/#the-servers-state).
 
 ### backup list
 
 ```sh
-dockflow backup list [<env>] [<service>]
+dockflow backup list [<env>] [<service>] [--server]
 ```
 
-The environment's snapshots, or one service's, oldest first: id, time, service, release and size. `--json` prints them as one document.
+The environment's snapshots, or one service's, oldest first: id, time, service, release and size. `--server` lists the snapshots of the server's state. `--json` prints them as one document.
 
 ### backup restore
 
@@ -440,10 +440,10 @@ Restore a snapshot of the service into the current release, under the environmen
 ### backup prune
 
 ```sh
-dockflow backup prune [<env>] [<service>] [--keep-last n] [--keep-hourly n] [--keep-daily n] [--keep-weekly n] [--keep-monthly n]
+dockflow backup prune [<env>] [<service>] [--server] [--keep-last n] [--keep-hourly n] [--keep-daily n] [--keep-weekly n] [--keep-monthly n]
 ```
 
-Apply the services' retention, or the one given, and reclaim the space of the forgotten snapshots.
+Apply the services' retention, or the one given, and reclaim the space of the forgotten snapshots. `--server` applies it to the snapshots of the server's state.
 
 ## lock
 

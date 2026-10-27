@@ -110,7 +110,7 @@ An action's `kind` is one of `network.create`, `volume.create`, `service.create`
 | `switch.changed` | info | `service`, `from_release`, `to_release`, `routes` (each domain followed by its path) |
 | `drain.started` | info | `service`, `release` (the old one), `timeout_ms` |
 | `routes.applied` | debug | `domains` |
-| `backup.finished` | info | `service`, `snapshot` (restic's short id), `bytes_added` (new data stored), `duration_ms` |
+| `backup.finished` | info | `service`, or `server` for the server's state, `snapshot` (restic's short id), `bytes_added` (new data stored), `duration_ms` |
 | `filter.applied` | info | `ports`: what the [port filter](/project/security/#the-port-filter) lets in, each `{port, protocol, from, why}`; `why` is `SSH`, `the switch` or the app that lists it |
 
 ### Jobs, hooks and uploads

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"text/tabwriter"
 	"time"
 
@@ -18,12 +19,15 @@ import (
 func (a *app) backupCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "backup", Short: "Back up the stateful services with restic, and list their snapshots"}
 	var waitLock time.Duration
+	var server bool
 	run := &cobra.Command{
 		Use:   "run [<env>] [<service>]",
-		Short: "Back up the services that declare x-dockflow.backup, or one of them",
-		Args:  cobra.MaximumNArgs(2),
+		Short: "Back up the services that declare x-dockflow.backup, or one of them, or the server's state",
+		Long: "Backs up the services of the current release that declare x-dockflow.backup, or the one given. " +
+			"--server backs up the server's state instead, /var/lib/dockflow, to the environment's repository.",
+		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			env, service, err := a.envAndService(args)
+			env, service, err := a.envAndServer(args, server)
 			if err != nil {
 				return err
 			}
@@ -34,19 +38,22 @@ func (a *app) backupCmd() *cobra.Command {
 			defer s.Close()
 			req := s.request(agent.OpBackupRun)
 			req.Backup = s.backupRequest(service)
+			req.Backup.Server = server
 			req.WaitLock = domain.Duration(waitLock)
 			_, err = s.runAgent(cmd.Context(), req)
 			return err
 		},
 	}
 	run.Flags().DurationVar(&waitLock, "wait-lock", 0, "wait up to this long for a deploy or another run to release the lock (10m)")
+	run.Flags().BoolVar(&server, "server", false, "back up the server's state, /var/lib/dockflow")
 	cmd.AddCommand(run)
-	cmd.AddCommand(&cobra.Command{
+	var listServer bool
+	list := &cobra.Command{
 		Use:   "list [<env>] [<service>]",
-		Short: "The environment's snapshots, oldest first",
+		Short: "The environment's snapshots, or the server's with --server, oldest first",
 		Args:  cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			env, service, err := a.envAndService(args)
+			env, service, err := a.envAndServer(args, listServer)
 			if err != nil {
 				return err
 			}
@@ -61,6 +68,7 @@ func (a *app) backupCmd() *cobra.Command {
 			defer s.Close()
 			req := s.request(agent.OpBackupList)
 			req.Backup = s.backupRequest(service)
+			req.Backup.Server = listServer
 			res, err := s.runAgent(cmd.Context(), req)
 			if err != nil {
 				if e, ok := errs.As(err); ok {
@@ -83,17 +91,22 @@ func (a *app) backupCmd() *cobra.Command {
 				tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 				fmt.Fprintln(tw, "SNAPSHOT\tTIME\tSERVICE\tRELEASE\tSIZE")
 				for _, sn := range out.Snapshots {
-					size := ""
+					size, what, release := "", sn.Service, strconv.Itoa(sn.Release)
 					if sn.Size > 0 {
 						size = humanBytes(uint64(sn.Size))
 					}
-					fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", sn.ID, sn.Time.UTC().Format("2006-01-02 15:04:05Z"), sn.Service, sn.Release, size)
+					if sn.Server != "" {
+						what, release = "server "+sn.Server, ""
+					}
+					fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", sn.ID, sn.Time.UTC().Format("2006-01-02 15:04:05Z"), what, release, size)
 				}
 				tw.Flush()
 			})
 			return nil
 		},
-	})
+	}
+	list.Flags().BoolVar(&listServer, "server", false, "list the snapshots of the server's state")
+	cmd.AddCommand(list)
 	cmd.AddCommand(a.backupRestoreCmd(), a.backupPruneCmd())
 	return cmd
 }
@@ -166,12 +179,13 @@ func describeSnapshot(s string) string {
 
 func (a *app) backupPruneCmd() *cobra.Command {
 	var keep domain.Keep
+	var server bool
 	cmd := &cobra.Command{
 		Use:   "prune [<env>] [<service>]",
 		Short: "Apply the services' retention, or the one given, and reclaim the space of the forgotten snapshots",
 		Args:  cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			env, service, err := a.envAndService(args)
+			env, service, err := a.envAndServer(args, server)
 			if err != nil {
 				return err
 			}
@@ -182,6 +196,7 @@ func (a *app) backupPruneCmd() *cobra.Command {
 			defer s.Close()
 			req := s.request(agent.OpBackupPrune)
 			req.Backup = s.backupRequest(service)
+			req.Backup.Server = server
 			if !keep.Empty() {
 				k := keep
 				req.Backup.Keep = &k
@@ -191,6 +206,7 @@ func (a *app) backupPruneCmd() *cobra.Command {
 		},
 	}
 	f := cmd.Flags()
+	f.BoolVar(&server, "server", false, "prune the snapshots of the server's state")
 	f.IntVar(&keep.Last, "keep-last", 0, "keep the n most recent snapshots")
 	f.IntVar(&keep.Hourly, "keep-hourly", 0, "keep the most recent snapshot of the n last hours that have one")
 	f.IntVar(&keep.Daily, "keep-daily", 0, "keep the most recent snapshot of the n last days that have one")
@@ -209,6 +225,15 @@ func (a *app) envAndService(args []string) (string, string, error) {
 		return env, rest[0], nil
 	}
 	return "", "", errs.Usage("give at most one service")
+}
+
+// envAndServer reads [<env>] [<service>], with no service when server is set.
+func (a *app) envAndServer(args []string, server bool) (string, string, error) {
+	env, service, err := a.envAndService(args)
+	if err == nil && server && service != "" {
+		return "", "", errs.Usage("--server backs up the server's state, not a service: give no service")
+	}
+	return env, service, err
 }
 
 // backupRequest is where the environment's backups go, from dockflow.yml.

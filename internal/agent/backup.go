@@ -278,6 +278,9 @@ type BackupResult struct {
 
 // backupRun backs up the services of the current release that declare a backup (ADR-0015).
 func (r *runner) backupRun(ctx context.Context) events.RunFinishedData {
+	if r.req.Backup != nil && r.req.Backup.Server {
+		return r.backupServer(ctx)
+	}
 	l, err := r.lock(ctx)
 	if err != nil {
 		return failed(err)
@@ -327,6 +330,56 @@ func (r *runner) backupRun(ctx context.Context) events.RunFinishedData {
 	if len(failures) > 0 {
 		return failed(errs.Newf("backup.failed", errs.ExitBackup, "the backup of %s failed", strings.Join(failures, ", ")).
 			WithHint("the reason of each is above"))
+	}
+	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
+}
+
+// serverName names this server in the snapshots.
+func (r *runner) serverName() string {
+	if r.req.Server == "" {
+		return "main"
+	}
+	return r.req.Server
+}
+
+// serverTags select the snapshots of this server's state.
+func (r *runner) serverTags() string {
+	return "server=" + r.serverName()
+}
+
+// backupServer backs up the server's state, so that a lost server can be rebuilt with its
+// releases' history (ADR-0015). The passwords of the backups stay out: a snapshot that holds
+// its own repository's password protects nothing.
+func (r *runner) backupServer(ctx context.Context) events.RunFinishedData {
+	rp, err := r.openRepo(ctx, true)
+	if err != nil {
+		return failed(err)
+	}
+	defer rp.close()
+	if err := r.ensureRepo(ctx, rp); err != nil {
+		return failed(err)
+	}
+	root := r.Store.Root()
+	r.ev.Info(events.Log, "backing up "+root, map[string]any{"line": "backup " + root})
+	args := []string{"backup", "--json", "--host", r.serverName(), "--tag", r.serverTags(),
+		"--exclude", filepath.Join(root, "backups"), "--exclude", "*.tmp-*", root}
+	res, err := r.restic(ctx, rp, args, []domain.Mount{{Type: "bind", Source: root, Target: root, ReadOnly: true}}, nil)
+	if err != nil {
+		return failed(err)
+	}
+	out, err := backupSummary(res)
+	if err != nil {
+		return failed(errs.Newf("backup.failed", errs.ExitBackup, "the backup of %s failed: %v", root, err))
+	}
+	r.ev.Info(events.BackupFinished, fmt.Sprintf("%s backed up: snapshot %s, %s added", root, out.Snapshot, humanSize(uint64(out.BytesAdded))), map[string]any{
+		"server": r.serverName(), "snapshot": out.Snapshot, "bytes_added": out.BytesAdded, "duration_ms": out.DurationMS,
+	})
+	r.result(map[string]any{"backups": []BackupResult{*out}})
+	if _, err := r.forgetKeep(ctx, rp, r.serverTags(), nil, false); err != nil {
+		return failed(errs.Newf("backup.retention", errs.ExitBackup, "the retention of the server's backups failed: %v", err))
+	}
+	if err := r.checkRepo(ctx, rp); err != nil {
+		return failed(err)
 	}
 	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
 }
@@ -456,11 +509,7 @@ cat "$rdb"
 // backupService backs up one service and returns its snapshot.
 func (r *runner) backupService(ctx context.Context, rp *repo, rel *domain.Release, svc *domain.Service) (*BackupResult, error) {
 	b := svc.Backup
-	server := r.req.Server
-	if server == "" {
-		server = "main"
-	}
-	args := []string{"backup", "--json", "--host", server,
+	args := []string{"backup", "--json", "--host", r.serverName(),
 		"--tag", r.backupTags(svc.Name) + ",release=" + strconv.Itoa(rel.Seq)}
 	r.ev.Info(events.Log, "backing up "+svc.Name+" ("+b.Type+")", map[string]any{"line": "backup " + svc.Name})
 	var res *resticRun
@@ -666,20 +715,17 @@ func backupSummary(res *resticRun) (*BackupResult, error) {
 
 // forget applies the service's retention, and reclaims space once a day.
 func (r *runner) forget(ctx context.Context, rp *repo, svc *domain.Service) error {
-	_, err := r.forgetKeep(ctx, rp, svc, nil, false)
+	_, err := r.forgetKeep(ctx, rp, r.backupTags(svc.Name), svc.Backup.Keep, false)
 	return err
 }
 
-// forgetKeep applies keep, or the service's retention, and returns how many snapshots it
-// forgot. It reclaims space with prune, or once a day.
-func (r *runner) forgetKeep(ctx context.Context, rp *repo, svc *domain.Service, keep *domain.Keep, prune bool) (int, error) {
-	if keep.Empty() {
-		keep = svc.Backup.Keep
-	}
+// forgetKeep applies keep, or the default retention, to the snapshots with tags, and returns
+// how many it forgot. It reclaims space with prune, or once a day.
+func (r *runner) forgetKeep(ctx context.Context, rp *repo, tags string, keep *domain.Keep, prune bool) (int, error) {
 	if keep.Empty() {
 		keep = &domain.DefaultKeep
 	}
-	args := []string{"forget", "--json", "--tag", r.backupTags(svc.Name)}
+	args := []string{"forget", "--json", "--tag", tags}
 	for _, k := range []struct {
 		flag string
 		n    int
@@ -739,19 +785,19 @@ func (r *runner) checkRepo(ctx context.Context, rp *repo) error {
 	return nil
 }
 
-// Snapshot is a backup of a service, as backup list shows it.
+// Snapshot is a backup of a service, or of a server's state, as backup list shows it.
 type Snapshot struct {
 	ID      string    `json:"id"`
 	Time    time.Time `json:"time"`
-	Service string    `json:"service"`
+	Service string    `json:"service,omitempty"`
+	Server  string    `json:"server,omitempty"`
 	Release int       `json:"release,omitempty"`
 	Size    int64     `json:"size,omitempty"`
 }
 
-// snapshots lists an environment's snapshots, of one service when service is set, oldest
-// first.
-func (r *runner) snapshots(ctx context.Context, rp *repo, env, service string) ([]Snapshot, error) {
-	res, err := r.restic(ctx, rp, []string{"snapshots", "--json", "--no-lock", "--tag", r.backupTagsOf(env, service)}, nil, nil)
+// snapshots lists the snapshots with tags, oldest first.
+func (r *runner) snapshots(ctx context.Context, rp *repo, tags string) ([]Snapshot, error) {
+	res, err := r.restic(ctx, rp, []string{"snapshots", "--json", "--no-lock", "--tag", tags}, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -779,6 +825,8 @@ func (r *runner) snapshots(ctx context.Context, rp *repo, env, service string) (
 			switch k, v, _ := strings.Cut(t, "="); k {
 			case "service":
 				snap.Service = v
+			case "server":
+				snap.Server = v
 			case "release":
 				snap.Release, _ = strconv.Atoi(v)
 			}
@@ -803,11 +851,14 @@ func (r *runner) backupList(ctx context.Context) events.RunFinishedData {
 		return events.RunFinishedData{Outcome: events.OutcomeSuccess}
 	}
 	defer rp.close()
-	service := ""
-	if r.req.Backup != nil {
-		service = r.req.Backup.Service
+	tags := r.backupTags("")
+	switch b := r.req.Backup; {
+	case b != nil && b.Server:
+		tags = r.serverTags()
+	case b != nil:
+		tags = r.backupTags(b.Service)
 	}
-	snaps, err := r.snapshots(ctx, rp, r.req.Env, service)
+	snaps, err := r.snapshots(ctx, rp, tags)
 	if err != nil {
 		return failed(err)
 	}
