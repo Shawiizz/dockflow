@@ -118,7 +118,9 @@ func (a *app) cloudInitCmd() *cobra.Command {
 			}
 			fmt.Fprintf(a.stderr, ". Its host key is %s.\n", server.HostKey)
 			fmt.Fprintf(a.stderr, "Store the connection string below as the <ENV>_CONNECTION secret of your CI, or in .env.dockflow.\n")
-			fmt.Fprintf(a.stderr, "Once the server is up, install the switch, the registry and the watchdog: dockflow server init <env>\n\n%s\n", cs)
+			fmt.Fprintf(a.stderr, "Once its first boot has finished (a few minutes; cloud-init status --wait on the server tells), install the\n")
+			fmt.Fprintf(a.stderr, "switch, the registry and the watchdog: dockflow server init <env>. Don't retry it in a loop before:\n")
+			fmt.Fprintf(a.stderr, "fail2ban, installed by that boot, bans an address after five failed SSH logins.\n\n%s\n", cs)
 			return nil
 		},
 	}

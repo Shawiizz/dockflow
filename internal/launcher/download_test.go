@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -68,5 +69,24 @@ func TestDownloadUnlisted(t *testing.T) {
 	err := Download(context.Background(), srv.Client(), srv.URL+"/v9.9.9/", "dockflow-linux-arm64", filepath.Join(t.TempDir(), "b"))
 	if errs.CodeOf(err) != "agent.download_failed" {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestStatic(t *testing.T) {
+	dir := t.TempDir()
+	for name, cgo := range map[string]string{"static": "0", "dynamic": "1"} {
+		out := filepath.Join(dir, name)
+		cmd := exec.Command("go", "build", "-o", out, "./testdata/hello")
+		cmd.Env = append(os.Environ(), "CGO_ENABLED="+cgo)
+		if b, err := cmd.CombinedOutput(); err != nil {
+			if cgo == "1" {
+				t.Logf("no cgo build here: %s", b)
+				continue
+			}
+			t.Fatalf("%v: %s", err, b)
+		}
+		if got := static(out); got != (cgo == "0") {
+			t.Errorf("%s: static = %v", name, got)
+		}
 	}
 }

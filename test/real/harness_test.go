@@ -70,6 +70,8 @@ func TestMain(m *testing.M) {
 	root, _ := filepath.Abs("../..")
 	build := exec.Command("go", "build", "-o", binary, "./cmd/dockflow")
 	build.Dir = root
+	// the agent's image holds the binary alone
+	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "build: %v\n%s", err, out)
 		os.Exit(1)

@@ -132,7 +132,10 @@ func TestCloudInitBehindNginx(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.out), &doc); err != nil {
 		t.Fatalf("%v\n%s", err, r.out)
 	}
-	ip := createDroplet(t, "cloudinit", doc.UserData, nil)
+	// root waits for the first boot: a deploy user tried before it exists fails, and fail2ban,
+	// installed by that boot, bans the address after five failures
+	rootKey := newKey(t)
+	ip := createDroplet(t, "cloudinit", doc.UserData, &rootKey)
 
 	// the connection string names the address, now known
 	cs, err := connection.ParseConnString(doc.Connection)
@@ -145,8 +148,11 @@ func TestCloudInitBehindNginx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out, err := sshRun(t, ip, cs.Servers[0].User, signer, cs.Servers[0].HostKey, "while [ ! -f /var/lib/cloud/instance/boot-finished ]; do sleep 5; done; echo ready", 15*time.Minute); err != nil || out != "ready" {
-		t.Fatalf("the deploy user gets in once cloud-init is done: %v %s", err, out)
+	if out, err := sshRun(t, ip, "root", rootKey.signer, cs.Servers[0].HostKey, "cloud-init status --wait >/dev/null; echo ready", 15*time.Minute); err != nil || out != "ready" {
+		t.Fatalf("the first boot finishes: %v %s", err, out)
+	}
+	if out, err := sshRun(t, ip, cs.Servers[0].User, signer, cs.Servers[0].HostKey, "id -nG", time.Minute); err != nil || !strings.Contains(out, "docker") {
+		t.Fatalf("the deploy user gets in, in the docker group: %v %s", err, out)
 	}
 
 	domain := strings.ReplaceAll(ip, ".", "-") + ".sslip.io"

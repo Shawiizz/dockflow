@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"debug/elf"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -32,10 +33,22 @@ func (l *Launcher) agentBinary(ctx context.Context, arch string) (string, error)
 	if p := os.Getenv("DOCKFLOW_AGENT_BINARY"); p != "" {
 		return p, nil
 	}
+	dynamic := false
 	if runtime.GOOS == "linux" && runtime.GOARCH == arch {
-		return os.Executable()
+		self, err := os.Executable()
+		if err != nil {
+			return "", errs.Internal("find this binary: %v", err)
+		}
+		// the agent's image holds the binary alone: no C library to link against
+		if dynamic = !static(self); !dynamic {
+			return self, nil
+		}
 	}
 	if l.Version == "" || l.Version == "dev" || strings.HasPrefix(l.Version, "snapshot") {
+		if dynamic {
+			return "", errs.Newf("agent.no_binary", errs.ExitConnect, "this dockflow binary is linked dynamically, and cannot run as the agent, alone in its image").
+				WithHint("build it with CGO_ENABLED=0, as make build does, or set DOCKFLOW_AGENT_BINARY to a static build")
+		}
 		return "", errs.Newf("agent.no_binary", errs.ExitConnect, "this dockflow binary is for %s/%s; the server runs linux/%s, and a development build has no release to download it from", runtime.GOOS, runtime.GOARCH, arch).
 			WithHint("set DOCKFLOW_AGENT_BINARY to the path of the dockflow binary for linux/%s", arch)
 	}
@@ -131,4 +144,19 @@ func fetch(ctx context.Context, client *http.Client, url string, limit int64, w 
 		err = fmt.Errorf("%s is larger than %d bytes", url, limit)
 	}
 	return err
+}
+
+// static tells whether the ELF binary at path needs no dynamic loader.
+func static(path string) bool {
+	f, err := elf.Open(path)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	for _, p := range f.Progs {
+		if p.Type == elf.PT_INTERP {
+			return false
+		}
+	}
+	return true
 }

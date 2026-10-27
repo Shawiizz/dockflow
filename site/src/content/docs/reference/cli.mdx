@@ -594,7 +594,7 @@ Prints the cloud-init user-data of a new server, to give your provider (DigitalO
 - The server's SSH host key is generated here too, and is in the user-data: the connection string pins it before the server exists. Keep the user-data as you would the server's disk, or write it with `-o user-data.yml` (mode 600).
 - `--host` is required: the address the CI will reach the server at, a reserved IP or a domain name.
 
-Once the server is up, install the switch, the registry and the watchdog with `dockflow server init <env>`. Options: `--host`, `--port`, `--user`, `--deploy-key`, `--name`, `--skip-docker-install`, `--no-port-filter`, `--no-hardening`, `--nginx`, `--from`, `-o`.
+Once the first boot has finished, install the switch, the registry and the watchdog with `dockflow server init <env>`. The first boot takes a few minutes (Docker, fail2ban, security updates): `cloud-init status --wait` on the server returns when it is done. Before that, the deploy user does not exist yet, and fail2ban, installed by the same boot, bans an address after five failed SSH logins for ten minutes, so don't retry `server init <env>` in a loop. Options: `--host`, `--port`, `--user`, `--deploy-key`, `--name`, `--skip-docker-install`, `--no-port-filter`, `--no-hardening`, `--nginx`, `--from`, `-o`.
 
 ### server network
 
