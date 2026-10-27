@@ -123,6 +123,8 @@ func (r *runner) dispatch(ctx context.Context) events.RunFinishedData {
 		return r.networks(ctx)
 	case OpPluginInstall, OpPluginList, OpPluginRemove:
 		return r.plugins(ctx)
+	case OpCloudflareRefresh:
+		return r.refreshCloudflare(ctx)
 	}
 	return failed(errs.Usage("unknown operation %q", r.req.Op))
 }
@@ -130,7 +132,7 @@ func (r *runner) dispatch(ctx context.Context) events.RunFinishedData {
 // serverOp tells whether op acts on the server rather than on one app environment.
 func serverOp(op string) bool {
 	switch op {
-	case OpServerInit, OpNetworkCreate, OpNetworkList, OpNetworkRemove, OpPluginInstall, OpPluginList, OpPluginRemove:
+	case OpServerInit, OpNetworkCreate, OpNetworkList, OpNetworkRemove, OpPluginInstall, OpPluginList, OpPluginRemove, OpCloudflareRefresh:
 		return true
 	}
 	return false

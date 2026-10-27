@@ -1,0 +1,115 @@
+{
+  "admin": {
+    "listen": "unix//run/dockflow-switch/admin.sock"
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "http": {
+          "client_ip_headers": [
+            "CF-Connecting-IP"
+          ],
+          "listen": [
+            ":80"
+          ],
+          "routes": [
+            {
+              "@id": "dockflow.flex-production.web.0",
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "load_balancing": {
+                    "selection_policy": {
+                      "policy": "round_robin"
+                    },
+                    "try_duration": "2s"
+                  },
+                  "upstreams": [
+                    {
+                      "dial": "{file./run/dockflow-switch/up/flex-production.web.0/0}"
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "flexible.example.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "abort": true,
+                  "handler": "static_response"
+                }
+              ]
+            }
+          ],
+          "trusted_proxies": {
+            "ranges": [
+              "173.245.48.0/20",
+              "2400:cb00::/32"
+            ],
+            "source": "static"
+          }
+        },
+        "https": {
+          "client_ip_headers": [
+            "CF-Connecting-IP"
+          ],
+          "listen": [
+            ":443"
+          ],
+          "routes": [
+            {
+              "@id": "dockflow.web-production.web.0",
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "load_balancing": {
+                    "selection_policy": {
+                      "policy": "round_robin"
+                    },
+                    "try_duration": "2s"
+                  },
+                  "upstreams": [
+                    {
+                      "dial": "{file./run/dockflow-switch/up/web-production.web.0/0}"
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "example.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "abort": true,
+                  "handler": "static_response"
+                }
+              ]
+            }
+          ],
+          "trusted_proxies": {
+            "ranges": [
+              "173.245.48.0/20",
+              "2400:cb00::/32"
+            ],
+            "source": "static"
+          }
+        }
+      }
+    }
+  }
+}

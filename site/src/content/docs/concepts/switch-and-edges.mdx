@@ -100,9 +100,9 @@ The edge is a server setting, chosen with `dockflow server init --edge <mode>`. 
 | Mode | TLS | What the switch listens on | Client IP seen by the switch |
 |---|---|---|---|
 | `builtin` (default) | Automatic HTTPS (Let's Encrypt) | Ports 80 and 443 of the server | The connection's |
+| `cloudflare` | As `builtin`, behind Cloudflare's proxy | Ports 80 and 443, open to Cloudflare's ranges only | `CF-Connecting-IP`, from Cloudflare's ranges only |
 | `external` | Your front proxy | One address, `127.0.0.1:8080` by default | `X-Forwarded-For`, from trusted proxies only |
 | `none` | – | Nothing: no switch is installed | – |
-| `cloudflare` <Badge text="Coming in M3" variant="caution" /> | As `builtin`, with ports 80 and 443 open to Cloudflare's ranges only | Ports 80 and 443 | `CF-Connecting-IP` |
 
 ### builtin
 
@@ -111,6 +111,19 @@ dockflow server init production
 ```
 
 The switch publishes ports 80 and 443 (TCP, and UDP for HTTP/3) and is the only proxy on the server. Nothing else may listen on those ports.
+
+### cloudflare
+
+For domains proxied by Cloudflare (the orange cloud):
+
+```sh
+dockflow server init production --edge cloudflare
+```
+
+The switch works as with `builtin`, and the [port filter](/project/security/#the-port-filter) opens ports 80 and 443 to Cloudflare's address ranges only: nobody reaches your origin around Cloudflare, by its IP address. The switch takes the client's address from Cloudflare's `CF-Connecting-IP` header, and believes it only from those ranges, so your apps see the real client in `X-Forwarded-For`.
+
+- **SSL/TLS mode.** With Cloudflare's *Full (strict)* mode, keep the routes' default `tls: true`: the switch gets certificates from Let's Encrypt, whose HTTP challenge passes through Cloudflare. With *Flexible*, Cloudflare reaches the origin over plain HTTP: set `tls: false` on the routes.
+- **The ranges.** Dockflow downloads Cloudflare's published lists at `server init`, and again every week with the `dockflow-cloudflare` systemd timer that `server init <admin>@<host>` installs. A download that fails keeps the ranges the server has, or uses the list this version of Dockflow knows. The filter must be on: with `--no-port-filter`, ports 80 and 443 are open to everyone.
 
 ### external
 
@@ -162,7 +175,7 @@ Moving a server to `none` is refused while apps on it still have routes (`server
 
 | Option | Default | Description |
 |---|---|---|
-| `--edge <mode>` | `builtin` | How traffic reaches the switch: `builtin`, `external` or `none` |
+| `--edge <mode>` | the server's, or `builtin` | How traffic reaches the switch: `builtin`, `cloudflare`, `external` or `none` |
 | `--switch-listen <addr:port>` | `127.0.0.1:8080` | With `--edge external`: the address the switch listens on. The host must be an IP address |
 | `--trusted-proxy <cidr>` | Private ranges | With `--edge external`: CIDRs whose `X-Forwarded-For` is trusted. Repeat it, or separate CIDRs with commas |
 | `--switch-image <image>` | `caddy:2` | The Caddy image of the switch, pinned by digest when installed |
@@ -171,4 +184,4 @@ Moving a server to `none` is refused while apps on it still have routes (`server
 
 To change the edge of a server, run `server init` again with another `--edge`. The switch container is replaced, which interrupts traffic for a moment, and every app's routes are loaded into the new one.
 
-<Badge text="Coming in M3" variant="caution" /> SSH hardening and the rest of provisioning, the `cloudflare` edge, `--acme-email` and the `server status`, `server edge` and `server upgrade` commands.
+<Badge text="Coming in M3" variant="caution" /> SSH hardening and the rest of provisioning, `--acme-email` and the `server status`, `server edge` and `server upgrade` commands.

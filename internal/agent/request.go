@@ -49,6 +49,8 @@ const (
 	OpPluginInstall = "server.plugin.install"
 	OpPluginList    = "server.plugin.list"
 	OpPluginRemove  = "server.plugin.remove"
+	// OpCloudflareRefresh is run by the weekly timer of provisioning (ADR-0014).
+	OpCloudflareRefresh = "server.cloudflare.refresh"
 )
 
 // Request is the agent's input. Secret values reach the agent only here, on stdin, never in its

@@ -22,9 +22,10 @@ type Route struct {
 
 // Edge modes (ADR-0011).
 const (
-	EdgeBuiltin  = "builtin"
-	EdgeExternal = "external"
-	EdgeNone     = "none"
+	EdgeBuiltin    = "builtin"
+	EdgeCloudflare = "cloudflare"
+	EdgeExternal   = "external"
+	EdgeNone       = "none"
 )
 
 // SharedDir is where the volume shared by the switch and the agents is mounted, in both: the
@@ -41,7 +42,8 @@ const ExternalPort = 8080
 type Config struct {
 	Edge   string
 	Routes []Route
-	// TrustedProxies are the CIDRs whose X-Forwarded-For is believed (external edge).
+	// TrustedProxies are the CIDRs whose X-Forwarded-For is believed (external edge), or whose
+	// CF-Connecting-IP is (cloudflare edge: Cloudflare's ranges).
 	TrustedProxies []string
 	// Reload loads the configuration even when its routes did not change: the switch was just
 	// (re)installed.

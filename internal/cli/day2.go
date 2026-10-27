@@ -503,7 +503,7 @@ func (a *app) serverCmd() *cobra.Command {
 			return err
 		},
 	}
-	initCmd.Flags().StringVar(&edge, "edge", "", "how traffic reaches the switch: builtin, external or none (default: the server's, or builtin)")
+	initCmd.Flags().StringVar(&edge, "edge", "", "how traffic reaches the switch: builtin, cloudflare, external or none (default: the server's, or builtin)")
 	initCmd.Flags().StringVar(&switchListen, "switch-listen", "", "with --edge external: the address the switch listens on (default 127.0.0.1:8080)")
 	initCmd.Flags().StringSliceVar(&trusted, "trusted-proxy", nil, "with --edge external: CIDRs whose X-Forwarded-For is trusted (default: private ranges)")
 	initCmd.Flags().StringVar(&switchImage, "switch-image", "", "the Caddy image of the switch (default caddy:2, pinned by digest)")

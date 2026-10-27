@@ -25,6 +25,21 @@ func TestBuild(t *testing.T) {
 	testutil.Golden(t, "builtin", v)
 }
 
+func TestBuildCloudflare(t *testing.T) {
+	b, err := Build(proxy.Config{Edge: proxy.EdgeCloudflare, TrustedProxies: []string{"173.245.48.0/20", "2400:cb00::/32"}, Routes: []proxy.Route{
+		{Stack: "web-production", Service: "web", Domains: []string{"example.com"}, Path: "/", Port: 80, TLS: true,
+			Upstreams: []string{"web-production-web-2-1"}},
+		{Stack: "flex-production", Service: "web", Domains: []string{"flexible.example.com"}, Path: "/", Port: 80,
+			Upstreams: []string{"flex-production-web-1-1"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v any
+	json.Unmarshal(b, &v)
+	testutil.Golden(t, "cloudflare", v)
+}
+
 func TestBuildExternal(t *testing.T) {
 	b, err := Build(proxy.Config{Edge: proxy.EdgeExternal, Routes: []proxy.Route{
 		{Stack: "docs-production", Service: "docs", Domains: []string{"docs.example.com"}, Path: "/", Port: 3000, TLS: true,

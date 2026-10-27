@@ -74,6 +74,15 @@ func Build(c proxy.Config) ([]byte, error) {
 	if len(https) > 0 {
 		servers["https"] = obj{"listen": []string{":443"}, "routes": append(https, refuse)}
 	}
+	if c.Edge == proxy.EdgeCloudflare {
+		// the client is the one Cloudflare names, when Cloudflare connects; the filter lets
+		// nothing else in, but a header from anyone else is never believed
+		for _, s := range servers {
+			srv := s.(obj)
+			srv["trusted_proxies"] = obj{"source": "static", "ranges": c.TrustedProxies}
+			srv["client_ip_headers"] = []string{"CF-Connecting-IP"}
+		}
+	}
 	cfg := obj{
 		"admin": obj{"listen": "unix/" + AdminSocket},
 		"apps":  obj{"http": obj{"servers": servers}},

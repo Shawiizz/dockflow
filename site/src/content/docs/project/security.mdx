@@ -73,7 +73,7 @@ Your own services listen where their Compose `ports:` say. Docker's published po
 `server init` installs a filter that drops new connections from outside to the ports Docker publishes, except:
 
 - the ports apps list under [`firewall.public_ports`](/reference/dockflow-yml/#firewall), open to everyone or to their `from` ranges;
-- 80 and 443 for the switch, with the `builtin` edge, or the port of `--switch-listen` with the `external` edge when it is not on loopback;
+- 80 and 443 for the switch, with the `builtin` edge, and from Cloudflare's ranges only with the `cloudflare` edge; or the port of `--switch-listen` with the `external` edge when it is not on loopback;
 - SSH.
 
 It catches a `5432:5432` written out of habit: the port stays published, but only the server itself and its containers reach it. The plan warns about each port published on every interface that no app lists.

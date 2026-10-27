@@ -163,7 +163,74 @@ UNIT
 	fi
 fi
 
+# Cloudflare's ranges, downloaded again every week for the cloudflare edge (ADR-0014)
+mkdir -p /usr/local/libexec
+cat >/usr/local/libexec/dockflow-cloudflare-refresh.tmp <<'SCRIPT'
+` + CloudflareRefresh + `SCRIPT
+chmod 755 /usr/local/libexec/dockflow-cloudflare-refresh.tmp
+if ! cmp -s /usr/local/libexec/dockflow-cloudflare-refresh.tmp /usr/local/libexec/dockflow-cloudflare-refresh; then
+	mv /usr/local/libexec/dockflow-cloudflare-refresh.tmp /usr/local/libexec/dockflow-cloudflare-refresh
+else
+	rm -f /usr/local/libexec/dockflow-cloudflare-refresh.tmp
+fi
+if command -v systemctl >/dev/null 2>&1 && [ -d /etc/systemd/system ]; then
+	cat >/etc/systemd/system/dockflow-cloudflare.service.tmp <<'UNIT'
+[Unit]
+Description=Dockflow: download Cloudflare's ranges for the cloudflare edge
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/dockflow-cloudflare-refresh
+UNIT
+	cat >/etc/systemd/system/dockflow-cloudflare.timer.tmp <<'UNIT'
+[Unit]
+Description=Dockflow: download Cloudflare's ranges every week
+
+[Timer]
+OnCalendar=weekly
+RandomizedDelaySec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+	changed=0
+	for u in dockflow-cloudflare.service dockflow-cloudflare.timer; do
+		if ! cmp -s "/etc/systemd/system/$u.tmp" "/etc/systemd/system/$u"; then
+			mv "/etc/systemd/system/$u.tmp" "/etc/systemd/system/$u"
+			changed=1
+		else
+			rm -f "/etc/systemd/system/$u.tmp"
+		fi
+	done
+	if [ "$changed" = 1 ]; then
+		say "installing the weekly download of Cloudflare's ranges"
+		systemctl daemon-reload
+		systemctl enable --now dockflow-cloudflare.timer >/dev/null 2>&1 || true
+	fi
+fi
+
 printf 'docker: %s\n' "$version"
+`
+
+// CloudflareRefresh is the script the weekly timer runs: with the cloudflare edge, it runs the
+// newest Dockflow agent of the server to download Cloudflare's ranges, which keeps the previous
+// ones when the download fails, and applies them to the switch and the port filter.
+const CloudflareRefresh = `#!/bin/sh
+set -e
+grep -q '"edge": "cloudflare"' /var/lib/dockflow/server.json 2>/dev/null || exit 0
+image=$(docker images dockflow/agent --format '{{.Repository}}:{{.Tag}}' | head -n 1)
+if [ -z "$image" ]; then
+	echo "no Dockflow agent image on this server yet: the next deploy brings one" >&2
+	exit 0
+fi
+run="cloudflare-$(date +%s)"
+printf '{"op":"server.cloudflare.refresh","run":"%s","server":"main"}\n' "$run" |
+	docker run --rm -i --name "dockflow-run-$run" --label dockflow.kind=run --label dockflow.managed=true \
+		-v /var/run/docker.sock:/var/run/docker.sock -v /var/lib/dockflow:/var/lib/dockflow \
+		-v /run/dockflow:/run/dockflow -v dockflow-switch-admin:/run/dockflow-switch "$image"
 `
 
 // Failed turns the script's exit code into an error.

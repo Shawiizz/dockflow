@@ -124,6 +124,9 @@ type Server struct {
 	// WatchdogImage is the watchdog's image.
 	NoWatchdog    bool   `json:"no_watchdog,omitempty"`
 	WatchdogImage string `json:"watchdog_image,omitempty"`
+	// CloudflareRanges are the ranges the cloudflare edge lets in and trusts (ADR-0011), as
+	// last downloaded.
+	CloudflareRanges []string `json:"cloudflare_ranges,omitempty"`
 }
 
 // Server reads server.json; nil when the server was never initialised.

@@ -42,6 +42,11 @@ func (r *runner) allowed(srv *state.Server) ([]filter.Allow, error) {
 			out = append(out, filter.Allow{PublicPort: domain.PublicPort{Port: p, Protocol: "tcp"}, Why: "the switch"})
 		}
 	case proxy.EdgeNone:
+	case proxy.EdgeCloudflare:
+		// Cloudflare's proxies only: anything else reaching the origin bypasses Cloudflare
+		out = append(out,
+			filter.Allow{PublicPort: domain.PublicPort{Port: 80, Protocol: "tcp", From: srv.CloudflareRanges}, Why: "the switch, from Cloudflare"},
+			filter.Allow{PublicPort: domain.PublicPort{Port: 443, From: srv.CloudflareRanges}, Why: "the switch, from Cloudflare"})
 	default:
 		out = append(out,
 			filter.Allow{PublicPort: domain.PublicPort{Port: 80, Protocol: "tcp"}, Why: "the switch"},

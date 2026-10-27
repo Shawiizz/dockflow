@@ -36,6 +36,8 @@ Dockflow keeps no database and no service of its own besides the switch, the reg
 ├── filter.rules                      the port filter's IPv4 rules, for iptables-restore
 └── filter6.rules                     its IPv6 rules
 /etc/systemd/system/dockflow-filter.service   loads them at boot, before Docker
+/etc/systemd/system/dockflow-cloudflare.timer  downloads Cloudflare's ranges every week (cloudflare edge)
+/usr/local/libexec/dockflow-cloudflare-refresh the script it runs: an agent run
 ```
 
 `<stack>` is `<app>-<env>`, for example `shop-production`. `<seq>` is the release number, written with 6 digits in file names (`000042.json.gz`).
@@ -61,6 +63,7 @@ Written by `dockflow server init`:
   "dockflow_version": "4.0.0-alpha.5",
   "watchdog_image": "sha256:…",
   "ssh_port": 22,
+  "cloudflare_ranges": ["173.245.48.0/20", "…"],
   "filter_rules": "9f2c…"
 }
 ```

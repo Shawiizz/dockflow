@@ -466,6 +466,7 @@ Running it again updates the server, and the switch keeps every app's routes. An
 | Edge | Effect |
 |---|---|
 | `builtin` | The switch listens on ports 80 and 443 and obtains certificates. |
+| `cloudflare` | As `builtin`, with ports 80 and 443 open to Cloudflare's ranges only, and the client's address from `CF-Connecting-IP`. See [the cloudflare edge](/concepts/switch-and-edges/#cloudflare). |
 | `external` | The switch listens on `--switch-listen` (`127.0.0.1:8080`) in plain HTTP, behind your own proxy, which terminates TLS. See [behind nginx](/guides/behind-nginx/). |
 | `none` | No switch. Apps publish their own ports; routes are refused. |
 
@@ -493,7 +494,7 @@ Running it again updates the server, and the switch keeps every app's routes. An
 dockflow server init root@203.0.113.10 --edge external
 ```
 
-SSH hardening, fail2ban, unattended updates, `server cloud-init`, `server check`, `server status`, `server edge`, `server upgrade` are <Badge text="Coming in M3" variant="caution" />, as is the `cloudflare` edge.
+SSH hardening, fail2ban, unattended updates, `server cloud-init`, `server check`, `server status`, `server edge`, `server upgrade` are <Badge text="Coming in M3" variant="caution" />.
 
 ### server network
 

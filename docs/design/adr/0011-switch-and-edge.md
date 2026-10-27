@@ -106,6 +106,10 @@ These options are applied by the switch, so they work in every edge mode, behind
 
 **Non-HTTP services** (a game server on TCP and UDP) don't go through the switch. They publish their ports and use `stop-first`.
 
+## Implementation of the cloudflare edge (M3)
+
+The switch is the `builtin` one, with `trusted_proxies` set to Cloudflare's ranges and `client_ip_headers` to `CF-Connecting-IP` on both of its servers; the port filter restricts 80 and 443 to the same ranges ([ADR-0014](0014-networking-port-filter.md#implementation-m3)).
+
 ## Consequences
 
 - Zero downtime is a core feature, independent of the user's front proxy, and implemented once.

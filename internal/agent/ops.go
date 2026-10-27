@@ -211,7 +211,7 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 	}
 	listen, trusted := "", r.req.TrustedProxies
 	switch edge {
-	case proxy.EdgeBuiltin, proxy.EdgeNone:
+	case proxy.EdgeBuiltin, proxy.EdgeNone, proxy.EdgeCloudflare:
 		if r.req.SwitchListen != "" || len(trusted) > 0 {
 			return failed(errs.Usage("--switch-listen and --trusted-proxy go with --edge external"))
 		}
@@ -237,7 +237,7 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 			}
 		}
 	default:
-		return failed(errs.Usage("edge %q is not available yet: use builtin, external or none", edge))
+		return failed(errs.Usage("edge %q is not an edge: use builtin, cloudflare, external or none", edge))
 	}
 	l, err := r.Store.LockServer()
 	if err != nil {
@@ -258,6 +258,9 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 	}
 	if srv.SSHPort == 0 {
 		srv.SSHPort = previous.SSHPort
+	}
+	if edge == proxy.EdgeCloudflare {
+		srv.CloudflareRanges = r.cloudflareRanges(ctx, previous.CloudflareRanges)
 	}
 	// a server that was initialised without a registry has no registry image
 	registry := previous.Edge == "" || previous.RegistryImage != ""
@@ -439,6 +442,9 @@ func switchConfig(srv *state.Server, routes []proxy.Route) proxy.Config {
 	c := proxy.Config{Edge: proxy.EdgeBuiltin, Routes: routes}
 	if srv != nil && srv.Edge != "" {
 		c.Edge, c.TrustedProxies = srv.Edge, srv.TrustedProxies
+	}
+	if c.Edge == proxy.EdgeCloudflare {
+		c.TrustedProxies = srv.CloudflareRanges
 	}
 	return c
 }
