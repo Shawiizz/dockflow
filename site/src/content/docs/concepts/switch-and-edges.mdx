@@ -80,7 +80,7 @@ services:
 
 A routed service must be on the app's bridge networks: `network_mode: host` and routes do not go together.
 
-<Badge text="Coming in M3" variant="caution" /> Route options (`headers`, `encode`, `max_body`, `timeouts`, `error_pages`, `auth`, raw `caddy` directives) and routes that do not target a service (`redirect`, `proxy`, `files`, under a top-level `routes:`) are not available yet. Until then, put such rules in a proxy in front of the switch, with the `external` edge.
+Route options (`headers`, `encode`, `max_body`, `timeouts`, `error_pages`, `auth`, raw `caddy` directives) are in [`x-dockflow.routes`](/reference/compose/#routes), and routes that do not target a service (`redirect`, `proxy`, `files`) under [`routes:` of dockflow.yml](/reference/dockflow-yml/#routes).
 
 ## TLS
 
