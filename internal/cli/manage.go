@@ -35,7 +35,7 @@ func (a *app) envAndServices(args []string) (string, []string) {
 
 // change runs an agent operation that changes the running services under the lock.
 func (a *app) change(cmd *cobra.Command, env, op string, tweak func(*agent.Request)) error {
-	s, err := a.connect(cmd.Context(), env, "")
+	s, err := a.attach(cmd.Context(), env)
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func (a *app) cancelCmd() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			s, err := a.connect(ctx, envArg(args), "")
+			s, err := a.attach(ctx, envArg(args))
 			if err != nil {
 				return err
 			}

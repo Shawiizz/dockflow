@@ -41,7 +41,7 @@ func (a *app) quiet() {
 // read runs a read-only agent operation and decodes its result into v.
 func (a *app) read(cmd *cobra.Command, env, op string, v any, tweak func(*agent.Request)) (*session, error) {
 	a.quiet()
-	s, err := a.connect(cmd.Context(), env, "")
+	s, err := a.attach(cmd.Context(), env)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +174,7 @@ func (a *app) listImagesCmd() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a.quiet()
-			s, err := a.connect(cmd.Context(), envArg(args), "")
+			s, err := a.attach(cmd.Context(), envArg(args))
 			if err != nil {
 				return err
 			}
@@ -504,7 +504,7 @@ func (a *app) serverCmd() *cobra.Command {
 			if len(args) == 1 && strings.Contains(args[0], "@") {
 				return a.provisionServer(cmd.Context(), args[0], pf, init)
 			}
-			s, err := a.connect(cmd.Context(), envArg(args), "")
+			s, err := a.attach(cmd.Context(), envArg(args))
 			if err != nil {
 				return err
 			}

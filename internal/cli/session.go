@@ -58,6 +58,11 @@ type session struct {
 
 // load reads the project for env (as typed) without reaching the server.
 func (a *app) load(ctx context.Context, env, versionFlag string) (*project.Loaded, error) {
+	return a.loadProject(ctx, env, versionFlag, false)
+}
+
+// loadProject is load; configOnly reads dockflow.yml alone (project.Options.ConfigOnly).
+func (a *app) loadProject(ctx context.Context, env, versionFlag string, configOnly bool) (*project.Loaded, error) {
 	dir := a.dir
 	git := project.ReadGit(dir)
 	if a.branch != "" {
@@ -75,7 +80,7 @@ func (a *app) load(ctx context.Context, env, versionFlag string) (*project.Loade
 	if versionFlag == "" {
 		versionFlag = ciVersion()
 	}
-	o := project.Options{Dir: dir, Env: env, Version: versionFlag, Environ: os.Environ(), Git: git}
+	o := project.Options{Dir: dir, Env: env, Version: versionFlag, Environ: os.Environ(), Git: git, ConfigOnly: configOnly}
 	l, err := project.Load(ctx, o)
 	if err != nil {
 		return nil, err
@@ -87,7 +92,17 @@ func (a *app) load(ctx context.Context, env, versionFlag string) (*project.Loade
 
 // connect loads env and opens a connection to its server.
 func (a *app) connect(ctx context.Context, env, versionFlag string) (*session, error) {
-	l, err := a.load(ctx, env, versionFlag)
+	return a.connectProject(ctx, env, versionFlag, false)
+}
+
+// attach opens a connection to env's server for a command that acts on what the server already
+// runs: it reads dockflow.yml alone, so the variables of the Compose files are not needed.
+func (a *app) attach(ctx context.Context, env string) (*session, error) {
+	return a.connectProject(ctx, env, "", true)
+}
+
+func (a *app) connectProject(ctx context.Context, env, versionFlag string, configOnly bool) (*session, error) {
+	l, err := a.loadProject(ctx, env, versionFlag, configOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +112,7 @@ func (a *app) connect(ctx context.Context, env, versionFlag string) (*session, e
 	}
 	if t.Server.Name != "main" {
 		// DOCKFLOW_SERVER is known now
-		o := project.Options{Dir: a.dir, Env: l.Config.Env, Version: l.Version, Environ: os.Environ(), Git: l.Git, Server: t.Server.Name}
+		o := project.Options{Dir: a.dir, Env: l.Config.Env, Version: l.Version, Environ: os.Environ(), Git: l.Git, Server: t.Server.Name, ConfigOnly: configOnly}
 		if l, err = project.Load(ctx, o); err != nil {
 			return nil, err
 		}

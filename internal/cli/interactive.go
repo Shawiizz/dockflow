@@ -85,7 +85,7 @@ func (a *app) execCmd() *cobra.Command {
 			}
 			a.quiet()
 			ctx := cmd.Context()
-			s, err := a.connect(ctx, envName, "")
+			s, err := a.attach(ctx, envName)
 			if err != nil {
 				return err
 			}
@@ -221,7 +221,7 @@ func (a *app) sshCmd() *cobra.Command {
 			}
 			a.quiet()
 			ctx := cmd.Context()
-			s, err := a.connect(ctx, envArg(pos), "")
+			s, err := a.attach(ctx, envArg(pos))
 			if err != nil {
 				return err
 			}
@@ -282,7 +282,7 @@ func (a *app) cpCmd() *cobra.Command {
 			}
 			a.quiet()
 			ctx := cmd.Context()
-			s, err := a.connect(ctx, envName, "")
+			s, err := a.attach(ctx, envName)
 			if err != nil {
 				return err
 			}

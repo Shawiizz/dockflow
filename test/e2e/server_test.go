@@ -15,6 +15,20 @@ func TestServerCommands(t *testing.T) {
 	mustSucceed(t, dockflow(t, dir, "deploy"), "deploy")
 	t.Cleanup(func() { dockflow(t, dir, "destroy", "production") })
 
+	// the commands that act on what the server runs need none of the app's variables: here the
+	// Compose file uses one that is not given
+	elsewhere := filepath.Join(workDir, app+"-nosecrets")
+	writeProject(t, elsewhere, app, webApp(app, "whoami-e2e:${UNGIVEN_TAG}", ""))
+	for _, args := range [][]string{{"status", "production"}, {"ps", "production"}, {"logs", "production", "web", "--lines", "1"}, {"server", "status"}} {
+		mustSucceed(t, dockflow(t, elsewhere, args...), strings.Join(args, " ")+" without the app's variables")
+	}
+	if r := dockflow(t, elsewhere, "logs", "production", "nosuchservice"); r.code == 0 || !strings.Contains(r.out, "no container of a service nosuchservice") {
+		t.Fatalf("logs of a service the server does not run: exit %d\n%s", r.code, r.out)
+	}
+	if r := dockflow(t, elsewhere, "deploy"); r.code == 0 || !strings.Contains(r.out, "UNGIVEN_TAG") {
+		t.Fatalf("a deploy still needs them: exit %d\n%s", r.code, r.out)
+	}
+
 	r := dockflow(t, dir, "server", "status")
 	mustSucceed(t, r, "server status")
 	compact := strings.Join(strings.Fields(r.out), "")

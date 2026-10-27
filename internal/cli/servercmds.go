@@ -87,7 +87,7 @@ func (a *app) serverCheckCmd() *cobra.Command {
 		Short: "Check what Dockflow needs on the server: Docker, the secrets' tmpfs, the state, ports 80 and 443, the disk",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s, err := a.connect(cmd.Context(), envArg(args), "")
+			s, err := a.attach(cmd.Context(), envArg(args))
 			if err != nil {
 				return err
 			}
@@ -186,7 +186,7 @@ func (a *app) serverUninstallCmd() *cobra.Command {
 			"other containers and Docker's volume plugins stay.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s, err := a.connect(cmd.Context(), envArg(args), "")
+			s, err := a.attach(cmd.Context(), envArg(args))
 			if err != nil {
 				return err
 			}
@@ -207,7 +207,7 @@ func (a *app) serverUninstallCmd() *cobra.Command {
 			case !a.yes:
 				return errs.Usage("server uninstall removes every app of the server: confirm with --yes when there is no terminal")
 			}
-			s, err = a.connect(cmd.Context(), envArg(args), "")
+			s, err = a.attach(cmd.Context(), envArg(args))
 			if err != nil {
 				return err
 			}

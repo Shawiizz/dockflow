@@ -91,6 +91,18 @@ func TestMissingVariableIsAnError(t *testing.T) {
 	}
 }
 
+// A command that acts on what the server runs reads dockflow.yml alone: the variables of the
+// Compose files are not needed.
+func TestConfigOnlyNeedsNoComposeVariable(t *testing.T) {
+	l, err := Load(context.Background(), Options{Dir: "testdata/missing-var", Env: "production", ConfigOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.App.Stack != "shop-production" || len(l.App.Services) != 0 || l.Config.Env != "production" {
+		t.Fatalf("the environment, without the Compose files: %+v", l.App)
+	}
+}
+
 func TestLaterKeyIsRefused(t *testing.T) {
 	_, err := load(t, "later-key", "production")
 	e, ok := errs.As(err)

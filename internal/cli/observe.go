@@ -66,7 +66,7 @@ func (a *app) psCmd() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a.quiet()
-			s, err := a.connect(cmd.Context(), envArg(args), "")
+			s, err := a.attach(cmd.Context(), envArg(args))
 			if err != nil {
 				return err
 			}
@@ -134,7 +134,7 @@ func (a *app) logsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a.quiet()
 			ctx := cmd.Context()
-			s, err := a.connect(ctx, envArg(args), "")
+			s, err := a.attach(ctx, envArg(args))
 			if err != nil {
 				return err
 			}
@@ -148,14 +148,16 @@ func (a *app) logsCmd() *cobra.Command {
 			}
 			if len(args) > 1 {
 				service := args[1]
-				if _, ok := s.loaded.App.Service(service); !ok {
-					return errs.Usage("no service %s in %s", service, s.loaded.Config.Env)
-				}
 				var only []engine.Container
 				for _, c := range cs {
 					if c.Service == service {
 						only = append(only, c)
 					}
+				}
+				// the services the server runs: the Compose files are not read
+				if len(only) == 0 {
+					return errs.Usage("no container of a service %s in %s", service, s.loaded.Config.Env).
+						WithHint("dockflow ps %s lists the services and their containers", s.loaded.Config.Env)
 				}
 				cs = only
 			}

@@ -74,6 +74,9 @@ type Options struct {
 	Git     Git
 	// Server is the name of the environment's server, known once the connection is resolved.
 	Server string
+	// ConfigOnly stops after dockflow.yml: no plugins, no Compose files, so none of the
+	// variables they use is needed. Commands that act on what the server already runs use it.
+	ConfigOnly bool
 }
 
 // Loaded is an environment, ready to plan.
@@ -227,6 +230,14 @@ func Load(ctx context.Context, o Options) (*Loaded, error) {
 	cfg, err := raw.Resolve(env, lookup)
 	if err != nil {
 		return nil, err
+	}
+	if o.ConfigOnly {
+		files := []string{config.FileName}
+		if _, err := os.Stat(filepath.Join(o.Dir, secrets.LocalFile)); err == nil {
+			files = append(files, secrets.LocalFile)
+		}
+		return &Loaded{Raw: raw, Config: cfg, Secrets: store, App: domain.App{Name: cfg.App, Env: env, Stack: domain.Stack(cfg.App, env)},
+			Builtins: builtins, Version: version, Git: o.Git, Files: files}, nil
 	}
 
 	all := map[string]string{}

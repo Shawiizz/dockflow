@@ -108,7 +108,7 @@ func (a *app) secretsCmd() *cobra.Command {
 			if len(args) == 2 {
 				env, name = args[0], args[1]
 			}
-			s, err := a.connect(cmd.Context(), env, "")
+			s, err := a.attach(cmd.Context(), env)
 			if err != nil {
 				return err
 			}

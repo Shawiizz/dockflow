@@ -17,7 +17,7 @@ import (
 // serverChange runs a server-wide operation on env's server, showing its events, and returns
 // the agent's result.
 func (a *app) serverChange(cmd *cobra.Command, env string, tweak func(*agent.Request)) (json.RawMessage, error) {
-	s, err := a.connect(cmd.Context(), env, "")
+	s, err := a.attach(cmd.Context(), env)
 	if err != nil {
 		return nil, err
 	}
