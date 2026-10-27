@@ -21,7 +21,7 @@ v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no featu
 | `deploy --only`, `--skip-build`, `--force`, `--branch`, `-s/--server`, `--no-failover`, `--dry-run`, `--render` | `deploy --only`, `--skip-build`, `--force` (takes over a manual lock), `--branch`; `--dry-run` and `--render` are `plan` and `plan --render`; `-s` and `--no-failover` have no use with one server per environment ([ADR-0023](adr/0023-several-servers-later.md)) | same | M2 |
 | `deploy --accessories`, `--all`, `--skip-accessories` | `deploy --only <services>`: accessories are services ([ADR-0010](adr/0010-rollout-health-jobs.md)) | replaced | M2 |
 | `build [env] [--only] [--push] [--skip-hooks]` | `build` with the same options | same | M2 |
-| `init` (scaffolding, CI workflows for GitHub and GitLab) | `init`, same, plus scheduled backups in the workflow | same | M3 |
+| `init` (scaffolding, CI workflows for GitHub and GitLab) | `init`, same, plus scheduled backups in the workflow | same | M3, backups M4 |
 | `config`, `config show/validate/check/path`, `validate [env]` | `config show [--json]`, `validate [<env>]` | same | M1 |
 | `ui` | `ui` (local web UI, token-protected) | better ([ADR-0016](adr/0016-interfaces.md)) | M5 |
 | `completion`, `help` | `completion`, `help` | same | M1 |

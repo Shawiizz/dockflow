@@ -71,9 +71,11 @@ Exit criteria include a fresh cloud server going from blank to serving an app ov
 
 <Badge text="Coming in M4" variant="caution" />
 
-- **Stateful services:** the full rules for services that hold data.
-- **Backups with restic:** Postgres, MySQL, MongoDB and Redis dumps, volumes and bind mounts, and custom dump commands; a local repository by default and off-site repositories (S3-compatible and others), application-aware quiesce (a database dump, a game server's save), retention and `check`, and the backup of `/var/lib/dockflow` itself.
-- **Commands:** `backup run`, `backup list`, `backup restore` (including from another environment, to restore production data into staging) and `backup prune`, plus scheduled backups in the generated CI workflows.
+- **Stateful services** <Badge text="Done" variant="success" />: the full rules for services that hold data.
+- **Backups with restic** <Badge text="Done" variant="success" />: Postgres, MySQL, MongoDB and Redis dumps, volumes and bind mounts, and custom dump commands; a local repository by default and off-site repositories (S3-compatible and others), application-aware quiesce (a database dump, a game server's save), retention and `check`, and the backup of `/var/lib/dockflow` itself.
+- **Commands** <Badge text="Done" variant="success" />: `backup run`, `backup list`, `backup restore` (including from another environment, to restore production data into staging) and `backup prune`, plus scheduled backups in the generated CI workflows.
+
+Left before M4 is done: a real Minecraft world backed up without stopping the server, and MohistMC's projects moved to v2.
 
 ### M5: Interfaces
 

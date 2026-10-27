@@ -78,14 +78,16 @@ Exit criteria:
 
 ## M4: Data — MohistMC
 
-- **Stateful services:** their rules.
+**Status: in progress.** The items below are done and covered by e2e journeys (`test/e2e/backup*_test.go`) and unit tests. The first exit criterion is an e2e test, against `rclone serve s3` as the S3-compatible storage (`TestOffsiteBackup`). Left: a real Minecraft world and MohistMC's projects.
+
+- **Stateful services:** their rules: one container, `stop-first`, updated before the other services, the only ones backed up (done).
 - **Backups with restic:**
-  - every type;
-  - a local repository by default, off-site repositories;
-  - application-aware quiesce;
-  - retention, `check`;
-  - the backup of `/var/lib/dockflow`.
-- **Commands:** `backup run`, `list`, `restore` (including `--from` another environment) and `prune`, plus scheduled backups in the generated CI workflows.
+  - every type: `postgres`, `mysql`, `mongo`, `redis`, `volume`, `command` (done);
+  - a local repository by default, off-site repositories (done);
+  - application-aware quiesce (done);
+  - retention, `check` (done);
+  - the backup of `/var/lib/dockflow`: `backup run --server` (done).
+- **Commands:** `backup run`, `list`, `restore` (including `--from` another environment) and `prune`, plus scheduled backups in the generated CI workflows (done).
 
 Exit criteria:
 - a Postgres app is backed up to S3-compatible storage, restored into staging from production, and a failing restore stops at the first error;

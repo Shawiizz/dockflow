@@ -56,6 +56,8 @@ var (
 	mariadbImage  = env("DOCKFLOW_E2E_MARIADB_IMAGE", "mirror.gcr.io/library/mariadb:11")
 	redisImage    = env("DOCKFLOW_E2E_REDIS_IMAGE", "mirror.gcr.io/library/redis:7-alpine")
 	mongoImage    = env("DOCKFLOW_E2E_MONGO_IMAGE", "mirror.gcr.io/library/mongo:8")
+	// rclone serve s3 is the S3-compatible storage of off-site backups
+	rcloneImage = env("DOCKFLOW_E2E_RCLONE_IMAGE", "mirror.gcr.io/rclone/rclone:1")
 	// the agent runs restic by this name: the server loads it from here
 	resticImage = agent.DefaultResticImage
 )
@@ -127,7 +129,7 @@ func setup() (int, error) {
 	}
 
 	// the server has no network: it gets its images from here
-	for _, img := range []string{whoamiImage, caddyImage, alpineImage, registryImage, nginxImage, postgresImage, mariadbImage, redisImage, mongoImage, resticImage} {
+	for _, img := range []string{whoamiImage, caddyImage, alpineImage, registryImage, nginxImage, postgresImage, mariadbImage, redisImage, mongoImage, rcloneImage, resticImage} {
 		if _, err := sh("docker", "image", "inspect", img); err != nil {
 			if _, err := sh("docker", "pull", img); err != nil {
 				return 1, err

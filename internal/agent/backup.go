@@ -233,22 +233,18 @@ func lastLines(b []byte, n int) string {
 
 // ensureRepo creates the repository when it does not exist yet.
 func (r *runner) ensureRepo(ctx context.Context, rp *repo) error {
-	res, err := r.restic(ctx, rp, []string{"cat", "config", "--no-lock"}, nil, nil)
+	// init first: it creates a missing bucket, where reading the repository's config would
+	// retry for minutes before giving up
+	res, err := r.restic(ctx, rp, []string{"init"}, nil, nil)
 	if err != nil {
 		return err
 	}
-	switch res.code {
-	case 0:
+	switch {
+	case res.code == 0:
+		r.ev.Info(events.Log, "backup repository created", map[string]any{"line": "restic init"})
 		return nil
-	case resticNoRepository:
-		res, err = r.restic(ctx, rp, []string{"init"}, nil, nil)
-		if err != nil {
-			return err
-		}
-		if res.code == 0 {
-			r.ev.Info(events.Log, "backup repository created", map[string]any{"line": "restic init"})
-			return nil
-		}
+	case strings.Contains(string(res.stderr), "config file already exists"):
+		return nil
 	}
 	return errs.Newf("backup.repository", errs.ExitBackup, "cannot open the backup repository: %s", lastLines(res.stderr, 3)).
 		WithHint("check backups.repository, its credentials in backups.env, and the password")

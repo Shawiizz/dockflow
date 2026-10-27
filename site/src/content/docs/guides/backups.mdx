@@ -95,7 +95,7 @@ backups:
     AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
 ```
 
-`repository` is any restic repository reachable from the server: `s3:` (AWS and S3-compatible storage such as OVH, Scaleway or MinIO), `b2:`, `azure:`, `gs:`, `sftp:`, `rest:`. `env` is passed to restic. Without `password`, Dockflow generates one, as for the local repository, in `/var/lib/dockflow/backups/<id>.password`.
+`repository` is any restic repository reachable from the server: `s3:` (AWS and S3-compatible storage such as OVH, Scaleway or MinIO), `b2:`, `azure:`, `gs:`, `sftp:`, `rest:`. `env` is passed to restic. The first backup creates the repository, and its bucket when the credentials allow it. Without `password`, Dockflow generates one, as for the local repository, in `/var/lib/dockflow/backups/<id>.password`.
 
 The credentials of the databases never leave their containers: the dump and restore commands read them from the image's variables and pass them to the tool in a temporary file, never on a command line. The repository's password and the storage's credentials reach restic through a file on the server's tmpfs, readable by root and removed at the end of the run: never on a command line, in a container's configuration or on disk.
 
