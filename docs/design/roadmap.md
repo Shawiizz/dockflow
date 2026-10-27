@@ -60,6 +60,8 @@ Exit criteria: **shawiizz.dev and Dockflow's docs site deploy with v2 in product
 
 ## M3: Production-ready — ValientRP
 
+**Status: done (2026-10-27).** The exit criteria are met: a blank DigitalOcean droplet serves an app over HTTPS with `server init` and `deploy` only (`test/real/`), and ValientRP's frontend, backend with its Postgres, Minecraft server and RCON panel run on one server with v4.0.0-alpha.6, deployed from GitHub Actions: the shared network `valientrp`, ports 25565 TCP and UDP open by the filter and every other port closed, the graceful stop through an `exec` hook, Cloudflare in front with the `cloudflare` edge. The server was moved in place from Dockflow 1.x, its Postgres volume and world directory reused. Cloudflare stays in its Flexible SSL mode, so the routes are served over HTTP (`tls: false`).
+
 - **Provisioning:** the full `server init` (interactive, hardening, `--nginx`, `--acme-email`) and `server cloud-init`; `check`, `connection`, `status`, `edge`, `upgrade`, `uninstall` (done).
 - **Edges:** `cloudflare`, route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks, (domain, path) uniqueness (done; `none` shipped with M2).
 - **Plugins:** the project's own and the built-in `nginx` and `systemd`, plus `plugins list` (done; `server init --nginx` comes with provisioning).
