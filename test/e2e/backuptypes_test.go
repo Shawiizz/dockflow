@@ -34,7 +34,12 @@ func TestBackupDumpTypes(t *testing.T) {
 volumes: { maria: {}, cache: {}, mongo: {} }
 `, mariadbImage, redisImage, mongoImage))
 	writeFile(t, filepath.Join(dir, "dockflow.yml"), "version: 1\napp: "+app+"\nenvironments:\n  production:\n    deploy: { timeout: 3m }\n")
-	mustSucceed(t, dockflow(t, dir, "deploy"), "deploy")
+	if r := dockflow(t, dir, "deploy"); r.code != 0 {
+		// the databases' own logs say why one did not start
+		logs, _ := inServer("for c in $(docker ps -aq --filter label=com.docker.compose.project=" + stack + "); do " +
+			"docker inspect -f '{{.Name}} {{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}}' $c; docker logs --tail 30 $c 2>&1; done")
+		t.Fatalf("deploy: exit %d\n%s\n%s", r.code, r.out, logs)
+	}
 	t.Cleanup(func() { dockflow(t, dir, "destroy", "production", "--volumes") })
 	in := func(service, cmd string) string {
 		t.Helper()
