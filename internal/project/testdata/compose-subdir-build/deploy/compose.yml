@@ -1,0 +1,6 @@
+# relative paths are this file's, as with docker compose -f deploy/compose.yml
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile

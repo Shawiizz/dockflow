@@ -265,7 +265,7 @@ func Load(ctx context.Context, o Options) (*Loaded, error) {
 	if err != nil {
 		return nil, err
 	}
-	res, err := compose.Convert(proj, cfg.App, env)
+	res, err := compose.Convert(proj, o.Dir, cfg.App, env)
 	if err != nil {
 		return nil, err
 	}

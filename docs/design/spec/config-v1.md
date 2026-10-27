@@ -302,7 +302,7 @@ Docker runs Compose on one host, and so does Dockflow ([ADR-0003](../adr/0003-si
 | `links` | Orders the services, as `depends_on`; a link with an alias is refused (aliases go under `networks`) |
 | `volumes` | Named volumes (`nocopy`, `subpath`), `driver` and `driver_opts` for volume plugins, bind mounts of an absolute path on the server (`create_host_path`, `propagation`; `selinux` is refused, since the Engine API's mounts cannot relabel). A relative bind source (`./data`) is a path of the machine running the CLI and is refused: use a named volume or `uploads` |
 | `environment`, `env_file` | `env_file` paths are read by the CLI, relative to the Compose file |
-| `profiles`, `extends`, `include`, several files merged | Resolved by compose-go |
+| `profiles`, `extends`, `include`, several files merged | Resolved by compose-go. Relative paths (`build.context`, `env_file`) are relative to the first Compose file's folder, the project directory of `docker compose -f` |
 | `privileged`, `devices`, `cap_add`, `cap_drop`, `pid`, `ipc`, `sysctls`, `ulimits`, `tmpfs`, `init`, `user`, `working_dir`, `hostname`, `extra_hosts`, `dns`, `logging`, `labels`, `stop_grace_period`, `stop_signal`, `command`, `entrypoint`, `read_only`, `shm_size`, `gpus`, `cpu_shares`, `cpu_period`, `cpu_quota`, `cpuset`, `memswap_limit`, `mem_swappiness`, `oom_kill_disable`, `oom_score_adj`, `runtime`, `userns_mode`, `cgroup`, `cgroup_parent`, `uts`, `annotations`, `storage_opt` | Passed to the container, as Compose does |
 | `name` | Ignored with a warning: the project name is always `<app>-<env>` |
 | `develop`, `x-*` other than `x-dockflow` | Ignored |

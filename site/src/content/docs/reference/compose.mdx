@@ -90,7 +90,7 @@ worker    shop/worker         1         start-first
 - **Project name.** Always `<app>-<env>`. A top-level `name` in the Compose file has no effect.
 - **Interpolation.** `${VAR}`, `${VAR:-default}`, `${VAR:?message}` and `$$`, with Dockflow's [variables](/reference/dockflow-yml/#variables): built-ins, secrets, then `vars`. A variable with no value and no default is an error. The Compose `.env` file is not read.
 - **`environment: [KEY]`**, a key without a value, takes the value of that variable.
-- **`env_file`** paths are read on your machine, relative to the Compose file.
+- **Relative paths**, such as `build.context` and `env_file`, are relative to the folder of the first Compose file, as with `docker compose -f deploy/compose.yml`: a Compose file in `deploy/` builds the project with `context: ..`. `env_file` is read on your machine.
 - **Names on the server.** Containers, networks and volumes are prefixed with the stack: the volume `pgdata` of `shop` in `production` is `shop-production_pgdata`. Networks and volumes with `external: true` keep their own name and must already exist on the server.
 - **`x-*` keys** other than `x-dockflow`, at the top level or on a service, are ignored, so YAML anchors under `x-common` work.
 

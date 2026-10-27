@@ -59,7 +59,7 @@ var later = map[string]string{}
 var ignoredDeploy = []string{"placement", "endpoint_mode", "rollback_config"}
 
 // Convert turns a loaded project into the domain model of one app environment.
-func Convert(p *types.Project, app, env string) (*Result, error) {
+func Convert(p *types.Project, dir, app, env string) (*Result, error) {
 	stack := domain.Stack(app, env)
 	r := &Result{App: domain.App{Name: app, Env: env, Stack: stack}}
 	for _, f := range p.ComposeFiles {
@@ -86,7 +86,7 @@ func Convert(p *types.Project, app, env string) (*Result, error) {
 
 	for _, name := range p.ServiceNames() {
 		svc := p.Services[name]
-		s, warnings, err := convertService(p, stack, svc)
+		s, warnings, err := convertService(p, dir, stack, svc)
 		if err != nil {
 			return nil, err
 		}
@@ -291,7 +291,7 @@ func convertBuild(p *types.Project, s types.ServiceConfig, r *Result) (*image.Bu
 	return out, warnings, nil
 }
 
-func convertService(p *types.Project, stack string, s types.ServiceConfig) (*domain.Service, []string, error) {
+func convertService(p *types.Project, dir, stack string, s types.ServiceConfig) (*domain.Service, []string, error) {
 	at := "service " + s.Name
 	var warnings []string
 	if !domain.ServiceName.MatchString(s.Name) {
@@ -412,7 +412,7 @@ func convertService(p *types.Project, stack string, s types.ServiceConfig) (*dom
 		case types.VolumeTypeBind:
 			// Compose resolves ./data against the project: a path of this machine, which the
 			// server does not have
-			if rel, err := filepath.Rel(p.WorkingDir, v.Source); p.WorkingDir != "" && err == nil && !strings.HasPrefix(rel, "..") {
+			if inside(dir, v.Source) || inside(p.WorkingDir, v.Source) {
 				return nil, nil, errs.Config("%s: the bind mount %s is a path of the project on this machine, not of the server", at, v.Source).
 					WithHint("use a named volume, an absolute path on the server, or send the files with uploads: in dockflow.yml")
 			}
@@ -906,4 +906,17 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// inside tells whether path is dir or under it.
+func inside(dir, path string) bool {
+	if dir == "" {
+		return false
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(abs, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
 }

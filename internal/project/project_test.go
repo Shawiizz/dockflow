@@ -117,6 +117,23 @@ func TestBuildIsConverted(t *testing.T) {
 	testutil.Golden(t, "build", b)
 }
 
+// A Compose file in a folder of the project resolves its paths from that folder, as Compose
+// does; a bind mount of the project, from there too, is still refused.
+func TestComposeFileInAFolder(t *testing.T) {
+	_, err := load(t, "compose-subdir", "production")
+	if e, ok := errs.As(err); !ok || !strings.Contains(e.Message, "data") {
+		t.Fatalf("../data is a folder of the project: %v", err)
+	}
+	l, err := load(t, "compose-subdir-build", "production")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, _ := filepath.Abs("testdata/compose-subdir-build")
+	if b := l.Builds[0]; b.Context != dir || b.Dockerfile != "deploy/Dockerfile" {
+		t.Fatalf("the context is the project, from deploy/: %+v", b)
+	}
+}
+
 func contains(list []string, s string) bool {
 	for _, v := range list {
 		if v == s {

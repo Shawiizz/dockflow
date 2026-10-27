@@ -49,7 +49,9 @@ func Load(ctx context.Context, dir, stack string, files, profiles []string, vars
 	sort.Strings(env)
 
 	opts, err := cli.NewProjectOptions(paths,
-		cli.WithWorkingDirectory(dir),
+		// relative paths (build contexts, env files) are the first Compose file's, as with
+		// docker compose -f
+		cli.WithWorkingDirectory(filepath.Dir(paths[0])),
 		cli.WithName(stack),
 		cli.WithEnv(env),
 		cli.WithProfiles(profiles),
