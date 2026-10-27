@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"github.com/Shawiizz/dockflow/internal/agent"
 )
 
 var (
@@ -50,6 +52,9 @@ var (
 	alpineImage   = env("DOCKFLOW_E2E_ALPINE_IMAGE", "mirror.gcr.io/library/alpine:3")
 	registryImage = env("DOCKFLOW_E2E_REGISTRY_IMAGE", "mirror.gcr.io/library/registry:3")
 	nginxImage    = env("DOCKFLOW_E2E_NGINX_IMAGE", "mirror.gcr.io/library/nginx:alpine")
+	postgresImage = env("DOCKFLOW_E2E_POSTGRES_IMAGE", "mirror.gcr.io/library/postgres:17-alpine")
+	// the agent runs restic by this name: the server loads it from here
+	resticImage = agent.DefaultResticImage
 )
 
 func TestMain(m *testing.M) {
@@ -119,7 +124,7 @@ func setup() (int, error) {
 	}
 
 	// the server has no network: it gets its images from here
-	for _, img := range []string{whoamiImage, caddyImage, alpineImage, registryImage, nginxImage} {
+	for _, img := range []string{whoamiImage, caddyImage, alpineImage, registryImage, nginxImage, postgresImage, resticImage} {
 		if _, err := sh("docker", "image", "inspect", img); err != nil {
 			if _, err := sh("docker", "pull", img); err != nil {
 				return 1, err

@@ -37,6 +37,7 @@ const (
 	RoutesApplied     = "routes.applied"
 	FilterApplied     = "filter.applied"
 	WatchdogRestarted = "watchdog.restarted"
+	BackupFinished    = "backup.finished"
 	RollbackStarted   = "rollback.started"
 	RollbackFinished  = "rollback.finished"
 	CancelRequested   = "cancel.requested"

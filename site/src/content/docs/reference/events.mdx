@@ -110,6 +110,7 @@ An action's `kind` is one of `network.create`, `volume.create`, `service.create`
 | `switch.changed` | info | `service`, `from_release`, `to_release`, `routes` (each domain followed by its path) |
 | `drain.started` | info | `service`, `release` (the old one), `timeout_ms` |
 | `routes.applied` | debug | `domains` |
+| `backup.finished` | info | `service`, `snapshot` (restic's short id), `bytes_added` (new data stored), `duration_ms` |
 | `filter.applied` | info | `ports`: what the [port filter](/project/security/#the-port-filter) lets in, each `{port, protocol, from, why}`; `why` is `SSH`, `the switch` or the app that lists it |
 
 ### Jobs, hooks and uploads
@@ -142,7 +143,6 @@ The event schema reserves these types for features that are not available yet. T
 | `lock.taken_over`, `lock.lost` | `scope`, `previous_holder` / `new_holder` | Not emitted: the lock cannot be taken over |
 | `push.progress` | `image`, `bytes_sent`, `bytes_total` | Not emitted yet |
 | `upload.progress` | `dest`, `files_sent`, `files_total`, `bytes_sent`, `bytes_total` | Not emitted yet |
-| `backup.finished` | `service`, `snapshot`, `bytes_added`, `duration_ms` | <Badge text="Coming in M4" variant="caution" /> |
 
 ## run.finished
 

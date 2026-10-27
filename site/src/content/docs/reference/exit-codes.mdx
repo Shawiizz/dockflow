@@ -25,6 +25,7 @@ Every `dockflow` command ends with an exit code that tells a script or a CI job 
 | `9` | Degraded | The run failed and was not rolled back: the environment is degraded | A failed health check with `on_failure: fail` or `--no-rollback`, a rollback that failed too; `dockflow diagnose` found a problem |
 | `10` | Lock lost | The lock was lost during the run | Reserved: the lock is a kernel `flock` held until the agent exits, so this version never reports it |
 | `11` | Hook | A fatal hook failed before anything changed | A fatal `before_build`, `after_build` or `before_deploy` hook that exited with a non-zero code |
+| `12` | Backup | A backup failed | A dump that exits with an error, a repository that cannot be opened or fails its check, a service that is not running |
 | `130` | Interrupted | The run was cancelled, and rolled back if it had started | Ctrl+C, `dockflow cancel`, answering no at a confirmation prompt, detaching with a second Ctrl+C |
 
 `dockflow exec`, `dockflow run` and `dockflow ssh` exit with the exit code of the command they ran. When they cannot start it, they use the codes above.
@@ -145,6 +146,19 @@ The codes below are the ones you are most likely to meet. A few errors use a gen
 Exit code 8 means the deploy failed but your users still see the previous release. Exit code 9 means they may not: the environment is left as the failed run put it. Treat 9 as the one that pages someone.
 </Aside>
 
+### Backups
+
+| Code | Exit | Meaning | What to do |
+|---|---|---|---|
+| `backup.none` | 2 or 3 | No service of the current release declares a backup, or the one named does not. | Set `x-dockflow.backup` on the stateful services, and deploy. |
+| `backup.failed` | 12 | The backup of a service failed; its reason is in a warning above. A failed dump keeps no snapshot. | Read the dump's error. |
+| `backup.not_running` | 12 | The service has no running container to dump. | Start it with `dockflow restart`. |
+| `backup.repository` | 12 | The repository cannot be opened or listed. | Check `backups.repository`, the credentials in `backups.env`, and the password. |
+| `backup.snapshot` | 2 or 12 | No snapshot to restore, or none matches `--snapshot`. | `dockflow backup list` shows the snapshots. |
+| `backup.restore_failed` | 12 | The restore failed; the message gives the restore command's error. A Postgres restore is one transaction: nothing of it stays. | Read the error, fix the target, and restore again. |
+| `backup.retention` | 12 | `backup prune` could not apply a retention. | Read restic's error in the message. |
+| `backup.check` | 12 | The repository failed `restic check`. | Run `restic check` on the repository to see its errors. |
+
 ## Warning codes
 
 Warnings never change the exit code. They appear as [`warning` events](/reference/events/#warning) with a `code`:
@@ -157,6 +171,8 @@ Warnings never change the exit code. They appear as [`warning` events](/referenc
 | `notify.failed` | A webhook could not be delivered. Webhooks never change the outcome of a run. |
 | `run.abandoned`, `run.leftover`, `run.restarted` | An earlier run stopped before finishing; this run marked its release abandoned, removed its leftover containers or restarted the containers it had stopped |
 | `cleanup.failed`, `destroy.network`, `state.write_failed` | A cleanup step (old containers, images, registry manifests, release files, networks) or a state write failed; it does not change the outcome of the run |
+| `backup.password_generated` | The backups' password was generated and stored on the server: keep a copy elsewhere |
+| `backup.resume` | A volume backup could not start the service again, or run its `post` command |
 | `agent.signal_failed` | The CLI could not forward Ctrl+C to the agent |
 | `upgrade.pull` | `server upgrade` could not pull an image; the server keeps the one it has |
 | `uninstall.network`, `uninstall.volume`, `uninstall.filter` | `server uninstall` could not remove a network, a volume or the port filter's rules; the message says which |

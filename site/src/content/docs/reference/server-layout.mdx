@@ -16,6 +16,9 @@ Dockflow keeps no database and no service of its own besides the switch, the reg
 ├── server.json                       the server's settings
 ├── server.lock                       held while the switch's configuration changes
 ├── switch/routes/<stack>.json        the routes the switch serves for each app environment
+├── backups/
+│   ├── <repository>.password         a backup repository's password, when Dockflow generated it
+│   └── <repository>.pruned           when restic last reclaimed the repository's space
 └── apps/<stack>/
     ├── lock                          held by the running agent
     ├── lock.json                     who holds the lock
@@ -171,6 +174,8 @@ Use `docker compose -p` to look, not to change. A container started or recreated
 | `dockflow-switch-config` | Caddy's saved configuration |
 | `dockflow-switch-admin` | The switch's admin socket, mounted only by the switch and the agents, at `/run/dockflow-switch` |
 | `dockflow-registry-data` | The registry's storage |
+| `dockflow-backups` | The restic repository of the [backups](/guides/backups/), when `backups` sets no off-site one |
+| `dockflow-backups-cache` | restic's cache |
 
 ## Ports
 
@@ -213,7 +218,7 @@ The switch's admin API listens on no port at all, only on a unix socket.
 4. Remove the switch's and the registry's volumes:
 
    ```sh
-   docker volume rm dockflow-switch-data dockflow-switch-config dockflow-switch-admin dockflow-registry-data
+   docker volume rm dockflow-switch-data dockflow-switch-config dockflow-switch-admin dockflow-registry-data dockflow-backups dockflow-backups-cache
    ```
 
 5. Remove the images:

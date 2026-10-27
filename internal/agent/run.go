@@ -131,6 +131,14 @@ func (r *runner) dispatch(ctx context.Context) events.RunFinishedData {
 		return r.serverCheck(ctx)
 	case OpServerUninstall:
 		return r.uninstall(ctx)
+	case OpBackupRun:
+		return r.backupRun(ctx)
+	case OpBackupList:
+		return r.backupList(ctx)
+	case OpBackupRestore:
+		return r.backupRestore(ctx)
+	case OpBackupPrune:
+		return r.backupPrune(ctx)
 	}
 	return failed(errs.Usage("unknown operation %q", r.req.Op))
 }

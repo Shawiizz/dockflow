@@ -77,7 +77,7 @@ No event carries a secret value. Text fields (`msg`, `line`, `error.message`) ar
 | `hook.finished` | `name`, `target`, `exit_code`, `fatal` |
 | `upload.progress` | `dest?`, `files_sent`, `files_total`, `bytes_sent`, `bytes_total`; at most once a second, and once at the end (`debug`). Without `dest`, it counts the files of every destination, sent together: only those the server lacks |
 | `upload.finished` | `dest`, `files_changed`, `files_deleted` |
-| `backup.finished` | `service`, `snapshot`, `bytes_added`, `duration_ms` (M4, with backups) |
+| `backup.finished` | `service`, `snapshot` (restic's short id), `bytes_added`, `duration_ms` |
 | `rollback.started` | `reason`, `target_seq?` |
 | `rollback.finished` | `ok` |
 | `cancel.requested` | `by` (`signal`, `cancel`) |

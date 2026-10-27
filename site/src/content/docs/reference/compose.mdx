@@ -170,6 +170,7 @@ Dockflow's settings for one service. Values are interpolated like the rest of th
 | `health` | map | see [health](#health) | When a new container counts as healthy. |
 | `stateful` | boolean | `false` | A service that holds data, like a database: one container, replaced with `stop-first`. |
 | `run` | string | none | `before` or `after`: the service is a [job](#run), run to completion on each deploy. |
+| `backup` | map | none | How the service is [backed up](#backup); `stateful` services only. |
 
 ### `routes`
 
@@ -275,11 +276,19 @@ A job is a service run to completion on each deploy, in one container, never res
 
 A service that another one waits for with `depends_on: { condition: service_completed_successfully }` is a `before` job without `run`. Jobs run on a `deploy` that changes something, in `depends_on` order; not on `rollback`, `restart` or `scale`. See the [jobs guide](/guides/jobs/).
 
-### Not available yet
+### `backup`
 
-| Key | Arrives with |
-|---|---|
-| `backup` | <Badge text="Coming in M4" variant="caution" /> |
+How a `stateful` service is backed up with restic: `type` (`postgres`, `volume` or `command`; `mysql`, `mongo` and `redis` <Badge text="Coming in M4" variant="caution" />), `database`, `dump_options`, `volumes`, `quiesce` (`stop`, `none` or `{ exec: { pre, post } }`), `dump` and `restore`, and the retention `keep`. Every option is in the [backups guide](/guides/backups/#what-is-backed-up).
+
+```yaml
+# compose.yml (fragment)
+services:
+  db:
+    image: postgres:17
+    x-dockflow:
+      stateful: true
+      backup: { type: postgres, keep: { daily: 14, weekly: 8 } }
+```
 
 ## Refused combinations
 

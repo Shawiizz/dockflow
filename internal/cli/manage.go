@@ -97,7 +97,7 @@ func (a *app) destroyCmd() *cobra.Command {
 		Short: "Remove an environment, or some of its services, from the server",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			l, err := a.load(cmd.Context(), envArg(args), "")
+			l, err := a.loadProject(cmd.Context(), envArg(args), "", true)
 			if err != nil {
 				return err
 			}

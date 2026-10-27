@@ -256,7 +256,7 @@ services:
       backup:                        # ADR-0015; stateful services only
         type: postgres               # postgres, mysql, mongo, redis, volume or command
         database: shop
-        dump_options: "--no-owner"
+        dump_options: "--no-owner"   # split on spaces
         volumes: [pgdata]            # volume type
         quiesce: { exec: { pre: ["rcon-cli", "save-off"], post: ["rcon-cli", "save-on"] } }
         dump: ["sh", "-c", "my-dump"]       # command type

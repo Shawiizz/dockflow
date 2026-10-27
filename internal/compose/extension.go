@@ -3,10 +3,12 @@ package compose
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
 
+	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/errs"
 )
 
@@ -16,12 +18,12 @@ const ExtensionKey = "x-dockflow"
 // Extension is x-dockflow on a service (docs/design/spec/config-v1.md). Keys of the spec that
 // arrive in later milestones are refused with a clear message.
 type Extension struct {
-	Routes   []RouteExt       `json:"routes"`
-	Rollout  *RolloutExt      `json:"rollout"`
-	Health   *HealthExt       `json:"health"`
-	Stateful bool             `json:"stateful"`
-	Run      string           `json:"run"`
-	Backup   *json.RawMessage `json:"backup"`
+	Routes   []RouteExt  `json:"routes"`
+	Rollout  *RolloutExt `json:"rollout"`
+	Health   *HealthExt  `json:"health"`
+	Stateful bool        `json:"stateful"`
+	Run      string      `json:"run"`
+	Backup   *BackupExt  `json:"backup"`
 }
 
 // RouteExt is one route.
@@ -133,14 +135,43 @@ func readExtension(s types.ServiceConfig) (Extension, error) {
 		return x, errs.Config("service %s: %s: %s", s.Name, ExtensionKey, msg).
 			WithHint("its keys are listed in docs/design/spec/config-v1.md")
 	}
-	switch {
-	case x.Backup != nil:
-		return x, notYetExt(s.Name, "backup", "M4")
-	}
 	return x, nil
 }
 
-func notYetExt(service, key, milestone string) error {
-	return errs.Config("service %s: x-dockflow.%s is not available yet in this version of Dockflow", service, key).
-		WithHint("it arrives with milestone %s (docs/design/roadmap.md)", milestone)
+// BackupExt is x-dockflow.backup (ADR-0015).
+type BackupExt struct {
+	Type           string       `json:"type"`
+	Database       string       `json:"database"`
+	DumpOptions    string       `json:"dump_options"`
+	RestoreOptions string       `json:"restore_options"`
+	Volumes        []string     `json:"volumes"`
+	Quiesce        QuiesceExt   `json:"quiesce"`
+	Dump           []string     `json:"dump"`
+	Restore        []string     `json:"restore"`
+	Keep           *domain.Keep `json:"keep"`
+}
+
+// QuiesceExt is backup.quiesce: stop or none, or { exec: { pre, post } }.
+type QuiesceExt struct {
+	Mode      string
+	Pre, Post []string
+}
+
+func (q *QuiesceExt) UnmarshalJSON(b []byte) error {
+	if err := json.Unmarshal(b, &q.Mode); err == nil {
+		return nil
+	}
+	var v struct {
+		Exec *struct {
+			Pre  []string `json:"pre"`
+			Post []string `json:"post"`
+		} `json:"exec"`
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&v); err != nil || v.Exec == nil {
+		return fmt.Errorf("quiesce is stop, none, or { exec: { pre: [...], post: [...] } }")
+	}
+	q.Mode, q.Pre, q.Post = domain.QuiesceExec, v.Exec.Pre, v.Exec.Post
+	return nil
 }

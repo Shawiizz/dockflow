@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:17
+    volumes: [pgdata:/var/lib/postgresql/data]
+    x-dockflow:
+      stateful: true
+      backup: { type: postgres, dump_options: "--no-owner --no-acl", keep: { daily: 14 } }
+  minecraft:
+    image: itzg/minecraft-server
+    volumes:
+      - world:/data
+      - /srv/mods:/mods
+    x-dockflow:
+      stateful: true
+      backup:
+        type: volume
+        volumes: [world]
+        quiesce: { exec: { pre: ["rcon-cli", "save-off"], post: ["rcon-cli", "save-on"] } }
+volumes:
+  pgdata: {}
+  world: {}

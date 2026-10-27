@@ -64,6 +64,17 @@ Options:
 
 There is no scheduler on the server in v1. Backups are triggered by the user's CI on a schedule (the generated workflow includes one) or by any cron that runs the CLI. A container that schedules its own backups, as the Minecraft server does, keeps doing so. A cluster scheduler may come with a permanent agent, behind its own ADR.
 
+### Implementation (M4)
+
+- **Dumps stream** from an `exec` in the service's running container (`pg_dump` is that image's, so the server's version) into `restic backup --stdin`, rather than a job writing to a temporary volume: no copy on disk, the same tool version. A dump that fails after restic started keeps no snapshot: it is forgotten.
+- **restic** runs in one-off containers of `restic/restic:0.18.0`, pinned by digest when pulled. The repository's location, its password and the storage's credentials are written to a file on the secrets' tmpfs (`/run/dockflow/backup-<run>/env`, 0600), which the container sources: never in a command line or in a container's configuration. The file is removed at the end of the run.
+- **The local repository** is the `dockflow-backups` volume; restic's cache is `dockflow-backups-cache`. Generated passwords are in `/var/lib/dockflow/backups/<repository>.password`, generated on the first `backup run`, never by `backup list`. `server uninstall` keeps the repository and its password unless `--volumes`.
+- **Retention:** without `keep`, `{ last: 7, daily: 14, weekly: 8, monthly: 6 }`. Snapshots are grouped by restic's default, host and paths, within the service's tags. `--prune` joins the first `forget` of a day.
+- **check** reads 1% of the data after each `backup run` that made a snapshot.
+- A failed backup exits with code 12, a new code, after the other services are backed up.
+- **Restore** streams `restic dump` into the restore command in the running container; volumes are restored one by one, `restic restore <id>:/data<target> --target /data<target> --delete`, with the service stopped. `--from` is resolved by the CLI, which sends the other environment's repository and secrets.
+- First slices: `backup run`, `list`, `restore` and `prune`, the `postgres`, `volume` and `command` types. `--server` and the `mysql`, `mongo` and `redis` types follow.
+
 ## Consequences
 
 - Every 1.x backup type has an equivalent, and the default needs no configuration, as in 1.x.

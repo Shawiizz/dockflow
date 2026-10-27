@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -52,10 +53,18 @@ type Settings struct {
 	Firewall  *Firewall       `yaml:"firewall"`
 	Plugins   []PluginUse     `yaml:"plugins"`
 	Routes    []RouteEntry    `yaml:"routes"`
+	Backups   *Backups        `yaml:"backups"`
+}
 
-	// Keys of the specification that arrive in later milestones. They are refused with a clear
-	// message instead of being ignored.
-	Backups *yaml.Node `yaml:"backups"`
+// Backups is where the environment's backups go (ADR-0015): without it, a restic repository on
+// the server.
+type Backups struct {
+	// Repository is a restic repository: s3:…, b2:…, sftp:…, rest:…, or a path on the server.
+	Repository string `yaml:"repository"`
+	// Password opens the repository; without it, Dockflow generates one on the server.
+	Password string `yaml:"password"`
+	// Env is passed to restic: the storage's credentials.
+	Env map[string]string `yaml:"env"`
 }
 
 // RouteEntry is a route of dockflow.yml, which targets no service of the app (ADR-0011):
@@ -288,12 +297,15 @@ type Resolved struct {
 	Plugins []PluginUse
 	// Routes are the routes of dockflow.yml, converted with the app.
 	Routes []RouteEntry
+	// Backups is nil for the restic repository on the server.
+	Backups *Backups
 }
 
 // laterKeys are spec keys not available yet, with the milestone that brings them.
-var laterKeys = map[string]string{
-	"backups": "M4",
-}
+var laterKeys = map[string]string{}
+
+// envKey is an environment variable's name.
+var envKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // Find returns the project directory: dir, or the closest parent that holds dockflow.yml.
 func Find(dir string) (string, error) {
@@ -507,6 +519,21 @@ func (r *Raw) Resolve(env string, lookup Lookup) (*Resolved, error) {
 		}
 		if s.Routes != nil {
 			res.Routes = s.Routes
+		}
+		if s.Backups != nil {
+			if s.Backups.Repository == "" {
+				return nil, errs.Config("backups.repository is required: a restic repository like s3:s3.amazonaws.com/bucket/app").
+					WithHint("leave backups out for a repository on the server")
+			}
+			if strings.HasPrefix(s.Backups.Repository, "/") || strings.HasPrefix(s.Backups.Repository, "local:") {
+				return nil, errs.Config("backups.repository %q is a path: leave backups out for a repository on the server, or give an off-site one", s.Backups.Repository)
+			}
+			for k := range s.Backups.Env {
+				if !envKey.MatchString(k) {
+					return nil, errs.Config("backups.env: %q is not an environment variable name", k)
+				}
+			}
+			res.Backups = s.Backups
 		}
 		if s.Templates != nil {
 			t, err := templates(r.Dir, s.Templates)

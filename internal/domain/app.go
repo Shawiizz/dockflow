@@ -153,6 +153,8 @@ type Service struct {
 	Routes    []Route      `json:"routes,omitempty"`
 	DependsOn []Dependency `json:"depends_on,omitempty"`
 	Stateful  bool         `json:"stateful,omitempty"`
+	// Backup is how the service is backed up (ADR-0015); nil when it is not.
+	Backup *Backup `json:"backup,omitempty"`
 	// Drain is how long requests in flight are given before old containers stop (switch).
 	Drain Duration `json:"drain"`
 	// HealthGrace is how long a container without a healthcheck must run to count as healthy.

@@ -1,6 +1,0 @@
-version: 1
-app: shop
-backups:
-  repository: s3:example/shop
-environments:
-  production: {}

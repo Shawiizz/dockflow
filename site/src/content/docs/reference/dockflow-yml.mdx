@@ -272,15 +272,25 @@ Dockflow reads `~/.ssh/config` as OpenSSH does for `HostName`, `Port`, `User` an
 | `host_key` | string | none | The server's host key fingerprint, `SHA256:…`. Without it, the key must be in `~/.ssh/known_hosts`. A key that is neither pinned nor known is refused. |
 | `name` | string | `main` | The server's name, available as `DOCKFLOW_SERVER`. Matches `^[a-z][a-z0-9_-]{0,31}$`. |
 
-## Not available yet
+## backups
 
-These keys are part of the format, but this version refuses them with "not available yet" and exit code 3. Remove them for now.
+Where the environment's [backups](/guides/backups/) go. Without it, a restic repository on the server, in the `dockflow-backups` volume, with a password Dockflow generates.
 
-| Key | Where | Arrives with |
-|---|---|---|
-| `backups` | top level or environment | <Badge text="Coming in M4" variant="caution" /> |
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `repository` | string | required | An off-site restic repository: `s3:`, `b2:`, `azure:`, `gs:`, `sftp:` or `rest:`. A path is refused: leave `backups` out for the repository on the server. |
+| `password` | string | generated | The repository's password, from a secret: `${RESTIC_PASSWORD}`. Without it, Dockflow generates one and stores it in `/var/lib/dockflow/backups/` on the server. |
+| `env` | map | none | Variables passed to restic: the storage's credentials, such as `AWS_ACCESS_KEY_ID`. |
 
-See the [roadmap](/project/roadmap/).
+```yaml
+# dockflow.yml
+backups:
+  repository: s3:s3.eu-west-1.amazonaws.com/acme-backups/${DOCKFLOW_APP}
+  password: ${RESTIC_PASSWORD}
+  env:
+    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+```
 
 ## Naming rules
 

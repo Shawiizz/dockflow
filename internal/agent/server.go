@@ -315,8 +315,13 @@ func (r *runner) uninstall(ctx context.Context) events.RunFinishedData {
 		}
 	}
 	// the switch's admin volume is the agents' too: the CLI removes it once this one is done
-	for _, v := range []string{switchDataVolume, switchConfigVolume, registryVolume} {
-		if err := r.Engine.RemoveVolume(ctx, v); err != nil {
+	systemVolumes := []string{switchDataVolume, switchConfigVolume, registryVolume}
+	if r.req.Volumes {
+		// the backups go with the data, and only then
+		systemVolumes = append(systemVolumes, BackupsVolume, BackupsCacheVolume)
+	}
+	for _, v := range systemVolumes {
+		if err := r.Engine.RemoveVolume(ctx, v); err != nil && (v != BackupsVolume && v != BackupsCacheVolume) {
 			r.warn("uninstall.volume", err.Error())
 		}
 	}
@@ -334,10 +339,11 @@ func (r *runner) uninstall(ctx context.Context) events.RunFinishedData {
 			r.warn("uninstall.filter", "the port filter could not be removed: "+err.Error())
 		}
 	}
-	// the state, but the server lock this run holds
+	// the state, but the server lock this run holds, and without --volumes the backups'
+	// passwords: the backups stay, and stay readable
 	entries, _ := os.ReadDir(r.Store.Root())
 	for _, e := range entries {
-		if e.Name() == "server.lock" {
+		if e.Name() == "server.lock" || (e.Name() == "backups" && !r.req.Volumes) {
 			continue
 		}
 		if err := os.RemoveAll(filepath.Join(r.Store.Root(), e.Name())); err != nil {

@@ -54,7 +54,32 @@ const (
 	OpServerStatus      = "server.status"
 	OpServerCheck       = "server.check"
 	OpServerUninstall   = "server.uninstall"
+	// Backups (ADR-0015).
+	OpBackupRun     = "backup.run"
+	OpBackupList    = "backup.list"
+	OpBackupRestore = "backup.restore"
+	OpBackupPrune   = "backup.prune"
 )
+
+// BackupRequest is where an environment's backups go, and which service a backup operation is
+// about.
+type BackupRequest struct {
+	// Repository is an off-site restic repository; empty for the one on the server.
+	Repository string `json:"repository,omitempty"`
+	// Password opens the repository; empty for the one Dockflow generated on the server.
+	Password string `json:"password,omitempty"`
+	// Env is passed to restic: the storage's credentials.
+	Env map[string]string `json:"env,omitempty"`
+	// Service limits the operation to one service.
+	Service string `json:"service,omitempty"`
+	// Snapshot is what restore restores: a snapshot id, latest, or a date (the newest snapshot
+	// taken by then).
+	Snapshot string `json:"snapshot,omitempty"`
+	// From is the environment whose snapshots restore reads; empty for this one.
+	From string `json:"from,omitempty"`
+	// Keep replaces the services' retention (prune).
+	Keep *domain.Keep `json:"keep,omitempty"`
+}
 
 // Request is the agent's input. Secret values reach the agent only here, on stdin, never in its
 // environment or command line.
@@ -121,6 +146,8 @@ type Request struct {
 	Volumes bool `json:"volumes,omitempty"`
 	// Prune selects what prune removes.
 	Prune *PruneRequest `json:"prune,omitempty"`
+	// Backup is the repository and the service of backup operations.
+	Backup *BackupRequest `json:"backup,omitempty"`
 
 	// Lock describes a manual lock (lock.acquire).
 	Lock *domain.LockInfo `json:"lock,omitempty"`

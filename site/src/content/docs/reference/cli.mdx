@@ -405,6 +405,46 @@ Without a kind, removes stopped containers, untagged images and networks that Do
 | `--registry` | `false` | The layers of the server's registry that no kept release uses; run it outside deploys. |
 | `--volumes` | `false` | Unused anonymous volumes. |
 
+## backup
+
+### backup run
+
+```sh
+dockflow backup run [<env>] [<service>] [--wait-lock <duration>]
+```
+
+Back up the services of the current release that declare [`x-dockflow.backup`](/reference/compose/#backup), or the one named, to the environment's restic repository, then apply each one's retention and check a sample of the repository. It takes the environment's lock; `--wait-lock 10m` waits for a deploy to finish. A failed backup exits with code 12, after the other services. See [backups](/guides/backups/).
+
+### backup list
+
+```sh
+dockflow backup list [<env>] [<service>]
+```
+
+The environment's snapshots, or one service's, oldest first: id, time, service, release and size. `--json` prints them as one document.
+
+### backup restore
+
+```sh
+dockflow backup restore [<env>] <service> [--snapshot <id|latest|date>] [--from <env>] [--wait-lock <duration>]
+```
+
+Restore a snapshot of the service into the current release, under the environment's lock: a dump with `pg_restore --single-transaction --exit-on-error` (or the `restore` command), volumes with the service stopped. It asks for confirmation on a terminal, and needs `--yes` without one. A failed restore exits with code 12. See [restoring](/guides/backups/#restoring).
+
+| Option | Default | Description |
+|---|---|---|
+| `--snapshot string` | `latest` | A snapshot id or its beginning, `latest`, or a date (`2026-10-27`) or time (RFC 3339) for the newest snapshot taken by then. |
+| `--from string` | this environment | Restore a snapshot of another environment, read from its repository. |
+| `--wait-lock duration` | `0` | Wait up to this long for the environment's lock. |
+
+### backup prune
+
+```sh
+dockflow backup prune [<env>] [<service>] [--keep-last n] [--keep-hourly n] [--keep-daily n] [--keep-weekly n] [--keep-monthly n]
+```
+
+Apply the services' retention, or the one given, and reclaim the space of the forgotten snapshots.
+
 ## lock
 
 ```sh
@@ -575,13 +615,13 @@ Pulls the images of the switch and of the registry again (the tags `server init`
 dockflow server uninstall [<env>] [--volumes]
 ```
 
-Removes Dockflow from the server: every app environment (their containers, networks, Compose secrets and releases; with `--volumes`, their volumes and data), the switch with its certificates, the registry with its images, the watchdog, the shared networks, the port filter's rules, the finished agents and `/var/lib/dockflow`. The deploy user, Docker, the containers Dockflow did not create and Docker's volume plugins stay.
+Removes Dockflow from the server: every app environment (their containers, networks, Compose secrets and releases; with `--volumes`, their volumes and data), the switch with its certificates, the registry with its images, the watchdog, the shared networks, the port filter's rules, the finished agents and `/var/lib/dockflow`. The backups stay, with their passwords in `/var/lib/dockflow/backups/`, unless `--volumes` is given. The deploy user, Docker, the containers Dockflow did not create and Docker's volume plugins stay.
 
 On a terminal, it asks you to type the server's name. Without a terminal, it needs `--yes`. Running `server init` afterwards installs Dockflow again, on an empty server.
 
 | Option | Default | Description |
 |---|---|---|
-| `--volumes` | `false` | Also delete the volumes of the app environments, with their data. |
+| `--volumes` | `false` | Also delete the volumes of the app environments, with their data, and the backups on the server. |
 
 ### server cloud-init
 
@@ -703,4 +743,4 @@ Help about any command, the same as `dockflow <command> --help`.
 
 ## Not available yet
 
-These commands are part of the design but not of this version: `backup` <Badge text="Coming in M4" variant="caution" />, `ui` and `mcp` <Badge text="Coming in M5" variant="caution" />. See the [roadmap](/project/roadmap/).
+These commands are part of the design but not of this version: `ui` and `mcp` <Badge text="Coming in M5" variant="caution" />. See the [roadmap](/project/roadmap/).

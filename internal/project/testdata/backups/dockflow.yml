@@ -1,0 +1,9 @@
+version: 1
+app: shop
+backups:
+  repository: s3:s3.example.com/backups/${DOCKFLOW_APP}
+  password: ${RESTIC_PASSWORD}
+  env:
+    AWS_ACCESS_KEY_ID: ${S3_KEY}
+environments:
+  production: {}

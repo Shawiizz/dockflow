@@ -16,6 +16,9 @@ All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/000
 ├── server.json                     server settings: edge, switch and registry images, filter state, versions
 ├── server.lock                     empty file, held with flock while the switch's configuration changes
 ├── switch/routes/<stack>.json      the routes the switch serves for each app environment
+├── backups/<repository>.password   a backup repository's password, when Dockflow generated it (ADR-0015);
+│                                   <repository> is local, or the first 16 hex digits of the sha256 of its URL
+├── backups/<repository>.pruned     when restic forget --prune last ran on it, RFC 3339
 ├── apps/<stack>/
 │   ├── lock                        empty file, held with flock by the running agent
 │   ├── lock.json                   who holds the lock (informational)

@@ -103,11 +103,22 @@ func TestConfigOnlyNeedsNoComposeVariable(t *testing.T) {
 	}
 }
 
-func TestLaterKeyIsRefused(t *testing.T) {
-	_, err := load(t, "later-key", "production")
-	e, ok := errs.As(err)
-	if !ok || !strings.Contains(e.Message, "`backups`") || !strings.Contains(e.Hint, "M4") {
-		t.Fatalf("want backups refused until M4, got %v", err)
+func TestBackups(t *testing.T) {
+	l, err := load(t, "backups", "production")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := l.Config.Backups
+	if b == nil || b.Repository != "s3:s3.example.com/backups/shop" || b.Password != "repo-password" || b.Env["AWS_ACCESS_KEY_ID"] != "key" {
+		t.Fatalf("backups: %+v", b)
+	}
+	db, _ := l.App.Service("db")
+	if db.Backup == nil || db.Backup.Type != "postgres" || strings.Join(db.Backup.DumpOptions, " ") != "--no-owner --no-acl" || db.Backup.Keep.Daily != 14 {
+		t.Fatalf("db: %+v", db.Backup)
+	}
+	mc, _ := l.App.Service("minecraft")
+	if b := mc.Backup; b == nil || b.Quiesce.Mode != "exec" || strings.Join(b.Quiesce.Pre, " ") != "rcon-cli save-off" || strings.Join(b.Volumes, ",") != "/data" {
+		t.Fatalf("minecraft: %+v", mc.Backup)
 	}
 }
 
@@ -203,6 +214,15 @@ func TestComposeKeysRefused(t *testing.T) {
 		"link alias":           "web: {image: nginx, links: [\"db:database\"]}\n  db: {image: postgres}",
 		"selinux":              "web: {image: nginx, volumes: [{type: bind, source: /srv, target: /srv, bind: {selinux: z}}]}",
 		"job health":           "m: {image: alpine, x-dockflow: {run: before, health: {grace: 2s}}}",
+		"backup not stateful":  "db: {image: postgres, x-dockflow: {backup: {type: postgres}}}",
+		"backup no type":       "db: {image: postgres, x-dockflow: {stateful: true, backup: {database: shop}}}",
+		"backup unknown type":  "db: {image: postgres, x-dockflow: {stateful: true, backup: {type: oracle}}}",
+		"backup dump volumes":  "db: {image: postgres, volumes: [\"d:/d\"], x-dockflow: {stateful: true, backup: {type: postgres, volumes: [d]}}}\nvolumes: {d: {}}",
+		"backup no volume":     "db: {image: redis, x-dockflow: {stateful: true, backup: {type: volume}}}",
+		"backup other volume":  "db: {image: redis, volumes: [\"d:/d\"], x-dockflow: {stateful: true, backup: {type: volume, volumes: [e]}}}\nvolumes: {d: {}}",
+		"backup command half":  "db: {image: redis, x-dockflow: {stateful: true, backup: {type: command, dump: [cat]}}}",
+		"backup quiesce":       "db: {image: redis, volumes: [\"d:/d\"], x-dockflow: {stateful: true, backup: {type: volume, quiesce: pause}}}\nvolumes: {d: {}}",
+		"backup empty exec":    "db: {image: redis, volumes: [\"d:/d\"], x-dockflow: {stateful: true, backup: {type: volume, quiesce: {exec: {}}}}}\nvolumes: {d: {}}",
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
