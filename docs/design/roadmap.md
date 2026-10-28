@@ -78,7 +78,7 @@ Exit criteria:
 
 ## M4: Data — MohistMC
 
-**Status: in progress.** The items below are done and covered by e2e journeys (`test/e2e/backup*_test.go`) and unit tests. The first exit criterion is an e2e test, against `rclone serve s3` as the S3-compatible storage (`TestOffsiteBackup`). The second is met: ValientRP's 14 GB world is backed up by v4.0.0-alpha.8 from a scheduled GitHub Actions workflow, with `save-off`/`save-all flush` before the copy and `save-on` after, while the server runs (2026-10-28). Left: MohistMC's projects.
+**Status: done (2026-10-28).** The items below are done and covered by e2e journeys (`test/e2e/backup*_test.go`) and unit tests. The first exit criterion is an e2e test, against `rclone serve s3` as the S3-compatible storage (`TestOffsiteBackup`). The second is met: ValientRP's 14 GB world is backed up by v4.0.0-alpha.8 from a scheduled GitHub Actions workflow, with `save-off`/`save-all flush` before the copy and `save-on` after, while the server runs (2026-10-28). The third is met: MohistMC's website, API with its Postgres, and Maven repository run with v4.0.0-alpha.8 on the server they share with other apps, behind its nginx, deployed from GitHub Actions. The second deploy of the 2.7 GB Maven repository sent 0 of its 1,961 files. The SSHFS mount of the builds stays the host's, set up outside Dockflow ([ADR-0024](adr/0024-no-server-administration.md)); the rclone mount is no longer used, since nginx serves the archives from S3.
 
 - **Stateful services:** their rules: one container, `stop-first`, updated before the other services, the only ones backed up (done).
 - **Backups with restic:**
@@ -92,7 +92,7 @@ Exit criteria:
 Exit criteria:
 - a Postgres app is backed up to S3-compatible storage, restored into staging from production, and a failing restore stops at the first error;
 - a Minecraft world is backed up with `save-off`/`save-on` without stopping the server;
-- **MohistMC's three projects run with v2**: the 2.7 GB Maven upload, where the second deploy sends only changed files, and the rclone volume replacing the systemd mounts.
+- **MohistMC's three projects run with v2**: the 2.7 GB Maven upload, where the second deploy sends only changed files, and the API's Postgres kept on its volume.
 
 ## M5: Interfaces
 
