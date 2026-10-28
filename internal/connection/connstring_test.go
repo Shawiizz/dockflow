@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 
@@ -75,5 +76,14 @@ func TestResolvePrecedence(t *testing.T) {
 	}
 	if _, err := Resolve("production", &config.Resolved{}, noSecret, "", none); err == nil {
 		t.Fatal("no server must be an error")
+	}
+}
+
+// A string printed by a newer CLI, with a field this one does not know, still works.
+func TestConnStringIgnoresUnknownFields(t *testing.T) {
+	raw := `{"v":2,"servers":[{"host":"203.0.113.7","host_key":"SHA256:x","added_later":1}],"private_key":"k","added_later":{"a":1}}`
+	c, err := ParseConnString(base64.StdEncoding.EncodeToString([]byte(raw)))
+	if err != nil || c.Servers[0].Host != "203.0.113.7" || c.Servers[0].Port != 22 {
+		t.Fatalf("got %+v, %v", c, err)
 	}
 }

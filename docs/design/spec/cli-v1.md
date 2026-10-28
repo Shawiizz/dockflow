@@ -105,6 +105,19 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 
 Internal commands are hidden from help: `agent` (the agent's entry point in its container) and `upload-helper` (the helper container of uploads), `watchdog` (the watchdog's container, which writes events on its stdout) and `filter apply` (the helper container of the port filter, which reads the rules from `DOCKFLOW_FILTER`). Provisioning runs as a shell script over SSH, with no command of its own ([ADR-0013](../adr/0013-servers-access-security.md#implementation-status-m2)).
 
+## Connection string
+
+The connection string that `server init`, `server cloud-init` and `server connection` print, and that `<ENV>_CONNECTION` or `--connection` hold, is base64 (standard, URL-safe, padded or not) of a JSON object:
+
+| Field | Description |
+|---|---|
+| `v` | `2`. The format's version: 1 was Dockflow 1.x's, which this one does not read |
+| `servers` | The servers, `[{"name", "host", "port", "user", "host_key"}]`; `name` defaults to `main`, `port` to 22, `user` to `dockflow`. One server per environment in this version ([ADR-0023](../adr/0023-several-servers-later.md)): more is refused |
+| `private_key` | The deploy key, OpenSSH PEM |
+| `password` | A password, when there is no key |
+
+Compatibility: a reader ignores the fields it does not know, as connection strings live in CI secrets read by a CLI whose version the CI pins. A minor release may add optional fields, whose absence keeps the behaviour from before them. A field that an older CLI must not ignore (it would connect another way than intended) comes with a new `v`, which older CLIs refuse with the hint to print a new string.
+
 ## Saved plans
 
 `dockflow plan --out <file>` writes the plan as JSON, mode 0600, for `dockflow deploy --plan <file>`:

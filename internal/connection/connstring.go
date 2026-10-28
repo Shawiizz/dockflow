@@ -37,10 +37,10 @@ func ParseConnString(s string) (*ConnString, error) {
 		return nil, errs.Config("the connection string is not valid base64").
 			WithHint("print it again with `dockflow server connection`")
 	}
+	// unknown fields are ignored: a string printed by a newer CLI works with an older one, as a
+	// CI that pins its version holds it (cli-v1.md, Connection string)
 	var c ConnString
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&c); err != nil {
+	if err := json.Unmarshal(raw, &c); err != nil {
 		return nil, errs.Config("the connection string is not valid").WithCause(err).
 			WithHint("print it again with `dockflow server connection`")
 	}
