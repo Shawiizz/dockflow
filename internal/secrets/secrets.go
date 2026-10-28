@@ -55,7 +55,7 @@ func Load(env, projectDir string, environ []string) (*Store, error) {
 		var m map[string]any
 		if err := json.Unmarshal([]byte(jsonSecrets), &m); err != nil {
 			return nil, errs.Config("DOCKFLOW_SECRETS is not a JSON object").WithCause(err).
-				WithHint("in GitHub Actions: DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}")
+				WithHint(`a JSON object of strings, such as {"DB_PASSWORD": "..."}`)
 		}
 		for k, v := range m {
 			if str, ok := v.(string); ok {

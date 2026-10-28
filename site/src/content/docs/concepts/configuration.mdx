@@ -145,7 +145,7 @@ Every `${NAME}` is looked up in three places, in this order. The first match win
 
 For the environment `production`, the key `X` is looked up as `PRODUCTION_X`, then as `X`, in each source in turn:
 
-1. **The process environment and `DOCKFLOW_SECRETS`.** From the process environment, only variables prefixed with the environment's name are read (`PRODUCTION_DB_PASSWORD`); `PATH`, `HOME` and the rest are never used. `DOCKFLOW_SECRETS` holds a JSON object of keys and values, prefixed or not; in GitHub Actions, `DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}` passes every secret of the repository at once.
+1. **The process environment and `DOCKFLOW_SECRETS`.** From the process environment, only variables prefixed with the environment's name are read (`PRODUCTION_DB_PASSWORD`); `PATH`, `HOME` and the rest are never used. `DOCKFLOW_SECRETS` holds a JSON object of keys and values, prefixed or not. In GitHub Actions, name each secret in the job's `env` instead: GitHub holds a run that hands every secret of the repository to a job at once (`${{ toJSON(secrets) }}`).
 2. **`.env.dockflow`**, at the project root, for deploys from your machine.
 3. **The environment's SOPS file**, `secrets/<env>.sops.yaml` (or `secrets_file`), encrypted with age and kept in git. See [Secrets in a SOPS file](/guides/secrets/#secrets-in-a-sops-file).
 
