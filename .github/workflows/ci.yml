@@ -83,6 +83,18 @@ jobs:
           command: version
           working-directory: ${{ runner.temp }}/shop
 
+  windows-installer:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install.ps1 installs the newest release
+        shell: powershell
+        run: |
+          .\install.ps1 -Dir "$env:RUNNER_TEMP\dockflow"
+          & "$env:RUNNER_TEMP\dockflow\dockflow.exe" version
+          if ($LASTEXITCODE) { exit 1 }
+
   site:
     name: docs site
     runs-on: ubuntu-latest
@@ -109,6 +121,18 @@ jobs:
           go-version-file: go.mod
       - name: build
         run: make snapshot VERSION=snapshot-${GITHUB_SHA::12}
+      - name: the npm packages run the binary
+        run: |
+          sh packaging/npm/pack.sh 0.0.0-ci dist "$RUNNER_TEMP/npm"
+          m="$RUNNER_TEMP/try/node_modules/@dockflow-tools"
+          mkdir -p "$m"
+          cp -r "$RUNNER_TEMP/npm/cli" "$RUNNER_TEMP/npm/cli-linux-x64" "$m/"
+          node "$m/cli/bin/dockflow.js" version | grep -F "snapshot-${GITHUB_SHA::12}"
+          node "$m/cli/bin/dockflow.js" no-such-command && exit 1 || test $? -eq 2
+      - name: the Homebrew formula is valid Ruby
+        run: |
+          sh packaging/homebrew.sh 0.0.0-ci dist/SHA256SUMS >"$RUNNER_TEMP/dockflow.rb"
+          ruby -c "$RUNNER_TEMP/dockflow.rb"
       - uses: actions/upload-artifact@v4
         with:
           name: dockflow-snapshot

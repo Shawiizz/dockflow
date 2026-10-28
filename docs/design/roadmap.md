@@ -101,14 +101,14 @@ Exit criteria:
 
 The local web UI and preview environments per pull request are deferred after v1.0 by decision of the project owner (2026-10-28): none of the eight projects that shaped v2 needs them, and the web UI alone is a frontend stack to build and maintain.
 
-## v1.0 (released as 4.0.0)
+## v1.0 (released as 1.0.0)
 
-Until then, milestones ship as pre-releases `v4.0.0-alpha.N` ([ADR-0020](adr/0020-releasing-dockflow.md)).
+Until then, milestones ship as pre-releases `v1.0.0-alpha.N` ([ADR-0020](adr/0020-releasing-dockflow.md)). The alphas of M1 to M5 were numbered `v4.0.0-alpha.1` to `.10` before the numbering restarted at 1.0.0 (2026-10-28); the milestones above name them so.
 
 
 - Every row of [parity.md](parity.md) is provided, deferred or dropped by decision.
 - The configuration (`version: 1`), state (`schema: 1`) and event (`v: 1`) formats are frozen.
-- Signed releases, installers, Homebrew, the npm package with per-platform dependencies.
+- Signed releases, installers, Homebrew, the npm package with per-platform dependencies. Done in 1.0.0-alpha.2: the CLI checks the agent against the checksums it was built with, `install.ps1`, the Homebrew formula and the npm packages; npm publishes once the repository has its `NPM_TOKEN` secret.
 - User documentation complete: every command, every key, the recipes, the security model, the manual migration from 1.x.
 
 ## After v1.0 (not committed)

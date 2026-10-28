@@ -88,7 +88,7 @@ ValientRP's Minecraft world (14 GB) is backed up every 6 hours by Dockflow while
 
 - Every capability planned for 1.0.0 is provided, or explicitly deferred.
 - The configuration, state and event formats are frozen.
-- Signed releases checked by the CLI itself, a PowerShell installer, Homebrew, and an npm package.
+- Signed releases, an agent checked by the CLI against its own build <Badge text="Done" variant="success" />, a PowerShell installer and Homebrew <Badge text="Done" variant="success" />, and an npm package.
 - Complete user documentation: every command, every key, recipes and the security model.
 
 ### After 1.0.0
@@ -98,7 +98,7 @@ Considered, not committed: a local web UI (`dockflow ui`), preview environments 
 ## Versioning
 
 - Releases follow [semantic versioning](https://semver.org/), with tags `v<semver>`.
-- Until the v1.0 milestone, every release is a pre-release, `v4.0.0-alpha.N`: one or more per milestone. The v1.0 milestone ships as `v4.0.0`.
+- Until the v1.0 milestone, every release is a pre-release, `1.0.0-alpha.N`: one or more per milestone. The v1.0 milestone ships as 1.0.0. Tags carry a `v` (`v1.0.0`), as Go and GitHub Actions expect.
 - Pre-releases are marked as such on GitHub. The installer takes the newest release, pre-releases included, unless you pass `--version`.
 - The CLI and the agent it runs on your server are always the same version: after you upgrade the CLI, its next run installs the matching agent on the server by itself.
 - The formats carry their own version numbers (`version: 1` in `dockflow.yml`, `schema: 1` in the server state, `v: 1` in events), which change only in a major release.

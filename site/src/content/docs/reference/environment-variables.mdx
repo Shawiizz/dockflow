@@ -63,7 +63,7 @@ When the server comes from `dockflow.yml`, Dockflow uses the key in `DOCKFLOW_SS
 
 ## The agent binary
 
-The CLI starts an agent on the server: a Linux binary of exactly its own version. When the CLI is not that binary (on macOS, on Windows, or on a different architecture), it downloads it from the release, checks it against the release's `SHA256SUMS`, and caches it in your user cache directory (`~/.cache/dockflow/<version>/` on Linux).
+The CLI starts an agent on the server: a Linux binary of exactly its own version. When the CLI is not that binary (on macOS, on Windows, or on a different architecture), it downloads it from the release, checks it against the checksum the CLI was built with, and caches it in your user cache directory (`~/.cache/dockflow/<version>/` on Linux).
 
 | Variable | Description |
 |---|---|

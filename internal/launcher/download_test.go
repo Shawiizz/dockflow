@@ -39,7 +39,7 @@ func TestDownload(t *testing.T) {
 	bin := "#!agent"
 	srv := release(t, bin, sum("other")+"  dockflow-linux-amd64\n"+sum(bin)+"  dockflow-linux-arm64\n")
 	path := filepath.Join(t.TempDir(), "cache", "dockflow-linux-arm64")
-	if err := Download(context.Background(), srv.Client(), srv.URL+"/v9.9.9/", "dockflow-linux-arm64", path); err != nil {
+	if err := Download(context.Background(), srv.Client(), srv.URL+"/v9.9.9/", "dockflow-linux-arm64", "", path); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(path)
@@ -55,7 +55,7 @@ func TestDownloadRefusesAMismatch(t *testing.T) {
 	srv := release(t, "tampered", sum("genuine")+"  dockflow-linux-arm64\n")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "dockflow-linux-arm64")
-	err := Download(context.Background(), srv.Client(), srv.URL+"/v9.9.9/", "dockflow-linux-arm64", path)
+	err := Download(context.Background(), srv.Client(), srv.URL+"/v9.9.9/", "dockflow-linux-arm64", "", path)
 	if errs.CodeOf(err) != "agent.checksum_mismatch" {
 		t.Fatalf("got %v", err)
 	}
@@ -66,8 +66,22 @@ func TestDownloadRefusesAMismatch(t *testing.T) {
 
 func TestDownloadUnlisted(t *testing.T) {
 	srv := release(t, "x", sum("x")+"  dockflow-linux-amd64\n")
-	err := Download(context.Background(), srv.Client(), srv.URL+"/v9.9.9/", "dockflow-linux-arm64", filepath.Join(t.TempDir(), "b"))
+	err := Download(context.Background(), srv.Client(), srv.URL+"/v9.9.9/", "dockflow-linux-arm64", "", filepath.Join(t.TempDir(), "b"))
 	if errs.CodeOf(err) != "agent.download_failed" {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// A checksum built into the CLI replaces the release's: SHA256SUMS is not even read.
+func TestDownloadBuiltInChecksum(t *testing.T) {
+	bin := "#!agent"
+	srv := release(t, bin, sum("anything")+"  dockflow-linux-arm64\n")
+	path := filepath.Join(t.TempDir(), "dockflow-linux-arm64")
+	if err := Download(context.Background(), srv.Client(), srv.URL+"/v9.9.9/", "dockflow-linux-arm64", sum(bin), path); err != nil {
+		t.Fatal(err)
+	}
+	err := Download(context.Background(), srv.Client(), srv.URL+"/v9.9.9/", "dockflow-linux-arm64", sum("genuine"), filepath.Join(t.TempDir(), "b"))
+	if errs.CodeOf(err) != "agent.checksum_mismatch" {
 		t.Fatalf("got %v", err)
 	}
 }

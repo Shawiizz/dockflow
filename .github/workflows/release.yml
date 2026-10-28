@@ -70,6 +70,75 @@ jobs:
           case "$TAG" in *-*) flags="--prerelease" ;; esac
           # never marked latest: which release the repository's page leads to is the owner's call;
           # --target creates the tag on the released commit when it does not exist yet
-          gh release create "$TAG" dist/* install.sh $flags --latest=false --target "$GITHUB_SHA" \
+          gh release create "$TAG" dist/* install.sh install.ps1 $flags --latest=false --target "$GITHUB_SHA" \
             --title "Dockflow $TAG" \
-            --notes "Install: \`curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/$TAG/install.sh | sh -s -- --version $TAG\`. The binaries are listed in SHA256SUMS, signed with Sigstore (SHA256SUMS.sigstore.json)."
+            --notes "Install: \`curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/$TAG/install.sh | sh -s -- --version $TAG\`, or on Windows \`& ([scriptblock]::Create((irm https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/$TAG/install.ps1))) -Version $TAG\`. The binaries are listed in SHA256SUMS, signed with Sigstore (SHA256SUMS.sigstore.json). The dockflow-agent-linux-* binaries are the agents the other binaries send to servers."
+
+  # The npm packages, from the release's binaries: @dockflow-tools/cli and its per-platform optional
+  # dependencies. Published with the NPM_TOKEN secret, skipped without it.
+  npm:
+    needs: [version, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # npm provenance: the packages are bound to this workflow
+      id-token: write
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: publish
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::warning::no NPM_TOKEN secret: the npm packages are not published"; exit 0
+          fi
+          gh release download "$TAG" --dir dist --pattern 'dockflow-*' --pattern SHA256SUMS
+          (cd dist && sha256sum -c --quiet SHA256SUMS)
+          sh packaging/npm/pack.sh "${TAG#v}" dist npm
+          # the platforms first: the package that depends on them comes last
+          for d in npm/cli-*; do npm publish --provenance --access public "$d"; done
+          npm publish --provenance --access public npm/cli
+
+  # The Homebrew formula: written from the release's checksums, installed once to check it, then
+  # committed on main, as this repository is its own tap.
+  homebrew:
+    needs: [version, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: write the formula
+        run: |
+          gh release download "$TAG" --dir "$RUNNER_TEMP/release" --pattern SHA256SUMS
+          mkdir -p Formula
+          sh packaging/homebrew.sh "${TAG#v}" "$RUNNER_TEMP/release/SHA256SUMS" >Formula/dockflow.rb
+      - name: install it
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          brew tap-new --no-git dockflow/check
+          cp Formula/dockflow.rb "$(brew --repository)/Library/Taps/dockflow/homebrew-check/Formula/"
+          brew install dockflow/check/dockflow
+          "$(brew --prefix)/bin/dockflow" version | grep -F "${TAG#v}"
+      - name: commit it
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/dockflow.rb
+          git commit -m "chore(homebrew): dockflow ${TAG#v}"
+          for i in 1 2 3; do
+            git pull --rebase -q origin main && git push -q origin HEAD:main && exit 0
+            sleep 5
+          done
+          exit 1

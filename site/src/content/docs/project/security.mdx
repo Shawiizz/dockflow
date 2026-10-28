@@ -110,7 +110,8 @@ Dockflow's state lives in `/var/lib/dockflow`, a `0700` directory owned by root,
 ## Verified downloads
 
 - **The installer** downloads the binary from the GitHub release, checks it against the release's `SHA256SUMS`, and, when [cosign](https://docs.sigstore.dev/) is installed, checks the Sigstore signature of `SHA256SUMS`, bound to this repository's release workflow. Without cosign it says that it checked the checksum only. Install cosign to get the signature check.
-- **The agent binary.** When the CLI is not itself the Linux binary for the server's architecture, it downloads that binary over HTTPS from the release of its own version, checks it against `SHA256SUMS`, and only then caches it and sends it to the server. A mismatch stops with `agent.checksum_mismatch`, and nothing is sent. The CLI does not check the signature yet; that check comes with v1.0.
+- **The installers.** `install.ps1` checks the binary as `install.sh` does. Homebrew checks it against the checksum in the formula, written by the release workflow from `SHA256SUMS`.
+- **The agent binary.** When the CLI is not itself the Linux binary for the server's architecture, it downloads the agent binary over HTTPS from the release of its own version. A released CLI is built with the SHA-256 of that release's agent binaries, and checks the download against it, so the agent comes from the same build as the CLI: its origin is the CLI's, which the installer checked. Only then is it cached and sent to the server. A mismatch stops with `agent.checksum_mismatch`, and nothing is sent. A CLI built without these checksums (from source, with a version) checks against the release's `SHA256SUMS`.
 - `DOCKFLOW_AGENT_BINARY` replaces the download with a binary you provide. Dockflow does not check it: use it only with binaries you built or verified yourself.
 
 ## Remote builds

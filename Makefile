@@ -29,11 +29,19 @@ lint:
 fmt:
 	gofmt -w .
 
+# The agents first: every CLI is built with their checksums, and checks the agent it downloads
+# against them (ADR-0020).
 snapshot:
 	rm -rf dist && mkdir -p dist
+	for arch in amd64 arm64; do \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" \
+			-o dist/dockflow-agent-linux-$$arch ./cmd/dockflow || exit 1; \
+	done
+	agents="amd64=$$(sha256sum dist/dockflow-agent-linux-amd64 | cut -d' ' -f1),arm64=$$(sha256sum dist/dockflow-agent-linux-arm64 | cut -d' ' -f1)"; \
 	for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; ext=""; [ $$os = windows ] && ext=.exe; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath \
+			-ldflags "$(LDFLAGS) -X github.com/Shawiizz/dockflow/internal/version.Agents=$$agents" \
 			-o dist/dockflow-$$os-$$arch$$ext ./cmd/dockflow || exit 1; \
 	done
 	cd dist && sha256sum * > SHA256SUMS

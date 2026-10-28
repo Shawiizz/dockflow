@@ -18,13 +18,13 @@ The CLI ships its own Linux binary to servers ([ADR-0004](0004-ephemeral-agent.m
 ### How the CLI gets the Linux binary
 
 - If the CLI is itself the Linux binary for the target's architecture, it sends itself.
-- Otherwise it downloads the binary of its own version, verifies the checksum and the signature, and caches it in the user cache directory (`~/.cache/dockflow/<version>/`).
+- Otherwise it downloads the agent binary of its own version and caches it in the user cache directory (`~/.cache/dockflow/<version>/`). A release builds its two Linux agent binaries first, then every CLI with their SHA-256 (`-ldflags`); the CLI checks the download against them. The agent then comes from the CLI's own build, whose origin the installer checked (revised 2026-10-28: this replaces checking the Sigstore signature in the CLI, which would have taken the sigstore-go library and its TUF client, for no more assurance than the CLI's own). A CLI built without them checks against the release's `SHA256SUMS`.
 - `DOCKFLOW_AGENT_BINARY=<path>` overrides this for development builds, which have no published release. `DOCKFLOW_RELEASES_URL` replaces the release download URL (a mirror).
 
 ### Installation channels
 
-- A `curl | sh` installer and a PowerShell one, both verifying the signature.
-- Homebrew.
+- A `curl | sh` installer and a PowerShell one, both verifying the signature when cosign is installed, the checksum always.
+- Homebrew, from a formula committed in this repository by the release workflow: the repository is its own tap.
 - An npm package built on per-platform `optionalDependencies`, as esbuild and Biome do, so it needs no postinstall script and works behind proxies.
 
 ### Versioning
@@ -44,7 +44,14 @@ The CLI ships its own Linux binary to servers ([ADR-0004](0004-ephemeral-agent.m
 
 - `.github/workflows/release.yml` runs on a tag `v*`, or on a commit of `main` that writes the version into `.github/release` (the release then creates the tag on that commit): the whole CI on the released commit, then the binaries, `SHA256SUMS` signed keyless with cosign (`SHA256SUMS.sigstore.json`), and a GitHub release. Releases are never marked as the repository's latest; a tag with a pre-release suffix makes a pre-release.
 - `install.sh` checks the binary against `SHA256SUMS`, and `SHA256SUMS` against its signature when cosign is installed (identity: this repository's release workflow, at a `v` tag or on `main`).
-- The CLI downloads the agent binary over HTTPS and checks it against `SHA256SUMS`; it does not check the signature yet. That check, the PowerShell installer, Homebrew and the npm package come with the signed releases of v1.0 ([roadmap](../roadmap.md)).
+- The CLI downloads the agent binary over HTTPS and checks it against `SHA256SUMS`.
+
+## Implementation status (v1.0)
+
+- A release holds `dockflow-agent-linux-amd64` and `-arm64`, built first, and the CLIs built with their checksums (`Makefile`, `snapshot`). The CLI checks the agent it downloads against them.
+- `install.ps1` installs on Windows, as `install.sh` does. Both are attached to each release.
+- After the release, the workflow writes `Formula/dockflow.rb` from `SHA256SUMS`, installs it with Homebrew on Linux, and commits it on `main`.
+- The npm packages are built from the release's binaries by `packaging/npm/pack.sh` and published with provenance, when the repository has an `NPM_TOKEN` secret: `@dockflow-tools/cli` runs the binary of `@dockflow-tools/cli-<os>-<arch>`, its optional dependency for the platform, from a Node script, without a postinstall script.
 
 ## Embedding the Linux binaries
 

@@ -87,7 +87,7 @@ The codes below are the ones you are most likely to meet. A few errors use a gen
 | `server.docker_too_old` | 4 | The server runs Docker older than 27. | Upgrade Docker on the server. |
 | `agent.no_binary` | 4 | A development build of the CLI has no release to download the agent binary from: it does not run on Linux with the server's architecture, or it is linked dynamically (built with cgo), and the agent's image holds no C library. | Build it with `CGO_ENABLED=0` (`make build` does), or set `DOCKFLOW_AGENT_BINARY` to a static dockflow binary for the server's architecture. |
 | `agent.download_failed` | 4 | The agent binary for the server could not be downloaded from the release. | Check that this machine reaches GitHub (or your mirror in `DOCKFLOW_RELEASES_URL`), or set `DOCKFLOW_AGENT_BINARY`. |
-| `agent.checksum_mismatch` | 4 | The downloaded agent binary does not match the release's `SHA256SUMS`. Nothing was sent to the server. | Try again. Report it if it persists. |
+| `agent.checksum_mismatch` | 4 | The downloaded agent binary does not match the checksum the CLI was built with (the release's `SHA256SUMS` for a CLI built without one). Nothing was sent to the server. | Try again. Report it if it persists. |
 
 ### Locks
 

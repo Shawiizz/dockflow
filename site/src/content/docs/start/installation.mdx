@@ -25,15 +25,33 @@ curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh |
 ```
 
 </TabItem>
-<TabItem label="Windows">
+<TabItem label="Homebrew">
 
-Download `dockflow-windows-amd64.exe` from the [releases page](https://github.com/Shawiizz/dockflow/releases), rename it `dockflow.exe`, and put it in a folder on your `PATH`. Check it against the release's `SHA256SUMS` file:
+On macOS and Linux, the repository is its own tap:
 
-```powershell
-Get-FileHash dockflow.exe -Algorithm SHA256
+```sh
+brew tap shawiizz/dockflow https://github.com/Shawiizz/dockflow
+brew install dockflow
 ```
 
-The hash must match the line of `dockflow-windows-amd64.exe` in `SHA256SUMS`.
+`brew upgrade dockflow` installs the newest release. Homebrew checks each binary against the checksum written in the formula, which the release workflow writes from the release's `SHA256SUMS`.
+
+</TabItem>
+<TabItem label="Windows">
+
+In PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1 | iex
+```
+
+This installs the newest release in `%LOCALAPPDATA%\Programs\dockflow` and adds that folder to your user `PATH`. To install a given version, or into another folder:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1))) -Version v1.0.0-alpha.1 -Dir C:\tools
+```
+
+`install.ps1` checks the binary as `install.sh` does, below. On Windows on ARM, it installs the `amd64` binary, which Windows runs emulated.
 
 </TabItem>
 <TabItem label="From source">
@@ -64,9 +82,9 @@ It needs `curl` or `wget`, and `sha256sum` or `shasum`.
 
 | Option | Environment variable | Default | Effect |
 |---|---|---|---|
-| `--version <tag>` | `DOCKFLOW_VERSION` | The newest release | The release to install, such as `v1.0.0-alpha.1` |
-| `--dir <path>` | `DOCKFLOW_INSTALL_DIR` | `/usr/local/bin`, or `~/.local/bin` | Where to install `dockflow` |
-| – | `DOCKFLOW_RELEASES_URL` | `https://github.com/Shawiizz/dockflow/releases/download` | Where releases are downloaded from: a mirror holding `<version>/<file>` |
+| `--version <tag>` (`-Version`) | `DOCKFLOW_VERSION` | The newest release | The release to install, such as `v1.0.0-alpha.1`; the `v` is optional |
+| `--dir <path>` (`-Dir`) | `DOCKFLOW_INSTALL_DIR` | `/usr/local/bin`, or `~/.local/bin` (`%LOCALAPPDATA%\Programs\dockflow` on Windows) | Where to install `dockflow` |
+| – | `DOCKFLOW_RELEASES_URL` | `https://github.com/Shawiizz/dockflow/releases/download` | Where releases are downloaded from: a mirror holding `<tag>/<file>` |
 
 For example, to install into `~/bin` without root:
 
@@ -147,7 +165,9 @@ Each deploy runs the `dockflow` binary itself on the server, as a short-lived ag
 
 1. if `DOCKFLOW_AGENT_BINARY` is set, it uses the file at that path;
 2. if the CLI is itself the Linux binary for the server's architecture, it sends itself;
-3. otherwise (macOS, Windows, or a Linux machine of another architecture), it downloads `dockflow-linux-<arch>` from the release of its own version, checks it against the release's `SHA256SUMS`, and caches it in your user cache directory, under `dockflow/<version>/` (`~/.cache/dockflow/` on Linux). `DOCKFLOW_RELEASES_URL` replaces the download URL here too.
+3. otherwise (macOS, Windows, or a Linux machine of another architecture), it downloads `dockflow-agent-linux-<arch>` from the release of its own version, and caches it in your user cache directory, under `dockflow/<version>/` (`~/.cache/dockflow/` on Linux). `DOCKFLOW_RELEASES_URL` replaces the download URL here too.
+
+A released CLI is built with the SHA-256 of the release's agent binaries, and checks the download against it: a server only runs a binary from the same build as your CLI, whose origin the installer checked. A CLI built without them, from source with a version, checks the download against the release's `SHA256SUMS` instead.
 
 The binary is sent to the server only when the server does not already have the agent image of that version, so this happens once per version and per server.
 
