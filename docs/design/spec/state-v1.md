@@ -8,6 +8,7 @@ All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/000
 - **Atomicity.** Every file is written to `<name>.tmp-<run-id>`, synced, then renamed.
 - **JSON documents** carry `"schema": 1`.
 - **Clocks.** No decision depends on time. Timestamps are informational, in UTC, from the server's clock.
+- **Units.** Timestamps are RFC 3339. Durations are Go duration strings (`"1m30s"`, `"500ms"`). A file's `mode` is its permission bits as a decimal number (`420` for `0644`), where `dockflow.yml` writes an octal string.
 
 ## Compatibility
 
@@ -114,7 +115,8 @@ Server-wide operations (`server upgrade`, `server proxy sync`, `server network`,
 ```
 applying ──► active ──► superseded
    │
-   ├──► rolled-back     the run failed and the previous release was restored
+   ├──► rolled_back     the run failed and the previous release was restored
+   │                    (rolled-back before 1.0.0-alpha.4, still read)
    ├──► failed          the run failed and was left in place (on_failure: fail, --no-rollback), or its rollback failed
    └──► abandoned       the agent died; found by the next run
 ```
@@ -182,7 +184,7 @@ It deletes the other release files, then the images, registry manifests, secret 
 - **`op`** is what made the release: `deploy`, `rollback`, `restart`, `stop`, `scale` or `destroy` (of some services).
 - **`serving`** says, per service, which release's containers serve it: a service a deploy left unchanged keeps the containers of an older release.
 - **`hashes`** identify each service's containers: an unchanged hash means unchanged containers.
-- **`error`** is set on a release that is `rolled-back`, `failed` or `abandoned`: `{ "code": "…", "message": "…" }`.
+- **`error`** is set on a release that is `rolled_back`, `failed` or `abandoned`: `{ "code": "…", "message": "…" }`.
 - **Interpolated values.** Values interpolated into environment variables are part of the spec, as they are of `docker inspect`. The file is readable by root only.
 - **Jobs** are services of `desired` with `"job": "before"` or `"after"`; they have no containers once the run is over.
 - **Routes of dockflow.yml** are in `desired.routes`: redirects and proxies; files routes are services (`files-<name>`), whose image `dockflow:file-server` the agent replaces with the switch's.

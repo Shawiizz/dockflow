@@ -44,7 +44,7 @@ On any failure after the first change, the agent rolls back the **whole app**. T
 - services the failed run created are removed;
 - services it removed are recreated.
 
-The failed release ends `rolled-back`. If the rollback itself fails, it ends `failed`, the environment record is labelled `dockflow.degraded=true`, and the run exits with a code of its own. The next plan shows the environment as degraded until a run succeeds.
+The failed release ends `rolled_back`. If the rollback itself fails, it ends `failed`, the environment record is labelled `dockflow.degraded=true`, and the run exits with a code of its own. The next plan shows the environment as degraded until a run succeeds.
 
 `dockflow rollback [--to <release>]` uses the same machinery: it plans from the recorded release and applies it as a new release, labelled `dockflow.rollback-of=<seq>`. A rollback is always a forward move in the history.
 

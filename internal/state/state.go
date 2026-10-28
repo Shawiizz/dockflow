@@ -183,6 +183,10 @@ func (a *App) Release(seq int) (*domain.Release, error) {
 	if !ok || err != nil {
 		return nil, err
 	}
+	// the spelling of the alphas before 1.0.0-alpha.4
+	if v.Status == "rolled-back" {
+		v.Status = domain.StatusRolledBack
+	}
 	return &v, nil
 }
 

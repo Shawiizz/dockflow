@@ -61,7 +61,7 @@ const (
 	StatusApplying   = "applying"
 	StatusActive     = "active"
 	StatusSuperseded = "superseded"
-	StatusRolledBack = "rolled-back"
+	StatusRolledBack = "rolled_back"
 	StatusFailed     = "failed"
 	StatusAbandoned  = "abandoned"
 )

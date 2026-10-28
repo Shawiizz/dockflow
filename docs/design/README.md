@@ -35,5 +35,5 @@ The design of Dockflow v2, written before any code ([roadmap, M0](roadmap.md#m0-
      - `stop-first`;
    - public checks, `after` jobs and hooks;
    - removals and pruning.
-8. **It records the outcome.** On success, the release becomes `active` and the old containers are removed. On failure, the switch goes back to the old containers, which were kept until then, and the failed release is marked `rolled-back`.
+8. **It records the outcome.** On success, the release becomes `active` and the old containers are removed. On failure, the switch goes back to the old containers, which were kept until then, and the failed release is marked `rolled_back`.
 9. **It releases the lock and exits.** The CLI renders the events as they come. If it disconnects, the agent finishes anyway, and `dockflow attach` follows it again.

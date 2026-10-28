@@ -144,3 +144,16 @@ func TestSchemaMismatch(t *testing.T) {
 		t.Fatalf("want state.schema, exit 13, got %v", err)
 	}
 }
+
+// Releases written before 1.0.0-alpha.4 spell the status rolled-back.
+func TestOldRolledBackSpelling(t *testing.T) {
+	s, _ := Open(t.TempDir(), "r1")
+	a, _ := s.App("shop-production")
+	if err := a.WriteRelease(&domain.Release{Seq: 1, Status: "rolled-back"}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := a.Release(1)
+	if err != nil || r.Status != domain.StatusRolledBack {
+		t.Fatalf("got %+v, %v", r, err)
+	}
+}

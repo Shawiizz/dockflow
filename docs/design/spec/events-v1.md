@@ -21,12 +21,14 @@ Every operation reports its progress as a stream of events ([ADR-0016](../adr/00
 |---|---|
 | `v` | The schema version, `1` |
 | `ts` | When the event was emitted, UTC, millisecond precision, by the emitter's clock |
-| `run` | The run id |
+| `run` | The run id; `watchdog` for the watchdog's events |
 | `seq` | 1, 2, 3, … within a stream. A gap means lost events, for example after `attach` |
 | `type` | One of the types below |
 | `level` | `debug`, `info`, `warn` or `error` |
 | `msg` | A human-readable sentence. Renderers may show it as is |
 | `data` | The fields of the type |
+
+Durations in `data` are integers of milliseconds, named `*_ms`; sizes are integers of bytes.
 
 ## Secrets
 

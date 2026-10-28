@@ -31,7 +31,7 @@ Values interpolated into the environment of a container, secrets included, are p
 | `applying` | The run is in progress |
 | `active` | The current release |
 | `superseded` | A release that was active before the current one |
-| `rolled-back` | The run failed and the previous release was restored |
+| `rolled_back` | The run failed and the previous release was restored |
 | `failed` | The run failed and was left in place (`on_failure: fail`, `--no-rollback`), or its rollback failed |
 | `abandoned` | The agent stopped before the run finished; found by the next run |
 
@@ -80,7 +80,7 @@ A deploy keeps the old containers until it commits. New containers start next to
 3. puts back the files uploads had changed;
 4. removes the new containers.
 
-The release ends `rolled-back`, the previous one is still `active`, and the command exits with code 8. `after_failure` hooks run, and webhooks are sent.
+The release ends `rolled_back`, the previous one is still `active`, and the command exits with code 8. `after_failure` hooks run, and webhooks are sent.
 
 What counts as a failure:
 
@@ -160,7 +160,7 @@ dockflow releases production
 ```text
 SEQ  VERSION  STATUS                  CREATED               BY
 43   1.8.1    active                  2026-10-26T14:20:05Z  alice  ← current
-42   1.8.0    rolled-back             2026-10-26T14:11:47Z  alice
+42   1.8.0    rolled_back             2026-10-26T14:11:47Z  alice
 41   1.7.2    superseded              2026-10-25T09:02:13Z  ci-bot
 ```
 

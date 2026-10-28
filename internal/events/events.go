@@ -24,7 +24,7 @@ const (
 type Event struct {
 	V     int             `json:"v"`
 	TS    time.Time       `json:"ts"`
-	Run   string          `json:"run,omitempty"`
+	Run   string          `json:"run"`
 	Seq   int64           `json:"seq"`
 	Type  string          `json:"type"`
 	Level string          `json:"level"`
@@ -78,7 +78,7 @@ func (e *Emitter) Emit(level, typ, msg string, data any) {
 	defer e.mu.Unlock()
 	e.seq++
 	e.sink.Emit(Event{
-		V: 1, TS: e.now().UTC(), Run: e.run, Seq: e.seq,
+		V: 1, TS: e.now().UTC().Truncate(time.Millisecond), Run: e.run, Seq: e.seq,
 		Type: typ, Level: level, Msg: e.masker.Mask(msg), Data: raw,
 	})
 }

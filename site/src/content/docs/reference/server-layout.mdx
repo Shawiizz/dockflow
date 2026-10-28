@@ -92,7 +92,7 @@ Written by `dockflow server init`:
 
 Each `releases/<seq>.json.gz` is a gzipped JSON record of one release: who made it and from which commit, its status, and the complete desired state of the app, every container's specification with images pinned by digest. A rollback recreates containers from it. Values interpolated into a container's environment are part of that specification, as they are in `docker inspect`.
 
-A release's status is `applying` while a run works on it, then `active`, then `superseded` when a newer one goes live. A failed run leaves `rolled-back` or `failed`, and a run whose agent died is marked `abandoned` by the next run.
+A release's status is `applying` while a run works on it, then `active`, then `superseded` when a newer one goes live. A failed run leaves `rolled_back` or `failed`, and a run whose agent died is marked `abandoned` by the next run.
 
 After a successful run, the agent keeps the newest `releases.keep` releases that went live, and every release newer than the oldest of those. It deletes the other records, then the images, registry manifests and upload contents that no kept release uses.
 

@@ -161,7 +161,7 @@ func TestZeroDowntimeDeployRollbackAndFailure(t *testing.T) {
 	for _, r := range list.Releases {
 		got[r.Seq] = r.Status
 	}
-	want := map[int]string{1: "superseded", 2: "superseded", 3: "active", 4: "rolled-back"}
+	want := map[int]string{1: "superseded", 2: "superseded", 3: "active", 4: "rolled_back"}
 	for seq, st := range want {
 		if got[seq] != st {
 			t.Fatalf("release %d is %q, want %q (all: %v)", seq, got[seq], st, got)

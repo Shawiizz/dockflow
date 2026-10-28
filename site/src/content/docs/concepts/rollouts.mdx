@@ -189,7 +189,7 @@ services:
 
 ## What happens on failure
 
-Old containers are stopped, never removed, until the whole run commits. When anything fails before that, the agent starts them again if needed, moves the routes back to them, and removes the new containers: for a `switch` service, traffic is back on the old containers in about a second. The release ends `rolled-back`, and the command exits with code 8. [Releases and rollbacks](/concepts/releases-and-rollbacks/#when-a-deploy-fails) lists what counts as a failure.
+Old containers are stopped, never removed, until the whole run commits. When anything fails before that, the agent starts them again if needed, moves the routes back to them, and removes the new containers: for a `switch` service, traffic is back on the old containers in about a second. The release ends `rolled_back`, and the command exits with code 8. [Releases and rollbacks](/concepts/releases-and-rollbacks/#when-a-deploy-fails) lists what counts as a failure.
 
 ### on_failure
 

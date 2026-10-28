@@ -185,6 +185,8 @@ environments:                       # required; at least one
       DOMAIN: staging.shop.example.com
 ```
 
+Durations are written as Go durations: `30s`, `2m`, `1h30m`. File modes are octal strings: `"0644"` or `"644"`.
+
 `version` and `requires` are read before any other key. A file in a format version other than 1, or that requires a later Dockflow, stops with `config.newer` (exit 3) and the hint to upgrade, rather than with an unknown key. A development build (`dev`) does not check `requires`.
 
 Every top-level key except `version`, `requires`, `app`, `compose` and `environments` can also be set inside an environment, where it replaces the top-level value for that environment.
