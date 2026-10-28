@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -536,10 +538,14 @@ func (r *runner) rollout(ctx context.Context, s *domain.Service, desired *domain
 			// the new container takes the fixed name; the old one keeps a release-scoped name until commit
 			for _, c := range st.old {
 				tmp := domain.ContainerName(r.stack, s.Name, oldRelease, max(number(c), 1))
+				if c.Name == tmp {
+					continue
+				}
+				// recorded first: a rename that fails may have happened all the same
+				st.renamed[c.ID] = c.Name
 				if err := r.Engine.Rename(ctx, c.ID, tmp); err != nil {
 					return err
 				}
-				st.renamed[c.ID] = c.Name
 			}
 		}
 		if err := r.startNew(ctx, s, seq, st); err != nil {
@@ -625,6 +631,10 @@ func (r *runner) startNew(ctx context.Context, s *domain.Service, seq int, st *s
 		name := containerName(r.stack, s, seq, n)
 		id, err := r.Engine.Create(ctx, name, s.Spec, containerLabels(r.stack, s, seq, n))
 		if err != nil {
+			// a create that failed may have created it all the same: undo removes it
+			if c, ierr := r.Engine.Inspect(ctx, name); ierr == nil && c.Release == seq && c.Labels[domain.LabelProject] == r.stack {
+				st.created = append(st.created, c.ID)
+			}
 			return err
 		}
 		st.created = append(st.created, id)
@@ -692,10 +702,13 @@ func (r *runner) stopOld(ctx context.Context, st *step, grace *domain.Duration) 
 		if c.State != "running" && c.State != "restarting" {
 			continue
 		}
-		if err := r.Engine.Stop(ctx, c.ID, g); err != nil {
-			return err
-		}
+		// recorded first: a stop that fails may have stopped it all the same, and undo starts it
 		st.stopped = append(st.stopped, c.ID)
+		if err := r.Engine.Stop(ctx, c.ID, g); err != nil {
+			if now, ierr := r.Engine.Inspect(ctx, c.ID); ierr != nil || now.State == "running" || now.State == "restarting" {
+				return err
+			}
+		}
 		r.containerState(c.Service, c.Name, c.Release, "exited", nil)
 	}
 	return nil
@@ -1043,8 +1056,8 @@ func (r *runner) undo(ctx context.Context, x *execution) error {
 				note(r.Engine.Remove(ctx, id))
 			}
 			st.created = nil
-			for id, name := range st.renamed {
-				note(r.Engine.Rename(ctx, id, name))
+			for _, id := range slices.Sorted(maps.Keys(st.renamed)) {
+				note(r.rename(ctx, id, st.renamed[id]))
 			}
 		}
 		for _, id := range st.stopped {
@@ -1055,8 +1068,8 @@ func (r *runner) undo(ctx context.Context, x *execution) error {
 			restarted = append(restarted, id)
 		}
 	}
-	for _, id := range restarted {
-		note(r.Engine.WaitHealthy(ctx, id, 2*time.Second, 2*time.Minute))
+	for _, err := range r.waitAll(ctx, restarted) {
+		note(err)
 	}
 	if x.routesTouched {
 		note(r.applyRoutes(ctx, x.routesBefore))
@@ -1071,4 +1084,23 @@ func (r *runner) undo(ctx context.Context, x *execution) error {
 		return errors.New(strings.Join(errsSeen, "; "))
 	}
 	return nil
+}
+
+// waitAll waits, in parallel, until the restarted containers ids are healthy again.
+func (r *runner) waitAll(ctx context.Context, ids []string) []error {
+	out := make([]error, len(ids))
+	var wg sync.WaitGroup
+	for i, id := range ids {
+		wg.Go(func() { out[i] = r.Engine.WaitHealthy(ctx, id, 2*time.Second, 2*time.Minute) })
+	}
+	wg.Wait()
+	return out
+}
+
+// rename gives container id its name back, unless it has it.
+func (r *runner) rename(ctx context.Context, id, name string) error {
+	if c, err := r.Engine.Inspect(ctx, id); err == nil && c.Name == name {
+		return nil
+	}
+	return r.Engine.Rename(ctx, id, name)
 }
