@@ -458,6 +458,18 @@ Hold an environment's lock by hand, for a maintenance window. `acquire` sets a m
 | `--force` | `false` | Take over (`acquire`) or release (`release`) someone else's manual lock. |
 | `-m, --message string` | none | Why the environment is locked. |
 
+## mcp
+
+```sh
+dockflow mcp [--allow-apply]
+```
+
+An MCP server over stdio, for AI assistants: the tools `validate`, `status`, `releases`, `logs` and `plan`, each running the command of the same name with `--json`. See [AI agents](/guides/ai-agents/).
+
+| Option | Default | Description |
+|---|---|---|
+| `--allow-apply` | `false` | Also offer `deploy`, which applies a plan the `plan` tool computed, by its fingerprint, and `rollback`, which takes a release number. |
+
 ## plugins
 
 ### plugins list
@@ -743,4 +755,4 @@ Help about any command, the same as `dockflow <command> --help`.
 
 ## Not available yet
 
-This version does not have `mcp` yet <Badge text="Coming in M5" variant="caution" />, nor `ui`, a local web UI considered for after 4.0.0. See the [roadmap](/project/roadmap/).
+This version does not have `ui`, a local web UI considered for after 4.0.0. See the [roadmap](/project/roadmap/).

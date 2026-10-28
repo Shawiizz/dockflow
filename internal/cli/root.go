@@ -62,7 +62,11 @@ func Main(args []string) int {
 		}
 	}()
 
-	err := root.ExecuteContext(ctx)
+	return a.exitCode(root.ExecuteContext(ctx))
+}
+
+// exitCode reports err and returns the exit code it maps to.
+func (a *app) exitCode(err error) int {
 	if err == nil {
 		return errs.ExitOK
 	}
@@ -126,7 +130,7 @@ func (a *app) root() *cobra.Command {
 		a.restartCmd(), a.stopCmd(), a.scaleCmd(), a.destroyCmd(), a.pruneCmd(), a.cancelCmd(),
 		a.detailsCmd(), a.diagnoseCmd(),
 		a.statusCmd(), a.releasesCmd(), a.versionCmd(), a.lockCmd(), a.backupCmd(),
-		a.initCmd(), a.validateCmd(), a.configCmd(), a.listCmd(), a.serverCmd(), a.agentCmd(), a.uploadHelperCmd(), a.secretsCmd(), a.filterCmd(), a.pluginsCmd(), a.watchdogCmd(), a.probeCmd(),
+		a.initCmd(), a.validateCmd(), a.configCmd(), a.listCmd(), a.serverCmd(), a.agentCmd(), a.uploadHelperCmd(), a.secretsCmd(), a.filterCmd(), a.pluginsCmd(), a.watchdogCmd(), a.probeCmd(), a.mcpCmd(),
 	)
 	root.CompletionOptions.HiddenDefaultCmd = false
 	return root
