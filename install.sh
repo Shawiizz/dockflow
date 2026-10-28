@@ -50,9 +50,11 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
 if [ -z "$version" ]; then
-	# the newest release of this CLI: its tags are v<semver>
-	fetch "https://api.github.com/repos/$repo/releases?per_page=50" "$tmp/releases.json" || fail "cannot list the releases; pass --version"
-	version=$(grep -o '"tag_name": *"v[0-9][^"]*"' "$tmp/releases.json" | head -n 1 | sed 's/.*"\(v[^"]*\)"$/\1/')
+	# the newest release of this CLI, its tags v<semver>: the API does not list them by date
+	fetch "https://api.github.com/repos/$repo/releases?per_page=100" "$tmp/releases.json" || fail "cannot list the releases; pass --version"
+	version=$(grep -oE '"(tag_name|published_at)": *"[^"]*"' "$tmp/releases.json" |
+		awk -F'"' '$2 == "tag_name" { t = $4 } $2 == "published_at" && t ~ /^v[0-9]/ { print $4, t; t = "" }' |
+		sort -r | head -n 1 | cut -d' ' -f2)
 	[ -n "$version" ] || fail "no release found; pass --version"
 fi
 

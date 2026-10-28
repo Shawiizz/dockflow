@@ -25,13 +25,14 @@ function Fail([string]$msg) { throw "install.ps1: $msg" }
 $name = 'dockflow-windows-amd64.exe'
 
 if (-not $Version) {
-    # the newest release of this CLI: its tags are v<semver>
+    # the newest release of this CLI, its tags v<semver>: the API does not list them by date
     try {
-        $list = Invoke-RestMethod -UseBasicParsing "https://api.github.com/repos/$repo/releases?per_page=50"
+        $list = Invoke-RestMethod -UseBasicParsing "https://api.github.com/repos/$repo/releases?per_page=100"
     } catch {
         Fail "cannot list the releases; pass -Version"
     }
-    $Version = ($list | Where-Object { $_.tag_name -match '^v[0-9]' } | Select-Object -First 1).tag_name
+    $Version = ($list | Where-Object { $_.tag_name -match '^v[0-9]' -and $_.published_at } |
+        Sort-Object published_at -Descending | Select-Object -First 1).tag_name
     if (-not $Version) { Fail 'no release found; pass -Version' }
 }
 if ($Version -match '^[0-9]') { $Version = "v$Version" }
