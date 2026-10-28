@@ -11,9 +11,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/errs"
@@ -30,6 +32,11 @@ type Store struct {
 	root string
 	// run names temporary files.
 	run string
+
+	mu sync.Mutex
+	// unknown holds, by scope (an app environment, or the server), a file read with fields this
+	// Dockflow does not know: a newer one wrote them, and rewriting the scope would lose them.
+	unknown map[string]string
 }
 
 // Open returns the store rooted at root, creating it when needed.
@@ -41,7 +48,7 @@ func Open(root, run string) (*Store, error) {
 	if err := os.Chmod(root, 0o700); err != nil {
 		return nil, ioErr("protect "+root, err)
 	}
-	return &Store{root: root, run: run}, nil
+	return &Store{root: root, run: run, unknown: map[string]string{}}, nil
 }
 
 // Root is the directory of the store.
@@ -308,17 +315,71 @@ func (s *Store) readJSON(path string, v any) (bool, error) {
 		return false, corrupt(path, err)
 	}
 	if head.Schema != Schema {
-		return false, errs.Newf("state.schema", errs.ExitInternal, "%s has schema %d; this Dockflow reads schema %d", path, head.Schema, Schema).
-			WithHint("upgrade Dockflow")
+		e := errs.Newf("state.schema", errs.ExitState, "%s has state schema %d; this Dockflow reads schema %d", path, head.Schema, Schema)
+		if head.Schema > Schema {
+			return false, e.WithHint("a newer Dockflow wrote this server's state: upgrade Dockflow")
+		}
+		return false, e.WithHint("this server's state is older than this Dockflow reads; use the Dockflow that wrote it")
 	}
 	if err := json.Unmarshal(b, v); err != nil {
 		return false, corrupt(path, err)
 	}
+	if hasUnknown(b, v) {
+		s.mu.Lock()
+		if _, ok := s.unknown[s.scope(path)]; !ok {
+			s.unknown[s.scope(path)] = path
+		}
+		s.mu.Unlock()
+	}
 	return true, nil
+}
+
+// hasUnknown tells whether b holds fields that v's type does not have, at any depth.
+func hasUnknown(b []byte, v any) bool {
+	fresh := reflect.New(reflect.TypeOf(v).Elem()).Interface()
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	return dec.Decode(fresh) != nil
+}
+
+// scope is the app environment a state file belongs to (apps/<stack>), or the server ("").
+func (s *Store) scope(path string) string {
+	rel, err := filepath.Rel(s.root, path)
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) > 2 && parts[0] == "apps" {
+		return "apps/" + parts[1]
+	}
+	return ""
+}
+
+// writable refuses to write path when its scope holds a file with fields this Dockflow does not
+// know (state-v1.md, Compatibility): rewriting the scope, or acting on it, would drop them. The
+// file at path itself is checked when it was not read before.
+func (s *Store) writable(path string, v any) error {
+	if _, err := os.Stat(path); err == nil {
+		fresh := reflect.New(reflect.TypeOf(v)).Interface()
+		if _, err := s.readJSON(path, fresh); err != nil {
+			return err
+		}
+	}
+	s.mu.Lock()
+	newer, ok := s.unknown[s.scope(path)]
+	s.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	return errs.Newf("state.newer", errs.ExitState, "%s holds fields that this Dockflow does not know: a newer Dockflow wrote it, and changing this state would lose them", newer).
+		WithHint("upgrade Dockflow to the version this server was last changed with")
 }
 
 // writeJSON writes v atomically: to a temporary file, synced, then renamed.
 func (s *Store) writeJSON(path string, v any, gz bool) error {
+	if err := s.writable(path, v); err != nil {
+		return err
+	}
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return errs.Internal("encode %s: %v", path, err)

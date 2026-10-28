@@ -14,7 +14,7 @@ Every `dockflow` command ends with an exit code that tells a script or a CI job 
 | Code | Name | Meaning | Typical causes |
 |---|---|---|---|
 | `0` | OK | Success, including a plan with nothing to do | A deploy that went live, a deploy with nothing to change, a read command |
-| `1` | Internal | Unexpected error. This is a bug: please report it | The agent stopped before finishing, a state file that cannot be read, the switch's admin API not answering |
+| `1` | Internal | Unexpected error. This is a bug: please report it | The agent stopped before finishing, a corrupt state file, the switch's admin API not answering |
 | `2` | Usage | Wrong usage | Unknown command or flag, a bad argument, an unknown run id for `attach`, a CI tag whose suffix names no environment |
 | `3` | Config | Invalid configuration | An error in `dockflow.yml` or Compose, a variable with no value, an unreadable `.env.dockflow`, a key that is not available yet, an SSH key protected by a passphrase |
 | `4` | Connect | Cannot connect | SSH unreachable or refused, unknown or changed host key, Docker API unreachable, Docker older than 27, the agent binary cannot be downloaded |
@@ -26,6 +26,7 @@ Every `dockflow` command ends with an exit code that tells a script or a CI job 
 | `10` | Lock lost | The lock was lost during the run | Reserved: the lock is a kernel `flock` held until the agent exits, so this version never reports it |
 | `11` | Hook | A fatal hook failed before anything changed | A fatal `before_build`, `after_build` or `before_deploy` hook that exited with a non-zero code |
 | `12` | Backup | A backup failed | A dump that exits with an error, a repository that cannot be opened or fails its check, a service that is not running |
+| `13` | State | The server's state needs another Dockflow; nothing was changed | A newer Dockflow changed this environment or this server, and recorded something this version does not know: a CI pinned to an older version, after a deploy with a newer one |
 | `130` | Interrupted | The run was cancelled, and rolled back if it had started | Ctrl+C, `dockflow cancel`, answering no at a confirmation prompt, detaching with a second Ctrl+C |
 
 `dockflow exec`, `dockflow run` and `dockflow ssh` exit with the exit code of the command they ran. When they cannot start it, they use the codes above.
@@ -159,6 +160,8 @@ Exit code 8 means the deploy failed but your users still see the previous releas
 | `backup.restore_failed` | 12 | The restore failed; the message gives the restore command's error. A Postgres restore is one transaction: nothing of it stays. | Read the error, fix the target, and restore again. |
 | `backup.retention` | 12 | `backup prune` could not apply a retention. | Read restic's error in the message. |
 | `backup.check` | 12 | The repository failed `restic check`. | Run `restic check` on the repository to see its errors. |
+| `state.newer` | 13 | A newer Dockflow changed this environment (or this server) and recorded fields this version does not know. It can read the state, not change it. | Upgrade Dockflow to the version the server was last changed with, in CI too. |
+| `state.schema` | 13 | The server's state is in another format version, written by another major release of Dockflow. | Use the Dockflow that wrote it, or a later one of the same major. |
 
 ## Warning codes
 

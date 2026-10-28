@@ -9,6 +9,13 @@ All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/000
 - **JSON documents** carry `"schema": 1`.
 - **Clocks.** No decision depends on time. Timestamps are informational, in UTC, from the server's clock.
 
+## Compatibility
+
+- **What a minor release may change.** Add fields to a document, add documents, add label values. It never removes or renames a field, nor changes its type or meaning. A new field's zero value, or its absence, means the behaviour from before it existed.
+- **Reading.** A reader ignores the fields it does not know, so any Dockflow of the same major reads the state of a newer one: `status`, `releases`, `logs` work.
+- **Writing.** A Dockflow does not change a scope (an app environment, `apps/<stack>/`, or the server, every other file) after reading a file of it that holds fields it does not know: rewriting the scope, or rebuilding containers from a release it only partly understands, would lose what a newer Dockflow recorded. It stops with `state.newer` (exit 13) and the hint to upgrade. A file is also checked before it is replaced, read or not. A newer Dockflow that used none of its new fields blocks nothing.
+- **Schema.** A document whose `schema` is not 1 stops every run with `state.schema` (exit 13): a newer major wrote it, or an older one.
+
 ## Layout
 
 ```

@@ -22,6 +22,7 @@ const (
 	ExitLockLost    = 10
 	ExitHook        = 11
 	ExitBackup      = 12
+	ExitState       = 13
 	ExitInterrupted = 130
 )
 

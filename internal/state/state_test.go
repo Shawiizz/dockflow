@@ -90,3 +90,57 @@ func TestRootIsPrivate(t *testing.T) {
 		t.Fatalf("the state directory is %o, want 700", st.Mode().Perm())
 	}
 }
+
+// A file with fields this Dockflow does not know was written by a newer one: the state of its
+// scope can be read, not changed, so that nothing a newer Dockflow recorded is lost.
+func TestNewerStateIsReadOnly(t *testing.T) {
+	root := t.TempDir()
+	s, _ := Open(root, "r1")
+	shop, _ := s.App("shop-production")
+	blog, _ := s.App("blog-production")
+	for _, a := range []*App{shop, blog} {
+		if err := a.WriteEnv(domain.EnvRecord{LastSeq: 1, Current: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	newer := `{"schema": 1, "last_seq": 2, "current": 2, "added_by_1_3": {"x": 1}}`
+	os.WriteFile(filepath.Join(shop.Dir(), "env.json"), []byte(newer), 0o600)
+
+	// a new run of this Dockflow
+	s, _ = Open(root, "r2")
+	shop, _ = s.App("shop-production")
+	blog, _ = s.App("blog-production")
+	env, err := shop.Env()
+	if err != nil || env.Current != 2 {
+		t.Fatalf("a newer state stays readable: %+v %v", env, err)
+	}
+	err = shop.WriteRelease(&domain.Release{Seq: 3, Status: domain.StatusApplying})
+	if errs.CodeOf(err) != "state.newer" || errs.ExitCode(err) != errs.ExitState {
+		t.Fatalf("want state.newer, got %v", err)
+	}
+	if err := blog.WriteEnv(domain.EnvRecord{LastSeq: 2, Current: 2}); err != nil {
+		t.Fatalf("another app's state is not concerned: %v", err)
+	}
+	// unread, the file is checked before it is replaced; the lock is refused the same way
+	s, _ = Open(root, "r3")
+	shop, _ = s.App("shop-production")
+	if err := shop.WriteEnv(domain.EnvRecord{}); errs.CodeOf(err) != "state.newer" {
+		t.Fatalf("want state.newer, got %v", err)
+	}
+	os.WriteFile(filepath.Join(shop.Dir(), "lock.json"), []byte(`{"schema": 1, "run": "x", "new_field": true}`), 0o600)
+	s, _ = Open(root, "r4")
+	shop, _ = s.App("shop-production")
+	if _, err := shop.Lock(domain.LockInfo{Run: "r4"}); errs.CodeOf(err) != "state.newer" {
+		t.Fatalf("want state.newer, got %v", err)
+	}
+}
+
+func TestSchemaMismatch(t *testing.T) {
+	s, _ := Open(t.TempDir(), "r1")
+	a, _ := s.App("shop-production")
+	os.WriteFile(filepath.Join(a.Dir(), "env.json"), []byte(`{"schema": 2}`), 0o600)
+	_, err := a.Env()
+	if e, ok := errs.As(err); !ok || e.Code != "state.schema" || e.Exit != errs.ExitState {
+		t.Fatalf("want state.schema, exit 13, got %v", err)
+	}
+}

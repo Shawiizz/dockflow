@@ -138,6 +138,7 @@ The file holds no secret value: a changed secret changes the fingerprint, so the
 | 10 | The lock was lost during the run |
 | 11 | A fatal hook failed before anything changed |
 | 12 | A backup or a restore failed |
+| 13 | The server's state needs another Dockflow: a newer one wrote fields this one does not know (`state.newer`), or another major wrote it (`state.schema`). Nothing was changed |
 | 130 | Interrupted: the run was cancelled and rolled back |
 
 `exec`, `run` and `ssh` exit with the command's own exit code. When they cannot start it, they use the codes above. They connect the terminal to the command, so their output is the command's own, not masked: the user runs it.
