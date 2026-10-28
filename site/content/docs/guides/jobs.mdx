@@ -159,7 +159,16 @@ volumes:
 
 `depends_on: db` on `migrate` keeps the file working with `docker compose up`, where Compose starts `db` first.
 
-Because the previous web containers keep serving while `migrate` runs, and for a moment after it, a migration should keep the schema readable by the previous version: add columns and tables in one release, and remove what the old code still reads in a later one. If `migrate` fails, nothing has switched; if the new web containers then fail their checks, the deploy rolls back the containers but not the schema.
+## Migrations that survive a rollback
+
+A deploy rolls back containers, never data. If `migrate` fails, nothing has switched and the schema is whatever the migration left. If `migrate` succeeds and the new web containers then fail their checks, or the agent dies, the deploy goes back to the **previous code on the new schema**. The same happens with `dockflow rollback`, which runs no job. And while `migrate` runs, and for a moment after it, the previous web containers keep serving on the new schema anyway.
+
+So write each migration so that the previous release still works on the schema it leaves, in two steps, *expand* then *contract*:
+
+1. **Expand**, in one release: add what the new code needs (new tables, new columns that are nullable or have a default, new indexes), and keep everything the previous code reads and writes. The new code writes both the old and the new shape when they differ.
+2. **Contract**, in a later release, once nothing runs the old code any more: drop the old columns and tables, and add the constraints the expand step could not.
+
+A rename is an expand (add the new column, copy, write both) followed by a contract (drop the old one). With this rule, every rollback lands on code that works with the schema in place, and a failed deploy never needs a database restore.
 
 To run a command by hand with a service's spec, such as a console or a one-time script, use `dockflow run`; see [Day-2 operations](/guides/day-2/).
 
