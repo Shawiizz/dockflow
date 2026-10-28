@@ -17,7 +17,7 @@ For an environment named `production`, a key `X` is looked up as `PRODUCTION_X`,
 |---|---|
 | `<ENV>_<KEY>` | A secret for one environment, in upper case: `PRODUCTION_DB_PASSWORD` is `DB_PASSWORD` for `production`. Only variables with the environment's prefix are read from the process environment. |
 | `<ENV>_CONNECTION` | The environment's connection string, printed by `dockflow server connection`: the server, its host key and the private key. It is read like any other secret, so it can also come from `DOCKFLOW_SECRETS` or `.env.dockflow`. When it is set, it wins over the `server:` of `dockflow.yml`. |
-| `DOCKFLOW_SECRETS` | A JSON object of secrets, such as one a secret manager returns. Its keys follow the same rule: `PRODUCTION_X`, then `X`. String values only. |
+| `DOCKFLOW_SECRETS` | A JSON object of secrets, typically every secret of a repository at once. Its keys follow the same rule: `PRODUCTION_X`, then `X`. String values only. |
 | `SOPS_AGE_KEY` | One or more age private keys, to decrypt the environment's SOPS file; in CI, a secret of the repository. As for the `sops` command. |
 | `SOPS_AGE_KEY_FILE` | A file of age private keys. Without either variable, Dockflow reads `$XDG_CONFIG_HOME/sops/age/keys.txt` (`~/.config/sops/age/keys.txt`; `~/Library/Application Support/sops/age/keys.txt` on macOS), as `sops` does. |
 
@@ -30,8 +30,7 @@ The sources, in priority order:
 # .github/workflows/deploy.yml
       - run: dockflow deploy
         env:
-          PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
-          PRODUCTION_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 ```
 
 ### `.env.dockflow`

@@ -14,8 +14,7 @@ The same `dockflow` binary runs on your laptop and on a CI runner. In CI, Dockfl
 - run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.8
 - run: dockflow deploy --wait-lock 10m
   env:
-    PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
-    PRODUCTION_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
+    DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 ```
 
 Pushing the tag `1.2.0` deploys version `1.2.0` to production. Pushing `1.2.0-staging` deploys version `1.2.0` to staging. The complete workflows for each provider are [at the end of this page](#complete-workflows).
@@ -82,14 +81,14 @@ Every secret of an environment is a CI variable prefixed with the environment's 
 
 Dockflow reads, among the process variables, only those that start with the environment's prefix. A CI variable named `DB_PASSWORD` alone is ignored, so a variable meant for staging never reaches production by accident.
 
-On GitHub Actions, name each secret in the job's `env`, as above. GitHub holds a run that hands every secret of the repository to a job at once, with `${{ toJSON(secrets) }}`, as a protection against the exfiltration of secrets.
-
-You can also pass a set of secrets as one JSON object in `DOCKFLOW_SECRETS`, for instance one that a secret manager returns:
+You can also pass a whole set of secrets as one JSON object in `DOCKFLOW_SECRETS`. On GitHub Actions, this gives Dockflow every secret of the repository:
 
 ```yaml
 env:
-  DOCKFLOW_SECRETS: ${{ steps.vault.outputs.secrets }}
+  DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 ```
+
+GitHub may hold the first run of a workflow that hands every secret to a job this way until someone approves it, in the run's page of the Actions tab. To avoid that, name each secret instead: `PRODUCTION_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}`.
 
 Inside `DOCKFLOW_SECRETS`, the key `X` is looked up as `PRODUCTION_X` first, then as `X`, so an unprefixed key there is a value shared by every environment. Process variables and `DOCKFLOW_SECRETS` come before `.env.dockflow`, which you keep out of Git for local deploys.
 
@@ -171,9 +170,7 @@ jobs:
       - name: Build
         run: dockflow build production
         env:
-          PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
-          # and each secret your Compose files use, by name:
-          # PRODUCTION_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 
   deploy:
     if: github.event_name == 'push' && github.ref_type == 'tag'
@@ -185,9 +182,7 @@ jobs:
       - name: Deploy
         run: dockflow deploy --wait-lock 10m
         env:
-          PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
-          # and each secret your Compose files use, by name:
-          # PRODUCTION_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 
   # the services that declare x-dockflow.backup, then the server's state
   backup:
@@ -200,9 +195,7 @@ jobs:
       - name: Back up
         run: dockflow backup run production --wait-lock 10m && dockflow backup run production --server
         env:
-          PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
-          # and each secret your Compose files use, by name:
-          # PRODUCTION_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 ```
 
 `schedule` runs the `backup` job every night at 03:17 UTC, and `workflow_dispatch` lets you run it from the Actions tab.

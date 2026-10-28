@@ -1,7 +1,7 @@
 # ADR-0012: Secrets: CI variables, a local file, optionally SOPS; delivered by interpolation or as secret files
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (CI secrets as in 1.x, after review by the project owner), revised 2026-10-27 (root-only copies of secret files, by decision of the project owner), revised 2026-10-28 (GitHub workflows name each secret: GitHub holds a run that passes them all with `toJSON(secrets)`, against the exfiltration of secrets)
+- Date: 2026-10-25, revised 2026-10-26 (CI secrets as in 1.x, after review by the project owner), revised 2026-10-27 (root-only copies of secret files, by decision of the project owner), revised 2026-10-28 (GitHub may hold the first run of a workflow that passes every secret with `toJSON(secrets)` until it is approved; naming each secret avoids it)
 
 ## Context
 
@@ -76,7 +76,7 @@ The CLI reads and writes the SOPS format itself, for age recipients, on age's li
 
 ## Consequences
 
-- The 1.x sources are unchanged: `DOCKFLOW_SECRETS` and prefixed variables in CI, `.env.dockflow` locally, `${KEY}` in Compose. On GitHub Actions, the workflows `dockflow init` writes and the docs show name each secret (`PRODUCTION_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}`): GitHub holds a run that hands every secret to a job at once with `DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}`.
+- The 1.x workflow is unchanged: `DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}` in CI, `.env.dockflow` locally, `${KEY}` in Compose.
 - A missing secret is an error, not an empty string ([ADR-0006](0006-compose-as-written.md)). An optional value is written `${KEY:-}`.
 - Secrets used through `${…}` are as visible as any environment variable. Compose `secrets:` are not.
 

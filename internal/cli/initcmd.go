@@ -257,8 +257,8 @@ func starterCompose(dir string) string {
 const githubWorkflow = `# Builds on every branch, deploys on tags: 1.2.0 to production, and backs up
 # production every night.
 # Add PRODUCTION_CONNECTION, and the secrets your Compose files use, under
-# Settings > Secrets and variables > Actions, and name each one in the jobs' env:
-# GitHub holds a run that hands every secret to a job at once (toJSON(secrets)).
+# Settings > Secrets and variables > Actions. GitHub may hold the first run until
+# you approve it, as it hands every secret to the jobs (toJSON(secrets)).
 name: Deploy
 
 on:
@@ -280,9 +280,7 @@ jobs:
       - name: Build
         run: dockflow build production
         env:
-          PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
-          # and each secret your Compose files use, by name:
-          # PRODUCTION_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 
   deploy:
     if: github.event_name == 'push' && github.ref_type == 'tag'
@@ -295,9 +293,7 @@ jobs:
       - name: Deploy
         run: dockflow deploy --wait-lock 10m
         env:
-          PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
-          # and each secret your Compose files use, by name:
-          # PRODUCTION_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 
   # the services that declare x-dockflow.backup, then the server's state
   backup:
@@ -310,9 +306,7 @@ jobs:
       - name: Back up
         run: dockflow backup run production --wait-lock 10m && dockflow backup run production --server
         env:
-          PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
-          # and each secret your Compose files use, by name:
-          # PRODUCTION_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 `
 
 const gitlabWorkflow = `# Builds on every branch, deploys on tags: 1.2.0 to production, and backs up

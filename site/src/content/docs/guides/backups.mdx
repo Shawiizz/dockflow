@@ -130,8 +130,7 @@ jobs:
       - run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh
       - run: dockflow backup run production && dockflow backup run production --server
         env:
-          PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
-          # and each secret the backed-up services use, such as a repository's password
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 ```
 
 ## Restoring
