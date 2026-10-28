@@ -189,7 +189,7 @@ A deploy of a routed service `web`, updated with the `switch` strategy, with `--
 
 ```json
 {"v":1,"ts":"2026-10-26T14:03:10.402Z","run":"01jbx6k1z3p4q5r6s7t8v9w0x1","seq":1,"type":"log","level":"info","msg":"uploading 2 of 14 files","data":{"line":"upload"}}
-{"v":1,"ts":"2026-10-26T14:03:11.123Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":2,"type":"run.started","level":"info","msg":"deploy shop-production","data":{"app":"shop","dockflow_version":"4.0.0-alpha.8","env":"production","op":"deploy","server":"main"}}
+{"v":1,"ts":"2026-10-26T14:03:11.123Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":2,"type":"run.started","level":"info","msg":"deploy shop-production","data":{"app":"shop","dockflow_version":"4.0.0-alpha.9","env":"production","op":"deploy","server":"main"}}
 {"v":1,"ts":"2026-10-26T14:03:11.130Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":3,"type":"lock.acquired","level":"info","msg":"lock acquired","data":{"scope":"shop-production"}}
 {"v":1,"ts":"2026-10-26T14:03:11.402Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":4,"type":"plan.computed","level":"info","msg":"0 to create, 1 to update, 0 to remove","data":{"app":"shop","env":"production","fingerprint":"sha256:a3b22ab3…","actions":[{"id":"01-service.update-web","kind":"service.update","target":"web","reason":"image web@sha256:bbbb → web@sha256:cccc","strategy":"switch"}],"unchanged":["db"],"summary":{"create":0,"update":1,"remove":0}}}
 {"v":1,"ts":"2026-10-26T14:03:11.410Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":5,"type":"release.created","level":"info","msg":"release 43 (a1b2c3d)","data":{"seq":43,"version":"a1b2c3d"}}
