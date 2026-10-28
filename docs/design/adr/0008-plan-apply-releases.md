@@ -1,7 +1,7 @@
 # ADR-0008: Plan and apply; whole-app releases and rollback
 
 - Status: Accepted
-- Date: 2026-10-25
+- Date: 2026-10-25, revised 2026-10-28 (env.json is the commit point; a release that cannot be recorded rolls back; the watchdog recovers a dead run; a failed release left in place is restored by the next run)
 
 ## Context
 
@@ -36,6 +36,8 @@ The agent ([ADR-0004](0004-ephemeral-agent.md)) applies the plan under the envir
 2. It executes the actions in order, waiting on each as described in [ADR-0010](0010-rollout-health-jobs.md).
 3. On success, the release becomes `active` and the previous active one `superseded`.
 
+**The commit point** is one atomic write: `env.json`, written by rename, naming the release as current. The statuses of the release records follow it, and are written after it. Before that write, any failure rolls back, including a failure to write the commit itself (a full disk): the run reports the deploy failed only once the previous release serves again. After it, the release is live: a failure to write the statuses or to remove the old containers is a warning, and the next run completes them. So a release is never reported failed while it serves, and never undone after it was reported live.
+
 ### Rollback is a plan
 
 On any failure after the first change, the agent rolls back the **whole app**. The desired state of the rollback is the previous active release record:
@@ -55,14 +57,19 @@ The failed release ends `rolled_back`. If the rollback itself fails, it ends `fa
 | Value | Effect |
 |---|---|
 | `rollback` | The default |
-| `fail` | The failed release stays in place, marked failed, and the environment is degraded |
+| `fail` | The failed release stays in place, marked failed, and the environment is degraded. It stays only until the next run that takes the lock, whatever it is (a deploy, a rollback, a restart, a scale): that run restores the current release first, and plans from it. `dockflow plan` says so. Adopting the failed release as the base of the next run would build on a release known to fail |
 | `ignore` | A failed HTTP check or `after_*` hook is reported as a warning, and the release becomes active |
 
 Webhooks are sent in every case ([config spec](../spec/config-v1.md)). A failure of the rollout itself (a crash loop, an unhealthy container, a timeout) always rolls back, because leaving a service half-switched is never a useful state.
 
 ### Recovery from a dead run
 
-If an agent dies (the server reboots, or its container is killed), its release stays `applying` and the kernel releases its lock ([state spec](../spec/state-v1.md#lock)). The next run that takes the lock marks that release `abandoned` and plans from the actual state as usual. Because the plan is computed from what is really running, it converges whatever the dead run had done.
+If an agent dies (the server reboots, Docker restarts, or its container is killed), its release stays `applying` and the kernel releases its lock ([state spec](../spec/state-v1.md#lock)). Recovery then follows the commit point: a release `env.json` already names is completed; one it does not is rolled back. Recovery restores the current release (containers, names, routes, uploads), then marks the dead run's release `abandoned`, and the plan is computed from the actual state as usual. Because the plan is computed from what is really running, it converges whatever the dead run had done.
+
+Two things run that recovery, under the lock, with the same code:
+
+- **the watchdog** ([ADR-0010](0010-rollout-health-jobs.md)), as soon as the dead run's agent container no longer runs: a run that died in a `stop-first` rollout had stopped the old container on purpose, so Docker does not start it again, and the app would stay down until someone ran a command;
+- **the next run** that takes the lock, before its plan, for whatever is left: it is the only one on a server without a watchdog.
 
 ### Versions
 

@@ -37,6 +37,10 @@ type Store struct {
 	// unknown holds, by scope (an app environment, or the server), a file read with fields this
 	// Dockflow does not know: a newer one wrote them, and rewriting the scope would lose them.
 	unknown map[string]string
+
+	// Faults, when set, wraps every file write, which write performs. Tests use it to fail a
+	// write, or to cut a run at one; it is nil otherwise.
+	Faults func(path string, write func() error) error
 }
 
 // Open returns the store rooted at root, creating it when needed.
@@ -359,6 +363,19 @@ func (s *Store) scope(path string) string {
 	return ""
 }
 
+// Writable refuses, with state.newer, to change the app environment once a file of it read so far
+// holds fields this Dockflow does not know (state-v1.md, Compatibility). A run calls it before it
+// changes containers from what it read, which no file write would check.
+func (a *App) Writable() error {
+	a.s.mu.Lock()
+	newer, ok := a.s.unknown[a.s.scope(filepath.Join(a.dir, "env.json"))]
+	a.s.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	return newerErr(newer)
+}
+
 // writable refuses to write path when its scope holds a file with fields this Dockflow does not
 // know (state-v1.md, Compatibility): rewriting the scope, or acting on it, would drop them. The
 // file at path itself is checked when it was not read before.
@@ -375,7 +392,11 @@ func (s *Store) writable(path string, v any) error {
 	if !ok {
 		return nil
 	}
-	return errs.Newf("state.newer", errs.ExitState, "%s holds fields that this Dockflow does not know: a newer Dockflow wrote it, and changing this state would lose them", newer).
+	return newerErr(newer)
+}
+
+func newerErr(path string) error {
+	return errs.Newf("state.newer", errs.ExitState, "%s holds fields that this Dockflow does not know: a newer Dockflow wrote it, and changing this state would lose them", path).
 		WithHint("upgrade Dockflow to the version this server was last changed with")
 }
 
@@ -395,6 +416,14 @@ func (s *Store) writeJSON(path string, v any, gz bool) error {
 		zw.Close()
 		b = buf.Bytes()
 	}
+	if s.Faults != nil {
+		return s.Faults(path, func() error { return s.put(path, b) })
+	}
+	return s.put(path, b)
+}
+
+// put writes b to path: to a temporary file, synced, then renamed.
+func (s *Store) put(path string, b []byte) error {
 	tmp := path + ".tmp-" + s.run
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {

@@ -82,10 +82,11 @@ Hooks run locally, on the server or inside running containers ([ADR-0022](0022-h
 
 ### Implementation (M3)
 
-- **What it looks at.** Every 10 seconds, the containers of each environment's current release; never those of a rollout in progress, nor while a run holds the environment's lock, which the watchdog takes for the time of a restart.
+- **What it looks at.** Every 10 seconds, the containers that serve each environment's current release (an unchanged service keeps an older release's); never those of a rollout in progress, nor while a run holds the environment's lock, which the watchdog takes for the time of a restart.
 - **Unhealthy.** A container first seen `unhealthy` is restarted (stop with the service's `stop_grace_period`, then start) once `restart_after` has passed since, `2m` by default; `0` disables it for the service.
 - **Reboots.** It writes again the Compose secret files of each current release from their root-only copies ([ADR-0012](0012-secrets-sops.md)), then starts the containers of the current release that are stopped although their restart policy is `unless-stopped` or `always` and they mount a secret: Docker could not start them at boot without their files, and records no error that would tell.
-- **Records.** Each restart is a `watchdog.restarted` event on its output and an entry of `watchdog.json`, which `dockflow status` shows. The container runs the agent's image, with Docker's socket, the state directory and `/run/dockflow`, and no network.
+- **Dead runs** (revised 2026-10-28). When a run's agent died (an OOM kill, a Docker restart, a reboot), its release stays `applying`, and a `stop-first` service it had stopped stays down: Docker does not start a container stopped on purpose. The watchdog runs the recovery the next run would run ([ADR-0008](0008-plan-apply-releases.md#recovery-from-a-dead-run)) as soon as the agent's container no longer runs, and the lock is free; a release that failed and was left in place on purpose (`on_failure: fail`) is left alone. It does nothing in a state a newer Dockflow wrote (`state.newer`). Each recovery is a `watchdog.recovered` warning on its output.
+- **Records.** Each restart is a `watchdog.restarted` event on its output and an entry of `watchdog.json`, which `dockflow status` shows. The container runs the agent's image, with Docker's socket, the state directory, `/run/dockflow` and the switch's admin volume, to move routes back when it recovers a run, and no network.
 
 ## Consequences
 

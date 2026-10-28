@@ -84,8 +84,8 @@ Losing the server loses the release history along with the apps. Dockflow does n
 
 Each app environment has a lock. A run that changes it (`deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`) holds the lock for its whole duration, through a `flock` on a file under `/var/lib/dockflow`.
 
-- **When the lock is held**, another run fails at once with exit code 5, and says who holds it. `dockflow deploy --wait-lock 10m` waits up to 10 minutes instead, for CI pipelines that may overlap.
-- **When the holder dies**, the kernel releases the lock. There is no lease to expire and no stale lock to clear by hand.
+- **When the lock is held**, another run fails at once with exit code 5, and says who holds it. `dockflow deploy --wait-lock 10m` waits up to 10 minutes instead, for CI pipelines that may overlap. A lock the watchdog holds, for a restart or to recover a run that died, is always waited for, up to 3 minutes.
+- **When the holder dies**, the kernel releases the lock. There is no lease to expire and no stale lock to clear by hand, and the watchdog finishes or rolls back the run it left ([Interrupted runs](/concepts/releases-and-rollbacks/#interrupted-runs)).
 - **Manual locks.** `dockflow lock acquire production -m "database migration"` blocks every run until `dockflow lock release`, for a maintenance window. `deploy --force` deploys anyway.
 
 Read-only commands take no lock. Different apps, and different environments of one app, deploy independently; changes to the switch's configuration are serialised by a server-wide lock.

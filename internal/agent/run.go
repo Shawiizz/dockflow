@@ -202,12 +202,16 @@ func (r *runner) lock(ctx context.Context) (*state.Lock, error) {
 			r.ev.Info(events.LockAcquired, "lock acquired", map[string]any{"scope": r.stack})
 			return l, nil
 		}
-		if errs.CodeOf(err) != "lock.held" || !r.Now().Before(deadline) {
+		if errs.CodeOf(err) != "lock.held" {
+			return nil, err
+		}
+		h, _ := r.app.Holder()
+		// the watchdog holds the lock for a restart, or to recover a run that died: it is waited for
+		if watchdog := h != nil && h.Op == "watchdog"; !r.Now().Before(deadline) && (!watchdog || !r.Now().Before(r.start.Add(watchdogWait))) {
 			return nil, err
 		}
 		if !waiting {
 			waiting = true
-			h, _ := r.app.Holder()
 			data := map[string]any{}
 			if h != nil {
 				data = map[string]any{"holder": h.Run, "op": h.Op, "by": h.By, "since": h.Since}
@@ -221,6 +225,10 @@ func (r *runner) lock(ctx context.Context) (*state.Lock, error) {
 		}
 	}
 }
+
+// watchdogWait bounds how long a run waits for a lock the watchdog holds: a recovery waits up to
+// two minutes for the containers it starts again.
+const watchdogWait = 3 * time.Minute
 
 func (r *runner) unlock(l *state.Lock) {
 	l.Release()

@@ -114,7 +114,7 @@ After a successful run, the agent keeps the newest `releases.keep` releases that
 |---|---|---|
 | `dockflow-switch` | The switch: Caddy, which routes traffic to your services ([Switch and edges](/concepts/switch-and-edges/)) | Permanent, `restart: unless-stopped`. Absent with `--edge none` |
 | `dockflow-registry` | The server-local registry that receives the images you build | Permanent, `restart: unless-stopped`. Absent with `--no-registry` |
-| `dockflow-watchdog` | The [watchdog](/guides/health-checks/#after-the-deploy-the-watchdog): restarts the containers that stay unhealthy, and brings apps back after a reboot | Permanent, `restart: unless-stopped`, no network. Absent with `--no-watchdog` |
+| `dockflow-watchdog` | The [watchdog](/guides/health-checks/#after-the-deploy-the-watchdog): restarts the containers that stay unhealthy, brings apps back after a reboot, and finishes or rolls back a run whose agent died ([Interrupted runs](/concepts/releases-and-rollbacks/#interrupted-runs)) | Permanent, `restart: unless-stopped`, no network; it mounts the switch's admin volume to move routes back. Absent with `--no-watchdog` |
 | `dockflow-run-<run-id>` | The agent of one run ([How it works](/concepts/how-it-works/)) | Exits when the run ends. The 10 most recent finished ones are kept for `dockflow attach`, older ones are removed by the next run |
 | `dockflow-upload-<run-id>-<n>` | A helper that writes an upload to its destination | Removed as soon as it finishes |
 | `dockflow-filter-<run-id>`, `dockflow-probe-<run-id>` | Helpers on the host's network: one applies the port filter's rules, the other checks whether ports 80 and 443 are free (`server check`) | Removed as soon as they finish |

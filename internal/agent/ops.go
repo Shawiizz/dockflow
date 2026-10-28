@@ -3,10 +3,12 @@ package agent
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"net/netip"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,74 +21,205 @@ import (
 	"github.com/Shawiizz/dockflow/internal/state"
 )
 
-// recover brings the environment back to its current release after a run that did not finish:
-// an agent that died, or a failed run left in place. It runs under the lock, before planning.
+// recover makes the environment consistent before a run plans, under the lock. env.json is the
+// commit point (state-v1.md): a commit an agent did not finish is completed, and the current
+// release is restored after a run that did not finish: an agent that died, or a failed run left
+// in place (on_failure: fail). Each step can be cut and done again: a release is marked
+// abandoned last.
 func (r *runner) recover(ctx context.Context) error {
 	if err := r.removeJobs(ctx); err != nil {
+		return err
+	}
+	if err := r.settle(); err != nil {
 		return err
 	}
 	env, err := r.app.Env()
 	if err != nil {
 		return err
 	}
-	unfinished := false
-	if env != nil && env.LastSeq > env.Current {
-		rel, err := r.app.Release(env.LastSeq)
-		if err != nil {
-			return err
-		}
-		if rel != nil && rel.Status == domain.StatusApplying {
-			now := r.Now().UTC()
-			rel.Status, rel.FinishedAt = domain.StatusAbandoned, &now
-			rel.Error = &domain.ReleaseError{Code: "run.abandoned", Message: "the agent stopped before the run finished"}
-			if err := r.app.WriteRelease(rel); err != nil {
-				return err
-			}
-			r.warn("run.abandoned", fmt.Sprintf("release %d was abandoned by run %s: restoring release %d", rel.Seq, rel.Run, env.Current))
-			unfinished = true
-		}
+	abandoned, inPlace, err := r.unfinished(env)
+	if err != nil {
+		return err
 	}
 	o, err := observe(ctx, r.Engine, r.app, r.stack)
 	if err != nil {
 		return err
 	}
-	if len(o.leftovers) == 0 && !unfinished {
+	fixes, stopped := r.fixes(o)
+	table, err := r.Store.SwitchRoutes()
+	if err != nil {
+		return err
+	}
+	stale := !sameUpstreams(table[r.stack], r.currentRoutes(o, fixes))
+	pending := env != nil && env.LastSeq > env.Current
+	if len(abandoned) == 0 && len(o.leftovers) == 0 && !stale && (!stopped || !pending) {
 		return nil
 	}
-	for _, c := range o.leftovers {
-		r.warn("run.leftover", fmt.Sprintf("removing %s, left by an unfinished run", c.Name))
-		if err := r.Engine.Remove(ctx, c.ID); err != nil {
+	current := 0
+	if env != nil {
+		current = env.Current
+	}
+	for _, rel := range abandoned {
+		r.warn("run.abandoned", fmt.Sprintf("release %d was abandoned by run %s: restoring release %d", rel.Seq, rel.Run, current))
+	}
+	if inPlace != nil && (len(o.leftovers) > 0 || stopped) {
+		r.warn("run.unfinished", fmt.Sprintf("release %d failed and was left in place: restoring release %d", inPlace.Seq, current))
+	}
+	// nothing changes in a state that a newer Dockflow wrote
+	if err := r.app.Writable(); err != nil {
+		return err
+	}
+	if err := r.restore(ctx, o, fixes); err != nil {
+		return err
+	}
+	for _, rel := range abandoned {
+		now := r.Now().UTC()
+		rel.Status, rel.FinishedAt = domain.StatusAbandoned, &now
+		rel.Serving, rel.Hashes = nil, nil
+		rel.Error = &domain.ReleaseError{Code: "run.abandoned", Message: fmt.Sprintf("the agent stopped before the run finished; release %d was restored", current)}
+		if err := r.app.WriteRelease(rel); err != nil {
 			return err
 		}
 	}
-	serving := map[string][]string{}
-	for name, cs := range o.serving {
+	return nil
+}
+
+// unfinished returns the releases a run left applying, which no run holds since the lock is
+// held, and the latest release when it failed and was left in place. A release marked active
+// that env.json does not name is one whose agent, of a version before env.json was the commit
+// point, died during its commit: it is abandoned too.
+func (r *runner) unfinished(env *domain.EnvRecord) (abandoned []*domain.Release, inPlace *domain.Release, err error) {
+	current := 0
+	if env != nil {
+		current = env.Current
+	}
+	seqs, err := r.app.Releases()
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, seq := range seqs {
+		if seq <= current {
+			continue
+		}
+		rel, err := r.app.Release(seq)
+		if err != nil {
+			return nil, nil, err
+		}
+		if rel == nil {
+			continue
+		}
+		switch rel.Status {
+		case domain.StatusApplying, domain.StatusActive:
+			abandoned = append(abandoned, rel)
+		case domain.StatusFailed:
+			if env != nil && seq == env.LastSeq {
+				inPlace = rel
+			}
+		}
+	}
+	return abandoned, inPlace, nil
+}
+
+// fix is a container of the current release, and the name it must have.
+type fix struct {
+	c      engine.Container
+	proper string
+}
+
+// fixes lists the containers of the current release with their names, and tells whether one is
+// stopped.
+func (r *runner) fixes(o *observed) ([]fix, bool) {
+	var out []fix
+	stopped := false
+	for _, name := range slices.Sorted(maps.Keys(o.serving)) {
 		var s *domain.Service
 		if o.current != nil {
 			s, _ = o.current.Desired.Service(name)
 		}
-		for _, c := range cs {
+		for _, c := range o.serving[name] {
 			proper := c.Name
 			if s != nil {
 				proper = containerName(r.stack, s, c.Release, max(number(c), 1))
 			}
-			if c.Name != proper {
-				if err := r.Engine.Rename(ctx, c.ID, proper); err != nil {
-					return err
-				}
-			}
-			if c.State != "running" && c.State != "restarting" {
-				r.warn("run.restarted", "starting "+proper+", stopped by an unfinished run")
-				if err := r.Engine.Start(ctx, c.ID); err != nil {
-					return err
-				}
-			}
-			serving[name] = append(serving[name], proper)
+			out = append(out, fix{c: c, proper: proper})
+			stopped = stopped || (c.State != "running" && c.State != "restarting")
 		}
 	}
-	var routes []proxy.Route
+	return out, stopped
+}
+
+// currentRoutes are the routes of the current release, served by its containers.
+func (r *runner) currentRoutes(o *observed, fixes []fix) []proxy.Route {
+	if o.current == nil {
+		return nil
+	}
+	serving := map[string][]string{}
+	for _, f := range fixes {
+		serving[f.c.Service] = append(serving[f.c.Service], f.proper)
+	}
+	return routesFor(r.stack, &o.current.Desired, serving)
+}
+
+// sameUpstreams tells whether two sets of routes send each route to the same containers.
+func sameUpstreams(a, b []proxy.Route) bool {
+	key := func(rs []proxy.Route) map[string]string {
+		m := map[string]string{}
+		for _, rt := range rs {
+			m[rt.Service+" "+strings.Join(rt.Domains, ",")+rt.Path] = strings.Join(slices.Sorted(slices.Values(rt.Upstreams)), ",")
+		}
+		return m
+	}
+	return maps.Equal(key(a), key(b))
+}
+
+// restore brings back the current release: the containers of other releases go, its own get
+// their names back and run, and the switch points at them. A routed service keeps serving: its
+// leftovers go once the routes have moved.
+func (r *runner) restore(ctx context.Context, o *observed, fixes []fix) error {
+	need := map[string]bool{}
+	for _, f := range fixes {
+		need[f.proper] = true
+	}
+	remove := func(c engine.Container) error {
+		r.warn("run.leftover", fmt.Sprintf("removing %s, left by an unfinished run", c.Name))
+		return r.Engine.Remove(ctx, c.ID)
+	}
+	var later []engine.Container
+	for _, c := range o.leftovers {
+		var s *domain.Service
+		if o.current != nil {
+			s, _ = o.current.Desired.Service(c.Service)
+		}
+		// those in the way go first: holding a name, or the host ports of a stop-first service
+		if s != nil && len(s.Routes) > 0 && s.Strategy != domain.StrategyStopFirst && !need[c.Name] {
+			later = append(later, c)
+			continue
+		}
+		if err := remove(c); err != nil {
+			return err
+		}
+	}
+	var started, names []string
+	for _, f := range fixes {
+		if f.c.Name != f.proper {
+			if err := r.Engine.Rename(ctx, f.c.ID, f.proper); err != nil {
+				return err
+			}
+		}
+		if f.c.State != "running" && f.c.State != "restarting" {
+			r.warn("run.restarted", "starting "+f.proper+", stopped by an unfinished run")
+			if err := r.Engine.Start(ctx, f.c.ID); err != nil {
+				return err
+			}
+			started, names = append(started, f.c.ID), append(names, f.proper)
+		}
+	}
+	for i, err := range r.waitAll(ctx, started) {
+		if err != nil {
+			r.warn("run.restarted", fmt.Sprintf("%s is running again, but not healthy: %v", names[i], err))
+		}
+	}
 	if o.current != nil {
-		routes = routesFor(r.stack, &o.current.Desired, serving)
 		// an interrupted upload may have changed some files: put the current ones back
 		for _, u := range o.current.Desired.Uploads {
 			if _, _, err := r.applyUpload(ctx, u, u.Manifest, u.Mirror); err != nil {
@@ -95,7 +228,15 @@ func (r *runner) recover(ctx context.Context) error {
 		}
 		r.forgetBaselines()
 	}
-	return r.applyRoutes(ctx, routes)
+	if err := r.applyRoutes(ctx, r.currentRoutes(o, fixes)); err != nil {
+		return err
+	}
+	for _, c := range later {
+		if err := remove(c); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *runner) status(ctx context.Context) events.RunFinishedData {

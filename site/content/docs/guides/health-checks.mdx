@@ -210,7 +210,7 @@ services:
 
 The watchdog never acts while a run holds the environment's lock, and never on the containers of a rollout in progress: a deploy decides about its own containers. It needs a `healthcheck`, in Compose or in the image: without one, a container is never `unhealthy`.
 
-It also brings apps back after a reboot: see [secrets and configs](/guides/secrets/#how-a-new-value-reaches-the-containers). To go without it, run `server init --no-watchdog`.
+It also brings apps back after a reboot: see [secrets and configs](/guides/secrets/#how-a-new-value-reaches-the-containers). And when a run's agent dies (out of memory, a Docker restart, a reboot), it finishes or rolls back that run within seconds, as the next run would: see [Interrupted runs](/concepts/releases-and-rollbacks/#interrupted-runs). To go without it, run `server init --no-watchdog`.
 
 ## Seeing the checks
 

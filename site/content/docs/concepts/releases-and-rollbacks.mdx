@@ -29,7 +29,7 @@ Values interpolated into the environment of a container, secrets included, are p
 | `superseded` | A release that was active before the current one |
 | `rolled_back` | The run failed and the previous release was restored |
 | `failed` | The run failed and was left in place (`on_failure: fail`, `--no-rollback`), or its rollback failed |
-| `abandoned` | The agent stopped before the run finished; found by the next run |
+| `abandoned` | The agent stopped before the release went live; found by the watchdog or the next run, which restored the previous release |
 
 Only `active` and `superseded` releases went live, so only they can be restored with `dockflow rollback`.
 
@@ -84,7 +84,10 @@ What counts as a failure:
 - a `before` or `after` job exits with a non-zero code, or runs longer than its timeout;
 - a fatal hook fails;
 - an internal or public HTTP check fails, unless `on_failure` says otherwise (see below);
+- the release cannot be recorded as live on the server, at the very end (a full disk): `state.commit_failed`;
 - the run is cancelled with Ctrl+C or `dockflow cancel`: it rolls back and exits with code 130.
+
+A deploy reports a failure only once the previous release serves again: a deploy reported failed never leaves the new release serving. The other way round, once the release is recorded as live (one write, the commit), it stays live: what is left to do (marking the previous release `superseded`, removing the old containers) is completed by the next run if the agent cannot.
 
 A failure before anything changed on the server stops the run with nothing to undo: a build that fails (exit code 7), a fatal `before_build` or `before_deploy` hook (exit code 11), a lock held by another run (exit code 5).
 
@@ -101,6 +104,8 @@ A fatal `after_deploy` hook that runs on your machine or the server fails after 
 | `rollback` (default) | Rolls back, as any other failure |
 | `fail` | Leaves the run where it stopped, with the release marked `failed`; the environment is degraded; exit code 9 |
 | `ignore` | Is reported as a warning, and the release becomes active |
+
+`fail` is for looking at a failed release, not for keeping it: it stays in place only until the next run that takes the environment's lock. That run, whatever it is (a deploy, a rollback, but also a `restart` or a `scale`), first rolls the failed release back to the current one, then plans from it; `dockflow plan` warns about it (`run.unfinished`). The watchdog leaves it alone. To keep the new version, fix the check and deploy again.
 
 A failure of the rollout itself (a container that crashes, stays unhealthy or times out, a failed job) always rolls back, whatever `on_failure` says: a service left half-switched is never useful. `dockflow deploy --no-rollback` behaves as `on_failure: fail` for one run, to debug a failing check. See [Rollouts](/concepts/rollouts/#what-happens-on-failure).
 
@@ -134,15 +139,20 @@ A rollback runs no jobs: it does not replay old migrations, and it does not undo
 
 ## Interrupted runs
 
-If the agent dies in the middle of a run (the server reboots, or its container is killed), its release stays `applying`, and the kernel releases the lock. Nothing is left locked.
+If the agent dies in the middle of a run (the server reboots, Docker restarts, its container is killed or runs out of memory), its release stays `applying`, and the kernel releases the lock. Nothing is left locked.
 
-The next run that takes the lock (a deploy, a rollback, a restart…) repairs the environment first:
+What happens next depends on one write, the commit: the agent records the release as live in `env.json` once everything else is done.
 
-1. it marks the unfinished release `abandoned`;
-2. it removes the containers and jobs the dead run had created;
-3. it starts again the containers of the current release that the dead run had stopped;
-4. it points the switch back at them and restores the current release's uploads;
-5. then it plans from what is actually running, as usual.
+- **Before the commit**, the run is rolled back. Its release ends `abandoned`, and the previous release serves again.
+- **After the commit**, the release is live and stays so: it is marked `active`, the previous one `superseded`, and the old containers are removed.
+
+The [watchdog](/guides/health-checks/#after-the-deploy-the-watchdog) does this as soon as the agent's container has stopped, within 10 seconds. That matters for `stop-first` services: the dead run had stopped the old container on purpose, so Docker does not start it again on its own. Without the watchdog (`server init --no-watchdog`), the next run that takes the lock (a deploy, a rollback, a restart…) does it first. Either way:
+
+1. the containers and jobs the dead run had created are removed;
+2. the containers of the current release get their names back, and those the dead run had stopped start again;
+3. the switch points back at them, and the current release's uploads are restored; a routed service's new containers are removed only after that, so it keeps serving;
+4. the unfinished release is marked `abandoned`;
+5. then the next run plans from what is actually running, as usual.
 
 Because a plan always starts from the actual state, there is no journal to replay: the next deploy converges whatever the dead run had done. Losing the CLI or the CI runner, on the other hand, interrupts nothing: the agent finishes the run on its own.
 

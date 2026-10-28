@@ -226,27 +226,27 @@ func TestKilledAgentKeepsServingAndNextRunConverges(t *testing.T) {
 	if killed.code == 0 {
 		t.Fatalf("the killed run must fail:\n%s", killed.out)
 	}
-	time.Sleep(time.Second)
 
-	next := dockflow(t, dir, "deploy")
-	mustSucceed(t, next, "the next deploy")
-	l.stop(t)
-
-	abandoned := false
-	for _, e := range next.events {
-		if e.Type == "warning" && strings.Contains(e.Msg, "abandoned") {
-			abandoned = true
-		}
-	}
-	if !abandoned {
-		t.Fatalf("the next run must report the abandoned release:\n%s", next.out)
-	}
-	names, _ := inServer("docker ps -a --format '{{.Names}}' --filter label=com.docker.compose.project=" + app + "-production --filter label=dockflow.kind=service")
+	// the watchdog recovers the dead run without waiting for another one: release 2 is
+	// abandoned and its containers go, while release 1 keeps serving
+	stack := app + "-production"
+	waitFor(t, "the watchdog abandons release 2",
+		"zcat /var/lib/dockflow/apps/"+stack+"/releases/000002.json.gz | grep -o '\"status\": \"[a-z_]*\"'", `"status": "abandoned"`, 60*time.Second)
+	names, _ := inServer("docker ps -a --format '{{.Names}}' --filter label=com.docker.compose.project=" + stack + " --filter label=dockflow.kind=service")
 	for _, n := range strings.Fields(names) {
 		if strings.Contains(n, "-web-2-") {
 			t.Fatalf("the abandoned release's container %s must be gone (all: %s)", n, names)
 		}
 	}
+	if got, _ := inServer("docker logs dockflow-watchdog 2>&1 | grep -c watchdog.recovered"); got == "0" {
+		t.Fatal("the watchdog must report the recovery")
+	}
+
+	next := dockflow(t, dir, "deploy")
+	mustSucceed(t, next, "the next deploy")
+	l.stop(t)
+
+	names, _ = inServer("docker ps -a --format '{{.Names}}' --filter label=com.docker.compose.project=" + stack + " --filter label=dockflow.kind=service")
 	if !strings.Contains(names, "-web-3-") {
 		t.Fatalf("release 3 must serve web: %s", names)
 	}

@@ -157,6 +157,7 @@ Nothing was changed on the server.
 | `hook.failed` | 11 or 8 | A fatal hook failed: before anything changed (11), or an `after_deploy` hook once the release went live (8, and the previous release is restored). A non-fatal hook only prints a warning. | Its output is in the stream above. |
 | `upload.failed` | 8 | An upload could not be written on the server. | Check the destination path and its permissions. |
 | `engine.port_in_use` | 8 or 1 | A container cannot start because a host port it publishes is in use, by another container or a process of the server. In a deploy, the previous release was restored (8). | Free the port on the server, or publish another one. |
+| `state.commit_failed` | 8 | Everything was ready, but the release could not be recorded as live on the server (a full disk, an I/O error), so the previous release was restored. | Check the disk of the server (`df -h /var/lib/dockflow`), then deploy again. |
 | `rollback.failed` | 9 | The run failed, and restoring the previous release failed too. The environment is degraded. | Fix the cause and deploy again. `dockflow status` and `dockflow diagnose` show the state. |
 | `run.failed` | the run's | The agent's run failed without an error of its own; `run.finished` and the exit code say how it ended. | Read the events above `run.finished`. |
 
@@ -210,7 +211,7 @@ These exit with code 1. Most come from the server's Docker or files, not from yo
 | Code | Exit | What it means | What to do |
 |---|---|---|---|
 | `internal` | 1 | An error Dockflow did not expect. | Report it, with the output of the command run with `-v`. |
-| `agent.died` | 1 | The agent stopped before finishing. | The next run finds the unfinished release and restores the environment. |
+| `agent.died` | 1 | The agent stopped before finishing. | The watchdog, or else the next run, finds the unfinished release: it restores the previous release, or completes the new one if it was already live. `dockflow releases` shows which. |
 | `agent.protocol` | 1 | The agent's last event cannot be read. | Report it. Check that the agent's output is not cut off on the server (disk full, killed container). |
 | `engine.api` | 1 | The server's Docker refused a request; the message says which, with Docker's error. | Read Docker's error. Check the server's disk and the Docker daemon. |
 | `state.io`, `state.corrupt` | 1 | A file under `/var/lib/dockflow` cannot be read or written, or is not a valid state file. | Check the server's disk. A corrupt file is named in the message. |
@@ -234,6 +235,7 @@ Warnings never change the exit code. New codes may appear in a minor release. Th
 | `health.check_skipped` | An internal HTTP check was skipped, because the service is on no network of the app |
 | `notify.failed` | A webhook could not be delivered. Webhooks never change the outcome of a run. |
 | `run.abandoned`, `run.leftover`, `run.restarted` | An earlier run stopped before finishing; this run marked its release abandoned, removed its leftover containers or restarted the containers it had stopped |
+| `run.unfinished` | The latest release failed and was left in place (`on_failure: fail`, `--no-rollback`): this run rolls it back to the current release before its plan, or, from `dockflow plan`, the next run will |
 | `cleanup.failed`, `destroy.network`, `state.write_failed` | A cleanup step (old containers, images, registry manifests, release files, networks) or a state write failed; it does not change the outcome of the run |
 | `backup.none` | `backup run` found no service of the current release that declares a backup: nothing was backed up |
 | `backup.password_generated` | The backups' password was generated and stored on the server: keep a copy elsewhere |
@@ -248,3 +250,4 @@ Warnings never change the exit code. New codes may appear in a minor release. Th
 | `plan.no_limits` | The server runs other app environments, and services of this one set no `deploy.resources.limits` |
 | `notify.detached` | `deploy --detach` sends no webhook: the CLI sends them when the run ends |
 | `watchdog.failed` | The watchdog could not check or restart a container; in the watchdog's own output |
+| `watchdog.recovered` | The agent of a run stopped before the run finished (killed, out of memory, Docker restarted), and the watchdog recovered the environment at once, as the next run would have; in the watchdog's own output |

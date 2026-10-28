@@ -210,7 +210,7 @@ services:
 
 ## What happens on failure
 
-Old containers are stopped, never removed, until the whole run commits. When anything fails before that, the agent starts them again if needed, moves the routes back to them, and removes the new containers: for a `switch` service, traffic is back on the old containers in about a second. The release ends `rolled_back`, and the command exits with code 8. [Releases and rollbacks](/concepts/releases-and-rollbacks/#when-a-deploy-fails) lists what counts as a failure.
+Old containers are stopped, never removed, until the whole run commits. When anything fails before that, the agent starts them again if needed, waits until they are healthy, moves the routes back to them, and removes the new containers: for a `switch` service, traffic is back on the old containers in about a second. The release ends `rolled_back`, and the command exits with code 8. [Releases and rollbacks](/concepts/releases-and-rollbacks/#when-a-deploy-fails) lists what counts as a failure. If the agent itself dies, the watchdog does the same within seconds ([Interrupted runs](/concepts/releases-and-rollbacks/#interrupted-runs)).
 
 ### on_failure
 
@@ -219,7 +219,7 @@ Old containers are stopped, never removed, until the whole run commits. When any
 | Value | A failed HTTP check |
 |---|---|
 | `rollback` (default) | Rolls the whole app back to the previous release |
-| `fail` | Stops the run where it is, marks the release `failed` and the environment degraded, and exits with code 9, to let you look at it |
+| `fail` | Stops the run where it is, marks the release `failed` and the environment degraded, and exits with code 9, to let you look at it. The next run that takes the lock (a deploy, a rollback, a restart, a scale…) rolls it back first, and `dockflow plan` says so |
 | `ignore` | Becomes a warning; the deploy goes on and the release becomes active |
 
 ```yaml title="dockflow.yml"

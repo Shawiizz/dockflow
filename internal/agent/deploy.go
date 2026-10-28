@@ -47,11 +47,34 @@ func (r *runner) plan(ctx context.Context) events.RunFinishedData {
 		return failed(err)
 	}
 	r.warnLimits(&desired)
+	if msg, err := r.pendingRestore(o); err != nil {
+		return failed(err)
+	} else if msg != "" {
+		r.warn("run.unfinished", msg)
+		p.Warnings = append(p.Warnings, msg)
+	}
 	r.showPlan(p)
 	if p.Empty() {
 		return events.RunFinishedData{Outcome: events.OutcomeNoop}
 	}
 	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
+}
+
+// pendingRestore tells what the next run that takes the lock undoes before its plan, which is
+// computed from the current release: a failed release left in place, or a run whose agent died.
+func (r *runner) pendingRestore(o *observed) (string, error) {
+	env := o.actual.Env
+	abandoned, inPlace, err := r.unfinished(env)
+	if err != nil || env == nil {
+		return "", err
+	}
+	switch {
+	case inPlace != nil && len(o.leftovers) > 0:
+		return fmt.Sprintf("release %d failed and was left in place: the next run that takes the lock first rolls it back to release %d, then applies this plan", inPlace.Seq, env.Current), nil
+	case len(abandoned) > 0 && abandoned[0].Status == domain.StatusApplying:
+		return fmt.Sprintf("release %d is being applied by run %s; if that run stopped, the next run rolls it back to release %d first", abandoned[0].Seq, abandoned[0].Run, env.Current), nil
+	}
+	return "", nil
 }
 
 func (r *runner) showPlan(p *domain.Plan) {
@@ -185,9 +208,11 @@ func (r *runner) deploy(ctx context.Context) events.RunFinishedData {
 		runErr = r.drain(ctx, x)
 	}
 	if runErr == nil {
-		if err := r.commit(ctx, rel, &desired, o, x); err != nil {
-			return failed(err)
-		}
+		// a release that cannot be recorded as live rolls back, as any failure before the commit
+		runErr = r.commit(rel, &desired, x)
+	}
+	if runErr == nil {
+		r.finish(ctx, x)
 		return events.RunFinishedData{Outcome: events.OutcomeSuccess, ReleaseSeq: seq}
 	}
 	return r.fail(ctx, rel, env, x, runErr)
@@ -875,11 +900,11 @@ func (r *runner) drain(ctx context.Context, x *execution) error {
 	return nil
 }
 
-// commit makes the release current and removes what it replaced.
-func (r *runner) commit(ctx context.Context, rel *domain.Release, desired *domain.App, o *observed, x *execution) error {
-	ctx = context.WithoutCancel(ctx)
+// commit makes the release current. The write of env.json, a rename, is the commit point
+// (state-v1.md): before it, the run rolls back; after it, the release is live whatever happens
+// next, and the next run, or the watchdog, completes it.
+func (r *runner) commit(rel *domain.Release, desired *domain.App, x *execution) error {
 	now := r.Now().UTC()
-	rel.Status = domain.StatusActive
 	rel.FinishedAt = &now
 	rel.Serving = map[string]int{}
 	rel.Hashes = map[string]string{}
@@ -887,26 +912,47 @@ func (r *runner) commit(ctx context.Context, rel *domain.Release, desired *domai
 		rel.Serving[s.Name] = x.releaseOf[s.Name]
 		rel.Hashes[s.Name] = s.Hash()
 	}
+	// what serves is recorded first, still applying: env.json names a complete record
 	if err := r.app.WriteRelease(rel); err != nil {
-		return err
+		return commitFailed(rel.Seq, err)
 	}
 	env, err := r.app.Env()
 	if err != nil {
-		return err
+		return commitFailed(rel.Seq, err)
 	}
-	if o.current != nil && o.current.Status == domain.StatusActive {
-		o.current.Status = domain.StatusSuperseded
-		if err := r.app.WriteRelease(o.current); err != nil {
-			return err
+	next := domain.EnvRecord{LastSeq: rel.Seq}
+	if env != nil {
+		next = *env
+	}
+	if next.Current > 0 {
+		next.Previous = next.Current
+	}
+	next.Current, next.Degraded = rel.Seq, false
+	if err := r.app.WriteEnv(next); err != nil {
+		// a write that failed after its rename committed all the same
+		now, rerr := r.app.Env()
+		switch {
+		case rerr != nil:
+			r.warn("state.write_failed", fmt.Sprintf("cannot tell whether release %d was recorded as live: %v; the next run settles it", rel.Seq, err))
+		case now == nil || now.Current != rel.Seq:
+			return commitFailed(rel.Seq, err)
 		}
 	}
-	if env.Current > 0 {
-		env.Previous = env.Current
-	}
-	env.Current = rel.Seq
-	env.Degraded = false
-	if err := r.app.WriteEnv(*env); err != nil {
-		return err
+	return nil
+}
+
+func commitFailed(seq int, err error) error {
+	return errs.Newf("state.commit_failed", errs.ExitRolledBack, "release %d could not be recorded as live", seq).WithCause(err).
+		WithHint("check the disk of the server (df -h /var/lib/dockflow), then deploy again")
+}
+
+// finish completes a committed release: the statuses follow env.json, and the containers it
+// replaced go. A failure here is a warning: the release is live, and the next run, or the
+// watchdog, completes it.
+func (r *runner) finish(ctx context.Context, x *execution) {
+	ctx = context.WithoutCancel(ctx)
+	if err := r.settle(); err != nil {
+		r.warn("state.write_failed", "the release is live, but its status could not be recorded: "+err.Error()+"; the next run records it")
 	}
 	for _, st := range x.steps {
 		for _, c := range st.old {
@@ -917,7 +963,39 @@ func (r *runner) commit(ctx context.Context, rel *domain.Release, desired *domai
 	}
 	r.forgetBaselines()
 	r.pruneReleases(ctx)
-	return nil
+}
+
+// settle makes the statuses of the releases agree with env.json, the commit point: the current
+// release is active, and the previous one superseded. It completes a commit that an agent did not
+// finish.
+func (r *runner) settle() error {
+	env, err := r.app.Env()
+	if err != nil || env == nil || env.Current == 0 {
+		return err
+	}
+	cur, err := r.app.Release(env.Current)
+	if err != nil {
+		return err
+	}
+	if cur != nil && cur.Status == domain.StatusApplying {
+		cur.Status = domain.StatusActive
+		if cur.FinishedAt == nil {
+			now := r.Now().UTC()
+			cur.FinishedAt = &now
+		}
+		if err := r.app.WriteRelease(cur); err != nil {
+			return err
+		}
+	}
+	if env.Previous == 0 || env.Previous == env.Current {
+		return nil
+	}
+	prev, err := r.app.Release(env.Previous)
+	if err != nil || prev == nil || prev.Status != domain.StatusActive {
+		return err
+	}
+	prev.Status = domain.StatusSuperseded
+	return r.app.WriteRelease(prev)
 }
 
 // pruneReleases applies the retention rule and removes the images no kept release uses.
@@ -990,6 +1068,8 @@ func (r *runner) fail(ctx context.Context, rel *domain.Release, env *domain.EnvR
 	ctx = context.WithoutCancel(ctx)
 	now := r.Now().UTC()
 	rel.FinishedAt = &now
+	// a commit that failed may have recorded them
+	rel.Serving, rel.Hashes = nil, nil
 	rel.Error = &domain.ReleaseError{Code: errs.CodeOf(runErr), Message: errData(runErr).Message}
 	if rel.Error.Code == "" {
 		rel.Error.Code = "run.cancelled"

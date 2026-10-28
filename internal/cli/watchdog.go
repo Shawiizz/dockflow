@@ -11,6 +11,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/agent"
 	"github.com/Shawiizz/dockflow/internal/engine/docker"
 	"github.com/Shawiizz/dockflow/internal/events"
+	"github.com/Shawiizz/dockflow/internal/proxy/caddy"
 	"github.com/Shawiizz/dockflow/internal/state"
 )
 
@@ -34,7 +35,7 @@ func (a *app) watchdogCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			w := &agent.Watchdog{Engine: eng, Store: store, Events: ev}
+			w := &agent.Watchdog{Engine: eng, Store: store, Switch: caddy.New(caddy.Dir), Events: ev}
 			w.Run(ctx, agent.WatchdogInterval)
 			return nil
 		},

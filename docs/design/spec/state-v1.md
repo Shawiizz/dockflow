@@ -96,7 +96,7 @@ A service with `container_name` keeps that name and uses the `stop-first` strate
 
 **Secrets** used through Compose `secrets:` are files on a tmpfs, `/run/dockflow/secrets/<stack>/<name>-<hash12>`, in a `0700` directory, with the `uid`, `gid` and `mode` the service asks for (`0:0`, `0444` by default), mounted read-only at `/run/secrets/<name>` or the reference's `target` ([ADR-0012](../adr/0012-secrets-sops.md)). `<hash12>` is the start of the sha256 of the uid, gid, mode and content: a new value is a new file. The agent refuses to write a secret when `/run/dockflow` is not a tmpfs (`secret.not_tmpfs`). It keeps a copy of each secret file, `0600`, in `apps/<stack>/secrets/` under the same name: a rollback, and the watchdog after a reboot, write the tmpfs again from it; pruning, `secrets revoke` and `destroy` delete a copy with its file. **Configs** are the same files, under the app's state directory. The agent mounts `/run/dockflow` from the host.
 
-**The watchdog** ([ADR-0010](../adr/0010-rollout-health-jobs.md)) is the container `dockflow-watchdog` (kind `watchdog`), whose image `server.json` records in `watchdog_image`. It takes an environment's lock, as `watchdog`, only to restart containers, and records each restart in `apps/<stack>/watchdog.json`: `{"schema": 1, "restarts": [{"service", "container", "at", "reason"}]}`, the 20 most recent, `reason` being `unhealthy` or `boot`.
+**The watchdog** ([ADR-0010](../adr/0010-rollout-health-jobs.md)) is the container `dockflow-watchdog` (kind `watchdog`), whose image `server.json` records in `watchdog_image`. It takes an environment's lock, as `watchdog`, only to restart containers and to recover a run whose agent died (see [Recovery](#release-lifecycle)); it mounts the switch's admin volume for that. It records each restart in `apps/<stack>/watchdog.json`: `{"schema": 1, "restarts": [{"service", "container", "at", "reason"}]}`, the 20 most recent, `reason` being `unhealthy` or `boot`.
 
 **The switch's certificates** are requested with the address `server.json` records in `acme_email` (`server init --acme-email`), when it has one, from the ACME directory in `acme_ca` (`--acme-ca`), or Let's Encrypt's then ZeroSSL's without one.
 
@@ -112,7 +112,7 @@ A service with `container_name` keeps that name and uses the `stop-first` strate
   { "schema": 1, "run": "01jbx6k3…", "op": "deploy", "by": "shawiizz@laptop", "ci": null, "since": "2026-10-26T14:03:11Z" }
   ```
 
-- **When it is held.** A run that cannot take it reads `lock.json` and fails with `lock.held`, exit code 5. With `--wait-lock`, it retries until the lock is free or the given duration has passed.
+- **When it is held.** A run that cannot take it reads `lock.json` and fails with `lock.held`, exit code 5. With `--wait-lock`, it retries until the lock is free or the given duration has passed. A lock the watchdog holds (`"op": "watchdog"`) is waited for in any case, up to 3 minutes: the watchdog holds it only to restart a container or to recover a run that died.
 - **When the holder dies.** The kernel releases the lock. There is no lease and no takeover.
 - **Manual locks.** `dockflow lock acquire` writes `manual-lock.json` (who, why, when). Every run refuses to start while it exists, unless given `--force`. `dockflow lock release` removes it.
 
@@ -131,9 +131,12 @@ applying ──► active ──► superseded
    │
    ├──► rolled_back     the run failed and the previous release was restored
    │                    (rolled-back before 1.0.0-alpha.4, still read)
-   ├──► failed          the run failed and was left in place (on_failure: fail, --no-rollback), or its rollback failed
-   └──► abandoned       the agent died; found by the next run
+   ├──► failed          the run failed and was left in place (on_failure: fail, --no-rollback), or its rollback failed;
+   │                    the next run that takes the lock restores the current release first
+   └──► abandoned       the agent died before the commit; found by the watchdog or the next run
 ```
+
+A release that `env.json` names as `current` while it is still `applying` went live: its agent died after the commit point, and the next run, or the watchdog, marks it `active`.
 
 A minor release may add statuses ([compatibility](#compatibility)).
 
@@ -145,8 +148,17 @@ A minor release may add statuses ([compatibility](#compatibility)).
 
 **A run**, under the lock:
 1. It reads `env.json` and writes `releases/<last_seq+1>.json.gz` with `status: applying`, then `env.json` with the new `last_seq`.
-2. On success, it rewrites the release with `status: active`, the previous one with `status: superseded`, then `env.json` with `current` and `previous`.
-3. A run that finds the latest release still `applying` marks it `abandoned`, then plans from what is actually running ([ADR-0008](../adr/0008-plan-apply-releases.md)).
+2. On success, it rewrites the release with its `serving` and `hashes`, still `applying`, then `env.json` with `current` and `previous`. **That write of `env.json` is the commit point:** before it, the run rolls back; after it, the release is live, whatever happens to the agent. Then the run rewrites the release with `status: active`, the previous one with `status: superseded`, and removes the containers the release replaced.
+3. A run that cannot write its commit rolls back, as for any failure before it: the release ends `rolled_back`, with the error `state.commit_failed`.
+
+**Recovery.** `env.json` says which release is current; the statuses follow it. A run that takes the lock, before it plans:
+1. completes a commit: the release `env.json` names, if still `applying`, becomes `active`, and the previous one, if still `active`, `superseded`;
+2. finds the releases newer than the current one that are still `applying`, which no run holds since it holds the lock. Their agent died. A release newer than the current one and marked `active` is one whose agent died during its commit, in a version before `env.json` was the commit point; it is treated the same;
+3. restores the current release, if such a release exists, if the latest release failed and was left in place (`on_failure: fail`, `--no-rollback`), or if containers of other releases remain: it removes those containers, gives the current release's containers their names back and starts those that are stopped, and points the switch at them. A routed service's other containers are removed only once the switch has moved;
+4. marks the dead runs' releases `abandoned`, last, so that a recovery that is itself cut is done again;
+5. then plans from what is actually running ([ADR-0008](../adr/0008-plan-apply-releases.md)).
+
+The watchdog runs the same recovery as soon as a run's agent died, without waiting for the next run: when a release is left `applying` while its agent container (`dockflow-run-<run>`) no longer runs, when a commit was not completed, or when containers of other releases remain while no failed release was left in place; and only once it holds the environment's lock.
 
 **Retention.** After a successful run, the agent keeps:
 - the newest `releases.keep` releases with status `active` or `superseded`;
