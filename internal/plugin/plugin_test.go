@@ -89,6 +89,12 @@ func TestNginxOwnTemplate(t *testing.T) {
 	testutil.GoldenText(t, "nginx-own.conf", file(t, e, "nginx", "vhost.conf"))
 }
 
+// a template that names its own domains needs no domain input
+func TestNginxOwnDomains(t *testing.T) {
+	e, _ := expand(t, config.PluginUse{Use: "nginx", With: map[string]any{"template": "deploy/shop.conf"}})
+	testutil.GoldenText(t, "nginx-own-domains.conf", file(t, e, "nginx", "vhost.conf"))
+}
+
 func TestSystemd(t *testing.T) {
 	e, x := expand(t, config.PluginUse{Use: "systemd", With: map[string]any{"unit": "deploy/rclone.service"}})
 	testutil.Golden(t, "systemd", x)
@@ -119,7 +125,7 @@ func TestErrors(t *testing.T) {
 	}{
 		{"unknown built-in", []config.PluginUse{{Use: "apache"}}, `no built-in plugin "apache"`},
 		{"unknown input", []config.PluginUse{{Use: "nginx", With: map[string]any{"domain": "a.com", "domians": "b.com"}}}, "unknown input domians"},
-		{"required input", []config.PluginUse{{Use: "nginx"}}, "the input domain is required"},
+		{"required input", []config.PluginUse{{Use: "nginx"}}, "the input domain is required without template"},
 		{"boolean", []config.PluginUse{{Use: "nginx", With: map[string]any{"domain": "a.com", "tls": "yes"}}}, "input tls: yes is not true or false"},
 		{"bad id", []config.PluginUse{{Use: "nginx", ID: "Api", With: map[string]any{"domain": "a.com"}}}, `the id "Api"`},
 		{"same id", []config.PluginUse{{Use: "nginx", With: map[string]any{"domain": "a.com"}}, {Use: "nginx", With: map[string]any{"domain": "b.com"}}}, "two uses have the id nginx"},

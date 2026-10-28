@@ -3,8 +3,8 @@ description: A vhost of the host's nginx, in front of the switch; nginx is check
 inputs:
   - name: domain
     type: list
-    required: true
-    description: the domains the vhost serves
+    required_unless: template
+    description: the domains the vhost serves; a template of the project names its own
   - name: upstream
     default: 127.0.0.1:8080
     description: where nginx sends requests, the switch's --switch-listen

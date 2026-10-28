@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -48,7 +49,9 @@ type Input struct {
 	Description string `yaml:"description" json:"description,omitempty"`
 	Type        string `yaml:"type" json:"type"`
 	Required    bool   `yaml:"required" json:"required,omitempty"`
-	Default     any    `yaml:"default" json:"default,omitempty"`
+	// RequiredUnless names another input: this one is required when that one is not given
+	RequiredUnless string `yaml:"required_unless" json:"required_unless,omitempty"`
+	Default        any    `yaml:"default" json:"default,omitempty"`
 }
 
 type manifest struct {
@@ -153,6 +156,9 @@ func read(fsys fs.FS, name, source string, isBuiltin bool) (*Plugin, error) {
 			return nil, errs.Config("%s: input %s is declared twice", at, in.Name)
 		}
 		seen[in.Name] = true
+		if in.RequiredUnless != "" && !slices.ContainsFunc(m.Inputs, func(o Input) bool { return o.Name == in.RequiredUnless && o.Name != in.Name }) {
+			return nil, errs.Config("%s: input %s: required_unless names no other input, %q", at, in.Name, in.RequiredUnless)
+		}
 		switch in.Type {
 		case "":
 			in.Type = TypeString
@@ -356,6 +362,10 @@ func (p *Plugin) inputs(dir, at string, with map[string]any, bundle *render.Bund
 		}
 		if val == nil && in.Required {
 			return nil, errs.Config("%s: the input %s is required", at, in.Name).WithHint("%s", in.Description)
+		}
+		if val == nil && in.RequiredUnless != "" && with[in.RequiredUnless] == nil {
+			return nil, errs.Config("%s: the input %s is required without %s", at, in.Name, in.RequiredUnless).
+				WithHint("%s", in.Description)
 		}
 		v, err := coerce(in.Type, val)
 		if err != nil {

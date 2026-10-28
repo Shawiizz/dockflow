@@ -18,7 +18,7 @@ v2 already has every piece a plugin needs:
 
 A plugin is a directory with a `plugin.yml`. It declares:
 
-- **`inputs`**: name, description, `required`, `default`, `type: string | file`;
+- **`inputs`**: name, description, `required` (or `required_unless` another input is given), `default`, `type: string | file`;
 - **`uploads`**: as in `dockflow.yml`, with `src` relative to the plugin;
 - **`hooks`**: as in `dockflow.yml`;
 - **`templates`**: rendered with the inputs in their context.

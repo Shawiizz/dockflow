@@ -45,7 +45,7 @@ plugins:
 
 | Input | Default | Description |
 |---|---|---|
-| `domain` | required | The domains the vhost serves: a list, or one domain. |
+| `domain` | required without `template` | The domains the vhost serves: a list, or one domain. A `template` names its own, and needs none. |
 | `upstream` | `127.0.0.1:8080` | Where nginx sends requests: the switch's `--switch-listen`. |
 | `port` | none | With the `none` edge, a port published on the server's loopback, instead of `upstream`. |
 | `tls` | `false` | Listen on 443 with the certificate in `certificate_dir`, and redirect 80 to 443. Without it, the vhost listens on 80 only, as behind Cloudflare's flexible mode. |
@@ -123,7 +123,7 @@ ExecStart=/usr/bin/rclone mount {{ remote }} {{ mount }}{% if read_only %} --rea
 |---|---|
 | `name` | The plugin's name, the default `id` of its uses. Default: the directory's name. |
 | `description` | Shown by `plugins list`. |
-| `inputs` | Each with `name`, `description`, `type`, `required` and `default`. |
+| `inputs` | Each with `name`, `description`, `type`, `required` and `default`. `required_unless: <input>` makes it required when that other input is not given. |
 | `templates` | Files of the plugin rendered with Jinja: a path, rendered in place, or `src` and `dest`. |
 | `uploads` | As in `dockflow.yml`, with `src` a path of the plugin. |
 | `hooks` | As in `dockflow.yml`, without `script`. An `after_deploy` hook can take `if_changed`: the destination of one of the plugin's uploads, so it runs only when the deploy changed it. |

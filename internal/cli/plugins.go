@@ -54,6 +54,9 @@ func (a *app) pluginsCmd() *cobra.Command {
 					if in.Required {
 						about = append(about, "required")
 					}
+					if in.RequiredUnless != "" {
+						about = append(about, "required without "+in.RequiredUnless)
+					}
 					if in.Default != nil {
 						about = append(about, fmt.Sprintf("default %v", in.Default))
 					}

@@ -195,7 +195,7 @@ inputs:
   - name: remote                    # ^[a-z][a-z0-9_]*$; id is reserved
     description: the rclone remote
     type: string                    # string (default), boolean, list, or file
-    required: true
+    required: true                  # or required_unless: <another input>, required when that one is not given
   - name: mount
     default: /mnt/archives
 templates:                          # files of the plugin, rendered with Jinja
