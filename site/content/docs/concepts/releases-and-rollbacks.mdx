@@ -113,7 +113,7 @@ dockflow rollback production --to 1.4.0            # the newest release of a ver
 dockflow rollback production --to 41 --service web # only web, as release 41 had it
 ```
 
-`--to` takes a release number, as listed by `dockflow releases`. The target must be a release that went live (`active` or `superseded`), still kept, and not the current one.
+`--to` takes a release number, as listed by `dockflow releases`, or a version label, for the newest release of that version that went live. The target must be a release that went live (`active` or `superseded`), still kept, and not the current one.
 
 A rollback is a deploy whose desired state is the recorded release, so it goes through the same plan and rollout as a deploy:
 

@@ -1,0 +1,111 @@
+---
+title: Migrating from the earlier Dockflow
+description: Move a project and a server from the earlier Dockflow, built on Docker Swarm, to this one, by hand.
+---
+
+This version of Dockflow is a rewrite. It shares nothing with the earlier Dockflow, the TypeScript tool built on Docker Swarm whose releases went up to 3.1.1 and which the design documents call **1.x**: not the configuration format, not the CLI, not what it keeps on the server. Dockflow never reads a 1.x file or server, and has no `migrate` command. Moving a project is done by hand, with the table below.
+
+<Callout type="warn">
+Do not deploy this Dockflow to a server that 1.x still manages. 1.x's Traefik holds ports 80 and 443, which the switch needs, and its Swarm stacks and port filter are unknown to this version.
+</Callout>
+
+## The server
+
+The cleanest path is a fresh server, prepared with `dockflow server init` as in the [quickstart](/start/quickstart/): you keep the old one running until the new one serves the app, then move the DNS.
+
+To reuse the 1.x server, remove 1.x from it first: its Swarm stacks (`docker stack rm`), its Traefik, its port filter rules and units, and leave the swarm (`docker swarm leave --force`). Copy what you want to keep out of `/var/lib/dockflow` before removing it: this version writes its own state there and does not read 1.x's. Then run `dockflow server init` as for a new server. A network a Swarm stack left behind with the name your app uses is refused by the plan until you remove it.
+
+The data in your named volumes stays where it is, but its name may not be the one this version gives it: volumes are named `<app>-<env>_<volume>` here. Copy the data across with a backup and [`dockflow backup restore`](/guides/backups/#restoring), or with `dockflow cp`, or declare the old volume with `external: true` and its name.
+
+## The project
+
+| 1.x | This version |
+|---|---|
+| `.dockflow/config.yml` and `servers.yml` | One [`dockflow.yml`](/reference/dockflow-yml/) at the project root. An environment is one server. |
+| `accessories.yml`, deployed as a separate Swarm stack | A Compose file listed under [`compose:`](/reference/dockflow-yml/#top-level). Its services are part of the app's Compose project; mark databases and other services that must not run twice [`stateful`](/reference/compose/#stateful). |
+| `{{ current.env.x }}` | `${X}` in Compose files and `dockflow.yml`; `{{ X }}` in [templates](/guides/templates/). Keys are upper case. |
+| `{{ x \| default('y') }}` | `${X:-y}` in Compose files; unchanged in templates. An undefined variable is an error, never an empty string: write `${X:-}` for an optional one. |
+| `{{ env }}`, `{{ project_name }}` | `${DOCKFLOW_ENV}`, `${DOCKFLOW_APP}`; `{{ DOCKFLOW_ENV }}` and `{{ DOCKFLOW_APP }}` in templates. See [built-in variables](/reference/environment-variables/#built-in-variables). |
+| The `nginx` plugin and its vhost proxying to a published port | [`x-dockflow.routes`](/reference/compose/#routes) on the service. Either the switch is the TLS edge and gets the certificates, or the host's nginx stays in front of it: `server init --edge external` and the [`nginx` plugin](/guides/plugins/#the-nginx-plugin). See [behind nginx](/guides/behind-nginx/). |
+| `<ENV>_<SERVER>_CONNECTION` | The output of [`dockflow server connection`](/reference/cli/#server-connection) (or of `server init`), stored as `<ENV>_CONNECTION`: `PRODUCTION_CONNECTION`. |
+| `health_checks.endpoints` with `remote: true` | [`x-dockflow.health.http`](/reference/compose/#health) on the service. |
+| `health_checks.endpoints` with a public URL | [`health.endpoints`](/reference/dockflow-yml/#health) in `dockflow.yml`. |
+| `hooks.pre-deploy` running `docker exec` | [`hooks.before_deploy`](/guides/hooks/) with an `exec` entry and its `service`. |
+| Secrets in CI | Unchanged: `DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}`, the `PRODUCTION_*` variables and `.env.dockflow` work as before. Per-server prefixes become per-environment ones: `PRODUCTION_MANAGER_X` becomes `PRODUCTION_X`. See [secrets as CI variables](/guides/ci/#secrets-as-ci-variables). |
+| `build.dockerfile` relative to the Compose file's folder (`context: ../..` with `dockerfile: Dockerfile.app` in `.dockflow/docker/`) | Relative to the build context, as Compose defines it: `dockerfile: .dockflow/docker/Dockerfile.app`. |
+| `deploy` failing on a held lock in CI, worked around with a concurrency group | [`deploy --wait-lock 10m`](/guides/ci/#overlapping-runs---wait-lock). |
+
+A few Compose keys that only Swarm used change meaning, since there is no Swarm: `deploy.placement`, `deploy.endpoint_mode` and `deploy.rollback_config` are ignored with a warning, `deploy.mode: global` runs one container, and `external` secrets and configs are refused: give them a `file`, `environment` or `content` source. The [Compose reference](/reference/compose/#service-keys) lists every key.
+
+## Step by step
+
+<Steps>
+
+1. Install this Dockflow next to, or instead of, 1.x: see [installation](/start/installation/). Both are called `dockflow`: make sure the one on your `PATH`, and in CI, is this one.
+2. Write `dockflow.yml` from the old configuration with the table above, and move what `accessories.yml` deployed into a Compose file. `dockflow init` writes a starting `dockflow.yml` when the directory has none.
+3. Run `dockflow validate production` until it passes: it checks the files and every variable without a server.
+4. Prepare the server and store its connection string as `PRODUCTION_CONNECTION` in your CI (and in `.env.dockflow` to deploy by hand).
+5. Run `dockflow plan production`, then `dockflow deploy production`.
+6. Replace the CI workflow: `dockflow init --ci github` (or `gitlab`) writes one, and the [CI guide](/guides/ci/#complete-workflows) has the others.
+7. Once the app runs and its data is in place, move the DNS, and retire the old server or what remains of 1.x on it.
+
+</Steps>
+
+## A complete example
+
+A backend with Postgres, which 1.x deployed as an app and an accessory, joined by another app through a shared network:
+
+```yaml title="compose.yml"
+services:
+  backend:
+    build: .
+    environment:
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/valientrp
+      QUARKUS_DATASOURCE_USERNAME: valientrp
+      QUARKUS_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      GAME_SERVER_API_KEY: ${GAME_SERVER_API_KEY}
+    networks: [default, valientrp]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/q/health"]
+      start_period: 40s
+    x-dockflow:
+      routes:
+        - domains: [api.example.com]
+          port: 8081
+          max_body: 25MB
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: valientrp
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: valientrp
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks:
+      default: {}
+      valientrp: { aliases: [valientrp-db] }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valientrp -d valientrp"]
+    x-dockflow:
+      stateful: true
+      backup: { type: postgres, keep: { daily: 14, weekly: 8 } }
+
+networks:
+  valientrp: { external: true }   # dockflow server network create valientrp
+
+volumes:
+  postgres_data: {}
+```
+
+```yaml title="dockflow.yml"
+version: 1
+app: valientrp-backend
+hooks:
+  before_build:
+    - script: .dockflow/hooks/pre-build.sh
+      secrets: [JWT_PRIVATE_KEY]
+environments:
+  production: {}       # the server in PRODUCTION_CONNECTION, the secrets in CI
+```
+
+See [several apps on one server](/guides/shared-servers/#shared-networks) for the shared network, and [backups](/guides/backups/) for the database.

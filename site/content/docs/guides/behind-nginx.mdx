@@ -142,6 +142,20 @@ sudo certbot certonly --nginx -d shop.example.com -d www.shop.example.com
 
 Apache, HAProxy, Traefik or a load balancer are configured the same way: forward every routed domain to `127.0.0.1:8080`, keep the `Host` header, and set `X-Forwarded-For` and `X-Forwarded-Proto`.
 
+## Cloudflare in front of nginx
+
+When Cloudflare proxies the domains (the orange cloud) and your nginx receives its requests, nginx must take the client's address from Cloudflare, not from the connection. The [`nginx` plugin](/guides/plugins/#the-nginx-plugin) does it with `cloudflare: true`: the client's address from `CF-Connecting-IP`, trusted from Cloudflare's ranges only, and the scheme from Cloudflare's `X-Forwarded-Proto`.
+
+```yaml title="dockflow.yml"
+plugins:
+  - use: nginx
+    with: { domain: "${DOMAIN}", cloudflare: true }
+```
+
+With Cloudflare's *Flexible* SSL mode, the vhost listens on port 80 (the plugin's default, `tls: false`). With *Full (strict)*, give nginx a certificate Cloudflare accepts, such as a Cloudflare origin certificate, and set `tls: true`.
+
+The [port filter](/project/security/#the-port-filter) leaves alone the ports the host itself listens on, so it does not restrict nginx's ports 80 and 443 to Cloudflare's ranges, as the `cloudflare` edge does for the switch. To keep visitors from reaching the server around Cloudflare, limit those ports with the host's firewall, or use a Cloudflare Tunnel.
+
 ## Checking it
 
 On the server (with `curl` installed there), ask the switch directly, as nginx does:

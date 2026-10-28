@@ -80,7 +80,7 @@ The unit goes to `/etc/systemd/system/rclone-archives.service`. When it changed,
 
 ## Writing a plugin
 
-A plugin is a directory of your project with a `plugin.yml`. Every other file of the directory belongs to the plugin, and its paths are relative to it.
+A plugin is a directory of your project with a `plugin.yml`. Every other file of the directory (except a `.git` directory) belongs to the plugin, and its paths are relative to it and must stay inside it. `use:` names it by its path, which has a `/`: `./deploy/plugins/rclone`. As in `dockflow.yml`, an unknown key of `plugin.yml` is an error.
 
 ```yaml title="deploy/plugins/rclone/plugin.yml"
 description: An rclone mount of a remote, as a systemd unit
@@ -112,12 +112,12 @@ ExecStart=/usr/bin/rclone mount {{ remote }} {{ mount }}{% if read_only %} --rea
 
 | Key | Description |
 |---|---|
-| `name` | The plugin's name, the default `id` of its uses. Default: the directory's name. |
+| `name` | The plugin's name, the default `id` of its uses. Default: the directory's name. An `id`, given or defaulted, must match `^[a-z][a-z0-9_-]{0,31}$`. |
 | `description` | Shown by `plugins list`. |
-| `inputs` | Each with `name`, `description`, `type`, `required` and `default`. `required_unless: <input>` makes it required when that other input is not given. |
+| `inputs` | Each with `name`, `description`, `type` (default `string`), `required` and `default`. `required_unless: <input>` makes it required when that other input is not given; it must name another input. A name matches `^[a-z][a-z0-9_]*$`, is declared once, and cannot be `id`, which is reserved. |
 | `templates` | Files of the plugin rendered with Jinja: a path, rendered in place, or `src` and `dest`. |
-| `uploads` | As in `dockflow.yml`, with `src` a path of the plugin. |
-| `hooks` | As in `dockflow.yml`, without `script`. An `after_deploy` hook can take `if_changed`: the destination of one of the plugin's uploads, so it runs only when the deploy changed it. |
+| `uploads` | As in `dockflow.yml`, with `src` a file or directory of the plugin. |
+| `hooks` | As in `dockflow.yml`, without `script`: upload the script and run it with `host:`. An `after_deploy` hook can take `if_changed`: the destination of one of the plugin's uploads, so it runs only when the deploy changed it. `if_changed` in another phase, or naming no upload of the plugin, is an error. |
 
 Input types:
 
@@ -130,7 +130,7 @@ Input types:
 
 What the plugin sees:
 
-- the strings of `templates`, `uploads` and `hooks` in `plugin.yml` are Jinja templates too, rendered with the inputs, `id`, the [built-in variables](/reference/dockflow-yml/#variables) and the environment's `vars`;
+- the string values of `templates`, `uploads` and `hooks` in `plugin.yml` are Jinja templates too, rendered with the inputs, `id`, the [built-in variables](/reference/dockflow-yml/#variables) and the environment's `vars`, never the secrets; mapping keys are not rendered, and a value that renders to `true` or `false` is a boolean again (`fatal: "{{ strict }}"`);
 - template files also see the secrets, as the project's own templates do;
 - an undefined variable is an error, so `{% if x %}` needs `x` declared as an input.
 

@@ -71,6 +71,14 @@ The CLI starts an agent on the server: a Linux binary of exactly its own version
 | `NO_COLOR` | When set to any non-empty value, the output has no colours, as with `--no-color`. Colours are also off when the output is not a terminal. |
 | `TERM` | Passed to the server as the terminal type by `dockflow ssh` when it opens a terminal. |
 
+## Other commands
+
+| Variable | Description |
+|---|---|
+| `VISUAL`, `EDITOR` | The editor of `dockflow secrets edit`: `VISUAL`, else `EDITOR`, else `vi`. |
+| `XDG_CONFIG_HOME` | Where the default age key file is looked up, `$XDG_CONFIG_HOME/sops/age/keys.txt`, when neither `SOPS_AGE_KEY` nor `SOPS_AGE_KEY_FILE` is set. |
+| `SUDO_USER` | Read by `sudo dockflow server init` on the server itself: the account that ran `sudo`, whose password login the SSH hardening keeps while it has no key. `root` when unset. |
+
 ## CI detection
 
 In CI, Dockflow reads the provider's variables to know the tag or branch, the commit and who started the run. A tag selects the environment and the version label of `deploy` and `build`; the branch and commit fill `DOCKFLOW_GIT_BRANCH` and `DOCKFLOW_GIT_SHA` when the checkout does not have them (a detached or shallow clone). The provider and the person are recorded in the release.
@@ -129,7 +137,7 @@ Where they are available:
 |---|---|
 | Compose files and string values of `dockflow.yml` | Interpolation: `${DOCKFLOW_ENV}` |
 | Files under `templates:` and uploads rendered as templates | Jinja: `{{ DOCKFLOW_VERSION }}` |
-| Hooks (`local`, `host` and `exec`) | Environment variables, together with the environment's `vars` and the secrets the hook lists |
+| Hooks (`local`, `host` and `exec`) | Environment variables, together with the environment's `vars` and the secrets the hook lists. A `local` hook also inherits the CLI's own process environment. |
 
 ```yaml title="compose.yml"
 services:

@@ -17,8 +17,8 @@ The format is strict. An unknown key is an error (exit code 3, see [exit codes](
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `version` | integer | required | The format version. Must be `1`. |
-| `requires` | string | none | The oldest Dockflow that reads this file, such as `"1.2"` or `"1.2.0"`. An older Dockflow stops with `config.newer` and asks for an upgrade, instead of refusing a key it does not know. Set it when you use a key added after 1.0. |
+| `version` | integer | required | The format version. Must be `1`. A higher version stops with `config.newer` (exit code 3) and asks for an upgrade. |
+| `requires` | string | none | The oldest Dockflow that reads this file, such as `"1.2"` or `"1.2.0"`. An older Dockflow stops with `config.newer` and asks for an upgrade, instead of refusing a key it does not know. Set it when you use a key added after 1.0. A development build (`dev`) does not check it. |
 | `app` | string | required | The app name. See [naming rules](#naming-rules). Never interpolated. |
 | `compose` | list of paths | the first that exists of `compose.yaml`, `compose.yml`, `docker-compose.yaml`, `docker-compose.yml` | The Compose files, merged in order. A listed file that does not exist is an error. An app with no Compose file at all is valid. |
 | `templates` | list | none | Files rendered with Jinja before the build and the uploads. See [`templates`](#templates). |
@@ -122,7 +122,7 @@ Files and directories copied to the server on each deploy, before the containers
 | `dest` | string | required | `volume:<name>`, a volume declared in the Compose files, or an absolute path on the server. Two uploads cannot share a destination. |
 | `mirror` | boolean | `false` | Delete files at the destination that are not in the source. |
 | `exclude` | list of strings | none | Patterns of paths to leave out, gitignore style. |
-| `mode` | string | unchanged | An octal file mode like `"644"`. Quote it, so YAML keeps it a string. |
+| `mode` | string | unchanged | An octal file mode like `"644"` or `"0644"`. Quote it, so YAML keeps it a string. |
 | `owner` | string | unchanged | A numeric owner, `uid` or `uid:gid`. |
 
 ## `hooks`
@@ -199,7 +199,7 @@ plugins:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `use` | string | required | A built-in plugin, `nginx` or `systemd`, or the path of a directory of the project that holds a `plugin.yml`. |
+| `use` | string | required | A built-in plugin, `nginx` or `systemd`, or the path of a directory of the project that holds a `plugin.yml`. A value with a `/` (`./deploy/plugins/rclone`) is a path; it must stay inside the project. |
 | `id` | string | the plugin's name | Names the use: in hook names, the plan, and the plugin's own paths. Matches `^[a-z][a-z0-9_-]{0,31}$`; two uses of one plugin need different ids. |
 | `with` | map | none | The plugin's inputs. An unknown input, or a required one missing, is an error. Values are interpolated like the rest of the file. |
 
@@ -226,10 +226,10 @@ routes:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `name` | string | none | Names the route, for the `error_pages` of other routes. Matches `^[a-z][a-z0-9-]{0,31}$`. |
-| `domains`, `path`, `tls`, `strip_prefix` | | | As on a service's route ([Compose reference](/reference/compose/#routes)). |
-| `redirect` | string | | A URL, or a path, to redirect to. Caddy's placeholders work: `{uri}` is the request's path and query. |
-| `status` | integer | `308` | With `redirect`: `301`, `302`, `303`, `307` or `308`. |
+| `name` | string | none | Names the route, for the `error_pages` of other routes. Matches `^[a-z][a-z0-9-]{0,31}$`; two routes cannot share a name. |
+| `domains`, `path`, `tls`, `strip_prefix` | | | As on a service's route ([Compose reference](/reference/compose/#routes)). `domains` is required. |
+| `redirect` | string | | An `http` or `https` URL, or a path starting with `/`, to redirect to. Caddy's placeholders work: `{uri}` is the request's path and query. |
+| `status` | integer | `308` | Only with `redirect`: `301`, `302`, `303`, `307` or `308`. |
 | `proxy` | string | | An `http` or `https` URL without a path, `http://host:port`, to send requests to. The `Host` header is the URL's, as nginx's `proxy_pass` does. |
 | `network` | string | none | With `proxy`: a [shared network](/guides/shared-servers/#shared-networks) the switch joins to reach the URL's host. |
 | `files` | map | | Serve a directory: `host_path`, an absolute path on the server, or `volume`, a volume of the Compose file; `browse: true` lists directories. The route's path is stripped: `/builds-raw/a.zip` is `a.zip` of the directory. |

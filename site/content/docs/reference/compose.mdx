@@ -156,7 +156,7 @@ Files listed under [`templates`](/reference/dockflow-yml/#templates) are rendere
 
 ## `x-dockflow`
 
-Dockflow's settings for one service. Values are interpolated like the rest of the file. An unknown key is an error.
+Dockflow's settings for one service. Values are interpolated like the rest of the file. Keys are matched exactly, in lower case: an unknown key, or a known one written in another case (`Stateful`), is an error.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -182,9 +182,9 @@ Each route sends HTTP traffic from the server's switch to the service's containe
 | `encode` | list | none | Compressions offered to clients that accept them: `zstd`, `gzip`, in order of preference. |
 | `max_body` | size | none | The largest request body: `25MB`, `512k`, or a number of bytes, in powers of 1024. A larger one gets a 413. |
 | `timeouts` | map | Caddy's | `read`, `write` and `dial`: durations for the switch's connection to the containers. |
-| `auth` | map | none | HTTP basic authentication: `user`, and `password`, from a secret: `password: ${PANEL_PASSWORD}`. The switch keeps only a bcrypt hash. |
+| `auth` | map | none | HTTP basic authentication: `user`, without a colon, and `password`, from a secret: `password: ${PANEL_PASSWORD}`. Both are required. The switch keeps only a bcrypt hash. |
 | `caddy` | string | none | Raw Caddyfile directives, run before the request reaches the service. `{upstream}` is the name of the service's first container. They are checked by the switch when the plan is computed. |
-| `error_pages` | map | none | Statuses, `"502,503,504"`, mapped to `{ route: <name> }`, a named [route of dockflow.yml](/reference/dockflow-yml/#routes) whose root is shown, or `{ body: "<html>…" }`, an inline page. They replace the service's answers with these statuses, and the switch's own when no container can be reached, as while a `stop-first` service restarts. |
+| `error_pages` | map | none | Statuses from 400 to 599, separated by commas (`"502,503,504"`), mapped to `{ route: <name> }`, a named [route of dockflow.yml](/reference/dockflow-yml/#routes) whose root is shown, or `{ body: "<html>…" }`, an inline page. They replace the service's answers with these statuses, and the switch's own when no container can be reached, as while a `stop-first` service restarts. |
 
 ```yaml
 # compose.yml (fragment)
@@ -296,6 +296,7 @@ services:
 | `rollout.strategy: switch` without `routes` | Nothing to switch. |
 | `start-first` or `switch` on a service that must use `stop-first` | See [rollout](#rollout). |
 | `routes` with `network_mode` | A routed service must be on bridge networks. |
+| `backup` without `stateful` | Only stateful services hold data to back up. |
 | `run: after` on a service another one waits for with `service_completed_successfully` | It would run after the service that waits for it. |
 
 ## More examples

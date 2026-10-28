@@ -9,21 +9,21 @@ Every operation reports its progress as a stream of events. The agent on the ser
 dockflow deploy production --json > deploy.jsonl
 ```
 
-These commands print events: `plan`, `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `cancel`, `attach`, `build` and `server init`. The others (`validate`, `config show`, `status`, `releases`, `version`, `ps`, `details`, `diagnose`, `list`, `lock`, `prune`, `server connection`) print a single JSON document instead, with no events around it.
+The commands that change something print events: `plan`, `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `cancel`, `attach`, `build`, `backup run`, `backup restore`, `backup prune`, `secrets revoke`, and the `server` commands that change the server (`init`, `edge`, `upgrade`, `uninstall`, `network create|remove`, `plugin install|remove`). The read commands (`init`, `validate`, `config show`, `status`, `releases`, `version`, `ps`, `details`, `diagnose`, `list envs|services|images`, `lock`, `prune`, `backup list`, `secrets list`, `plugins list`, `server status`, `server check`, `server network list`, `server plugin list`, `server connection`) print a single JSON document instead.
 
 ## Envelope
 
 Every line has the same fields:
 
 ```json
-{"v":1,"ts":"2026-10-26T14:03:11.123456789Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":17,"type":"service.healthy","level":"info","msg":"web: 2/2 healthy","data":{"desired":2,"healthy":2,"service":"web"}}
+{"v":1,"ts":"2026-10-26T14:03:11.123Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":17,"type":"service.healthy","level":"info","msg":"web: 2/2 healthy","data":{"desired":2,"healthy":2,"service":"web"}}
 ```
 
 | Field | Type | Description |
 |---|---|---|
 | `v` | integer | The schema version, `1` |
-| `ts` | string | When the event was emitted, in UTC, RFC 3339 with fractional seconds, by the clock of the machine that emitted it (the server for the agent's events, your machine for the CLI's) |
-| `run` | string | The id of the run that emitted the event. Events from the agent carry the agent's run id, the one `dockflow attach` takes. Events the CLI emits itself (builds, pushes, local hooks) carry the id of the CLI invocation. |
+| `ts` | string | When the event was emitted, in UTC, RFC 3339 with millisecond precision, by the clock of the machine that emitted it (the server for the agent's events, your machine for the CLI's) |
+| `run` | string | The id of the run that emitted the event. Events from the agent carry the agent's run id, the one `dockflow attach` takes. Events the CLI emits itself (builds, pushes, local hooks) carry the id of the CLI invocation. The watchdog's events carry `watchdog`. |
 | `seq` | integer | 1, 2, 3, … within the stream you read. A gap means lost events |
 | `type` | string | One of the [types below](#event-types) |
 | `level` | string | `debug`, `info`, `warn` or `error` |
@@ -43,7 +43,8 @@ Fields marked `?` are present only when they apply.
 | `run.started` | info | `app`, `env`, `op`, `dockflow_version`, `server` |
 | `run.finished` | info or error | `outcome`, `exit_code`, `release_seq?`, `duration_ms`, `error?`; see [below](#runfinished) |
 | `result` | info | The document of a read operation, as the agent returns it. The CLI prints it alone, so you rarely see this type in a stream |
-| `cancel.requested` | warn | `by`: `signal` |
+| `config.loaded` | debug | `files` (the Compose files, `dockflow.yml` and the secrets file), `services`: emitted once connected, by the commands that reach the server |
+| `cancel.requested` | warn | `by`: `signal` (this version emits no other value; the spec reserves `cancel`) |
 | `log` | info or debug | `line`: anything else worth showing (an image pull, the agent being installed, files received) |
 
 `op` is the operation the agent runs, a dotted name:
@@ -59,7 +60,7 @@ New operations may appear in a minor release: treat an `op` you do not know as a
 
 ### Warning
 
-`warning` (level `warn`) reports something that does not stop the run. Its `data` has a stable `code`, and usually a `detail`:
+`warning` (level `warn`, or `error` for a failed service in `backup run`) reports something that does not stop the run. Its `data` has a stable `code`, usually a `detail`, and `service` when it concerns one:
 
 ```json
 {"v":1,"ts":"2026-10-26T14:03:12.5Z","run":"01jbx6k3m8w0v7c9q2r5t4y6z8","seq":9,"type":"warning","level":"warn","msg":"webhook https://hooks.example.com/dockflow: status 500","data":{"code":"notify.failed"}}
@@ -73,6 +74,7 @@ The codes are listed under [warning codes](/reference/exit-codes/#warning-codes)
 |---|---|---|
 | `lock.waiting` | info | `holder` (its run id), `op`, `by`, `since`: emitted once, when `--wait-lock` starts waiting for another run |
 | `lock.acquired` | info | `scope`: the stack (`<app>-<env>`) |
+| `lock.taken_over` | warn | `scope` (`manual`), `previous_holder`: `dockflow lock acquire --force` took over someone else's manual lock |
 | `lock.released` | info | `scope` |
 
 ### Build and push
@@ -84,6 +86,7 @@ These events come from the CLI, before the agent starts.
 | `build.started` | info | `services`, `platforms` |
 | `build.log` | debug | `service`, `line`: one line of build output. When a build fails, its last lines are emitted again at level `error`, with `line` only |
 | `build.finished` | info | `service`, `digest` |
+| `push.progress` | debug | `image`, `bytes_sent`, `bytes_total`: at most once a second per image, and once at the end |
 | `push.finished` | info | `image` (pinned by digest), `digest`, `blobs_sent`, `blobs_skipped`. An image built on the server has `image` and `digest` only |
 
 ### Plan and release
@@ -127,7 +130,8 @@ An action's `kind` is one of `network.create`, `volume.create`, `secret.create`,
 | `hook.started` | info | `phase`, `name`, `kind` (`local`, `host` or `exec`), `target` |
 | `hook.log` | info | `name`, `target`, `line` |
 | `hook.finished` | info | `name`, `target`, `exit_code`, `fatal` |
-| `upload.finished` | info | `dest` |
+| `upload.progress` | debug | `files_sent`, `files_total`, `bytes_sent`, `bytes_total`: from the CLI, at most once a second and once at the end. It counts the files of every destination, sent together: only those the server lacks. The spec reserves a `dest` field, which this version does not set |
+| `upload.finished` | info | `dest`, `files_changed`, `files_deleted` |
 
 A hook's `target` is `local` for a local hook, `server` for a `host` hook, and the container's name for an `exec` hook, which emits one `hook.started` and `hook.finished` per container.
 
@@ -138,16 +142,17 @@ A hook's `target` is `local` for a local hook, `server` for a `host` hook, and t
 | `rollback.started` | warn | `reason`, `target_seq`: the release being restored. When a fatal `after_deploy` hook triggers the rollback, `reason` only |
 | `rollback.finished` | info | `ok`: whether the previous containers and routes are back |
 
-### Planned types
+### Watchdog
 
-The event schema reserves these types for features that are not available yet. This version never emits them.
+| Type | Level | `data` |
+|---|---|---|
+| `watchdog.restarted` | warn | `stack`, `service`, `container`, `reason`: `unhealthy`, or `boot` for an app with Compose secrets started again after a reboot. In the watchdog's own output (`docker logs dockflow-watchdog`), with `run` set to `watchdog` |
+
+### Reserved types
 
 | Type | `data` | |
 |---|---|---|
-| `config.loaded` | `files`, `services` | Not emitted yet |
-| `lock.taken_over`, `lock.lost` | `scope`, `previous_holder` / `new_holder` | Not emitted: the lock cannot be taken over |
-| `push.progress` | `image`, `bytes_sent`, `bytes_total` | Not emitted yet |
-| `upload.progress` | `dest`, `files_sent`, `files_total`, `bytes_sent`, `bytes_total` | Not emitted yet |
+| `lock.lost` | `scope`, `new_holder` | Never emitted: the lock is a kernel `flock` held until the agent exits, so it cannot be lost while its holder lives. The outcome `lock_lost` is reserved for the same reason |
 
 ## run.finished
 

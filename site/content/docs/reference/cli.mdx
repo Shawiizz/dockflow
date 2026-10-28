@@ -412,6 +412,11 @@ dockflow backup run [<env>] [<service>] [--server] [--wait-lock <duration>]
 
 Back up the services of the current release that declare [`x-dockflow.backup`](/reference/compose/#backup), or the one named, to the environment's restic repository, then apply each one's retention and check a sample of the repository. It takes the environment's lock; `--wait-lock 10m` waits for a deploy to finish. A failed backup exits with code 12, after the other services. `--server` backs up the server's state instead, `/var/lib/dockflow` without the backups' passwords, with no lock. See [backups](/guides/backups/) and [the server's state](/guides/backups/#the-servers-state).
 
+| Option | Default | Description |
+|---|---|---|
+| `--server` | `false` | Back up the server's state, `/var/lib/dockflow`, to the environment's repository. |
+| `--wait-lock duration` | `0` | Wait up to this long for a deploy or another run to release the lock, like `--wait-lock 10m`. |
+
 ### backup list
 
 ```sh
@@ -419,6 +424,10 @@ dockflow backup list [<env>] [<service>] [--server]
 ```
 
 The environment's snapshots, or one service's, oldest first: id, time, service, release and size. `--server` lists the snapshots of the server's state. `--json` prints them as one document.
+
+| Option | Default | Description |
+|---|---|---|
+| `--server` | `false` | List the snapshots of the server's state. |
 
 ### backup restore
 
@@ -440,7 +449,16 @@ Restore a snapshot of the service into the current release, under the environmen
 dockflow backup prune [<env>] [<service>] [--server] [--keep-last n] [--keep-hourly n] [--keep-daily n] [--keep-weekly n] [--keep-monthly n]
 ```
 
-Apply the services' retention, or the one given, and reclaim the space of the forgotten snapshots. `--server` applies it to the snapshots of the server's state.
+Apply the services' retention, or the one given, and reclaim the space of the forgotten snapshots. `--server` applies it to the snapshots of the server's state. With any `--keep-*` option, the options given replace the whole retention for this run; a rule not given keeps nothing.
+
+| Option | Default | Description |
+|---|---|---|
+| `--keep-last int` | the service's retention | Keep the n most recent snapshots. |
+| `--keep-hourly int` | the service's retention | Keep the most recent snapshot of the n last hours that have one. |
+| `--keep-daily int` | the service's retention | Keep the most recent snapshot of the n last days that have one. |
+| `--keep-weekly int` | the service's retention | Keep the most recent snapshot of the n last weeks that have one. |
+| `--keep-monthly int` | the service's retention | Keep the most recent snapshot of the n last months that have one. |
+| `--server` | `false` | Prune the snapshots of the server's state. |
 
 ## lock
 
@@ -495,6 +513,10 @@ echo -n "$VALUE" | dockflow secrets set [<env>] <KEY> [--age <recipient>…]
 
 Sets `KEY` in the environment's SOPS file (`secrets_file`, default `secrets/<env>.sops.yaml`), and encrypts the file again for the same recipients. The value is read from stdin; on a terminal, it is asked without echo. A file that does not exist yet is created for the `--age` recipients, or those `.sops.yaml`'s `creation_rules` give its path. Commit the file: it is encrypted.
 
+| Option | Default | Description |
+|---|---|---|
+| `--age strings` | `.sops.yaml`'s `creation_rules` | For a new file: the age recipients to encrypt for. Ignored when the file exists. |
+
 ### secrets edit
 
 ```sh
@@ -502,6 +524,10 @@ dockflow secrets edit [<env>] [--age <recipient>…]
 ```
 
 Opens the environment's secrets, decrypted, as `KEY: value` lines in `$VISUAL` or `$EDITOR` (default `vi`), from a temporary file readable by you only and deleted afterwards, then encrypts the result. Comments of the file are not kept.
+
+| Option | Default | Description |
+|---|---|---|
+| `--age strings` | `.sops.yaml`'s `creation_rules` | For a new file: the age recipients to encrypt for. Ignored when the file exists. |
 
 ### secrets revoke
 
@@ -610,6 +636,11 @@ dockflow server edge [<env>] builtin|cloudflare|external|none [--switch-listen <
 
 Changes how traffic reaches the server's switch, and keeps every other setting: it is `server init <env> --edge <mode>`. The switch container is replaced, which interrupts traffic for a moment, and every app's routes are loaded into the new one. `none` is refused while routes go through the switch. See [the switch and edges](/concepts/switch-and-edges/).
 
+| Option | Default | Description |
+|---|---|---|
+| `--switch-listen string` | the server's, or `127.0.0.1:8080` | With `external`: the address the switch listens on. |
+| `--trusted-proxy strings` | the server's | With `external`: CIDRs whose `X-Forwarded-For` is trusted. |
+
 ### server upgrade
 
 ```sh
@@ -644,7 +675,21 @@ Prints the cloud-init user-data of a new server, to give your provider (DigitalO
 - The server's SSH host key is generated here too, and is in the user-data: the connection string pins it before the server exists. Keep the user-data as you would the server's disk, or write it with `-o user-data.yml` (mode 600).
 - `--host` is required: the address the CI will reach the server at, a reserved IP or a domain name.
 
-Once the first boot has finished, install the switch, the registry and the watchdog with `dockflow server init <env>`. The first boot takes a few minutes, mostly to install Docker: `cloud-init status --wait` on the server returns when it is done. Before that, the deploy user does not exist yet. Options: `--host`, `--port`, `--user`, `--deploy-key`, `--name`, `--skip-docker-install`, `--no-port-filter`, `--no-hardening`, `--nginx`, `--from`, `-o`.
+Once the first boot has finished, install the switch, the registry and the watchdog with `dockflow server init <env>`. The first boot takes a few minutes, mostly to install Docker: `cloud-init status --wait` on the server returns when it is done. Before that, the deploy user does not exist yet.
+
+| Option | Default | Description |
+|---|---|---|
+| `--host string` | required | The address or domain name the CI reaches the server at. |
+| `--port int` | `22` | The SSH port the CI uses. |
+| `--user string` | `dockflow` | The deploy user to create. |
+| `--deploy-key string` | a new key | A private key to use for the deploy user instead of generating one. |
+| `--name string` | `main` | The server's name in the connection string. |
+| `--from strings` | none | The source addresses or CIDRs the deploy key accepts. |
+| `--nginx` | `false` | Install nginx, with the sudo rules of the nginx plugin. |
+| `--no-hardening` | `false` | Leave SSH's settings as they are. |
+| `--no-port-filter` | `false` | Do not install the published-port filter's boot unit. |
+| `--skip-docker-install` | `false` | For an image that has Docker: refuse to install it. |
+| `-o, --output string` | the standard output | Write the user-data to this file, mode 600. |
 
 ### server network
 
@@ -662,6 +707,10 @@ dockflow server plugin list|remove [<env>] [<plugin>]
 ```
 
 Docker volume plugins, which Compose volumes use with `driver`. `install` pulls the plugin, grants the privileges it asks for and prints them, applies its settings and enables it; `--alias` is its name on the server. `remove` refuses while volumes use it. Setting values are masked, and `list` shows only their names. See [several apps on one server](/guides/shared-servers/#volume-plugins).
+
+| Option | Default | Description |
+|---|---|---|
+| `--alias string` | the plugin | With `install`: the plugin's name on the server, which Compose volumes give as their `driver`. |
 
 ### server connection
 

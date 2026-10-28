@@ -166,7 +166,7 @@ dockflow backup prune production --server --keep-last 7
 
 The snapshots are tagged with the server's name, apart from the services'; the default retention applies. The passwords in `/var/lib/dockflow/backups/` stay out: a snapshot that holds its own repository's password protects nothing. The point is to rebuild a lost server, so send these backups off-site.
 
-On a new server, after `dockflow server install`, restic puts the state back:
+On a new server, after `dockflow server init`, restic puts the state back:
 
 ```sh
 restic -r <repository> restore latest --tag server=<name> --target /

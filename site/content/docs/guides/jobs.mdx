@@ -162,3 +162,45 @@ volumes:
 Because the previous web containers keep serving while `migrate` runs, and for a moment after it, a migration should keep the schema readable by the previous version: add columns and tables in one release, and remove what the old code still reads in a later one. If `migrate` fails, nothing has switched; if the new web containers then fail their checks, the deploy rolls back the containers but not the schema.
 
 To run a command by hand with a service's spec, such as a console or a one-time script, use `dockflow run`; see [Day-2 operations](/guides/day-2/).
+
+## Workers and recurring tasks
+
+Jobs run during deploys only. Dockflow has no scheduler of its own: nothing runs on a timetable on the server. Two ways cover background work.
+
+**A worker** is a long-running service without routes, such as a queue consumer. It gets the `start-first` strategy: the new container starts and becomes healthy before the old one stops, so for a moment both run. A worker that must never run twice, such as one that runs its own scheduler (`supercronic`, `node-cron`), asks for `stop-first`:
+
+```yaml title="compose.yml"
+services:
+  worker:
+    build: .
+    command: ["npm", "run", "worker"]
+    deploy:
+      replicas: 2
+
+  scheduler:
+    build: .
+    command: ["supercronic", "/app/crontab"]
+    x-dockflow:
+      rollout:
+        strategy: stop-first
+      health:
+        grace: 10s
+```
+
+**A recurring task** can also run from your CI on a schedule, with `dockflow run`, which starts a one-off container with the service's spec and the image it currently runs, and exits with the command's exit code:
+
+```yaml title=".github/workflows/nightly.yml"
+on:
+  schedule: [{ cron: "0 4 * * *" }]
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh
+      - run: dockflow run production web -- npm run report:nightly
+        env:
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+```
+
+`run` reads `dockflow.yml` and the Compose files, so the job checks out the repository and gets every secret they use, as a deploy does.

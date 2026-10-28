@@ -104,6 +104,34 @@ error: service minecraft: strategy start-first is impossible because it publishe
 A web service behind the switch does not need to publish ports at all: the switch reaches it on the app's network. Removing `ports:` from a routed service lets it use `switch` and deploy with no downtime.
 </Callout>
 
+### Example: a stateful service on a fixed public port
+
+A game server keeps its world on a volume and is reached on a fixed port, without the switch. It gets `stop-first`, and the [port filter](/project/security/#the-port-filter) opens its port once [`firewall.public_ports`](/reference/dockflow-yml/#firewall) lists it:
+
+```yaml title="compose.yml"
+services:
+  minecraft:
+    image: itzg/minecraft-server
+    environment:
+      EULA: "TRUE"
+    ports:
+      - "25565:25565"
+    volumes: [world:/data]
+    stop_grace_period: 60s
+    x-dockflow:
+      stateful: true
+volumes:
+  world: {}
+```
+
+```yaml title="dockflow.yml"
+firewall:
+  public_ports:
+    - { port: 25565, protocol: tcp }
+```
+
+Each deploy stops the old container, giving it `stop_grace_period` to save, then starts the new one on the same volume: the server is down from the stop until the new container is healthy. Without the `firewall` entry, the port stays published but only the server and its containers reach it, and the plan warns about it. To back the world up while it runs, see [backups](/guides/backups/#what-is-backed-up).
+
 ### Order
 
 Within a deploy, services are created or updated one after the other, in `depends_on` order, then by name. Each service is healthy before the next one starts, so a dependency is up before its dependents, as with `docker compose up`. `before` jobs run before the services, `after` jobs after them. See [Jobs](/guides/jobs/).

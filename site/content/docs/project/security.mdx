@@ -1,6 +1,6 @@
 ---
 title: Security model
-description: What Dockflow protects and what it does not - SSH host keys, connection strings, Docker access, the registry, secrets, verified downloads and signed webhooks.
+description: What Dockflow protects and what it does not - SSH host keys, connection strings, Docker access, the port filter, secrets, the server's state, verified downloads and signed webhooks.
 ---
 
 Dockflow deploys by reaching your server's Docker Engine over SSH. This page says plainly what that gives access to, which keys matter, what Dockflow checks for you, and where your secrets end up.
@@ -59,7 +59,7 @@ If you would rather not keep the key in a secret, describe the server under `ser
 |---|---|---|
 | The switch (Caddy) | `80` and `443` on every address with the `builtin` edge; `127.0.0.1:8080` by default with the `external` edge | Its admin API listens on no port: only on a unix socket, in a volume that only the switch and Dockflow's agents mount. Your app's containers share networks with the switch and cannot reach it. |
 | The registry | `127.0.0.1:5959` only | Never reachable from outside, so it needs no authentication. The CLI pushes images to it through the SSH connection. |
-| Agents | Nothing | One container per run, started through the Docker API, gone when the run ends. |
+| Agents | Nothing | One container per run, started through the Docker API, gone when the run ends. Agents and the watchdog share `dockflow-system`, an internal bridge network with no route out. |
 
 Your own services listen where their Compose `ports:` say. Docker's published ports bypass host firewalls such as ufw and firewalld: without the port filter below, `5432:5432` is open to the internet. Publish internal ports on loopback, `127.0.0.1:5432:5432`, or not at all: services of one app reach each other by name on their Compose networks.
 
@@ -75,11 +75,15 @@ It catches a `5432:5432` written out of habit: the port stays published, but onl
 
 The filter is an iptables chain, `DOCKFLOW-FILTER`, that Docker's `DOCKER-USER` chain jumps to. It matches the port a connection was sent to, before Docker translated it, and leaves alone the traffic of Docker's bridges, loopback, and the ports the host itself listens on (your own nginx or sshd). A deploy, a rollback or a `destroy` that changes the ports applies the new rules, through a short helper container on the host's network, and writes them to `/etc/dockflow/filter.rules` and `filter6.rules`. The `dockflow-filter` systemd unit loads them again at boot, before Docker.
 
+The helper container runs the host's own `iptables` (legacy or nft) with `NET_ADMIN`, `NET_RAW` and `SYS_CHROOT`; it replaces only the `DOCKFLOW-FILTER` chain, atomically, and leaves Docker's rules and your own alone. IPv6 failures are warnings.
+
+With the `cloudflare` edge, Cloudflare's ranges are downloaded at `server init`, and again every week by the `dockflow-cloudflare.timer` unit. A list is refused unless every line is a range of its family, and a failed download keeps the previous ranges. With the `external` edge and your own nginx, the filter does not restrict the host's ports 80 and 443 to Cloudflare: use the [nginx plugin](/guides/plugins/#the-nginx-plugin)'s `cloudflare` input, which trusts the real-IP header from Cloudflare's ranges only, and your own firewall rules.
+
 To go without it, run `server init --no-port-filter`; `server init --no-port-filter=false` turns it back on. The filter applies to every container of the server, Dockflow's or not: publish ports you need open and that no app lists on loopback, or opt out.
 
 ## Secrets
 
-Secrets come from your CI's variables (`PRODUCTION_*`, or `DOCKFLOW_SECRETS`) and from `.env.dockflow`. Dockflow reads only the variables with the environment's prefix, plus `DOCKFLOW_SECRETS`: `PATH`, `HOME` and the rest of your environment never become secrets.
+Secrets come from your CI's variables (`PRODUCTION_*`, or `DOCKFLOW_SECRETS`) and from `.env.dockflow`. Dockflow reads only the variables with the environment's prefix, plus `DOCKFLOW_SECRETS`: `PATH`, `HOME` and the rest of your environment never become secrets. For `production`, the key `X` resolves to `PRODUCTION_X` when it exists, otherwise to `X`, so a production-only value never leaks into staging by its name.
 
 **What Dockflow guarantees:**
 
@@ -96,17 +100,17 @@ Secrets come from your CI's variables (`PRODUCTION_*`, or `DOCKFLOW_SECRETS`) an
 
 - **Secret files.** Compose `secrets:` are written to `/run/dockflow/secrets/<app>-<env>/`, on a tmpfs (Dockflow refuses to write them elsewhere), in a `0700` directory, and mounted read-only. They appear neither in `docker inspect` nor in release records, which keep only their hash. A copy of each is kept in `/var/lib/dockflow/apps/<app>-<env>/secrets/`, root's only, so the watchdog can write them again after a reboot; `secrets revoke` and `destroy` delete the copies with the files. See [Secrets and configs](/guides/secrets/).
 
-- **SOPS files.** Secrets can be kept in git in a SOPS file encrypted with age. The CLI decrypts it in memory and never writes it in clear, except for `secrets edit`, in a temporary file it deletes.
+- **SOPS files.** Secrets can be kept in git in a SOPS file encrypted with age. The CLI decrypts it in memory and never writes it in clear, except for `secrets edit`, in a temporary file readable by you only, which it deletes. It checks the file's MAC on every read, so a value changed without the key is refused. The age key comes from `SOPS_AGE_KEY`, `SOPS_AGE_KEY_FILE`, or the `sops/age/keys.txt` of your user's configuration directory, as for the `sops` command; in CI, give it as a secret of its own, never in the repository.
 
 ## State on the server
 
-Dockflow's state lives in `/var/lib/dockflow`, a `0700` directory owned by root, with `0600` files. Only the agent writes there. It holds the release records, which contain your services' full configuration, including interpolated values, and the copies of the Compose secret files. See [Server layout](/reference/server-layout/).
+Dockflow's state lives in `/var/lib/dockflow`, a `0700` directory owned by root, with `0600` files. Only the agent writes there. It holds the release records, which contain your services' full configuration, including interpolated values, and the copies of the Compose secret files. `dockflow server check` fails when the directory is not `0700`. The server's state, backed up with `dockflow backup run --server`, leaves out the backups' passwords. See [Server layout](/reference/server-layout/).
 
 ## Verified downloads
 
 - **The installer** downloads the binary from the GitHub release, checks it against the release's `SHA256SUMS`, and, when [cosign](https://docs.sigstore.dev/) is installed, checks the Sigstore signature of `SHA256SUMS`, bound to this repository's release workflow. Without cosign it says that it checked the checksum only. Install cosign to get the signature check.
-- **The installers.** `install.ps1` checks the binary as `install.sh` does. Homebrew checks it against the checksum in the formula, written by the release workflow from `SHA256SUMS`.
-- **The agent binary.** When the CLI is not itself the Linux binary for the server's architecture, it downloads the agent binary over HTTPS from the release of its own version. A released CLI is built with the SHA-256 of that release's agent binaries, and checks the download against it, so the agent comes from the same build as the CLI: its origin is the CLI's, which the installer checked. Only then is it cached and sent to the server. A mismatch stops with `agent.checksum_mismatch`, and nothing is sent. A CLI built without these checksums (from source, with a version) checks against the release's `SHA256SUMS`.
+- **The installers.** `install.ps1` checks the binary as `install.sh` does. Homebrew checks it against the checksum in the formula, written by the release workflow from `SHA256SUMS`. The npm package `@dockflow-tools/cli` has no install script: it runs the binary of its per-platform optional dependency, built from the release's binaries and published with npm provenance by the release workflow.
+- **The agent binary.** When the CLI is not itself the Linux binary for the server's architecture, it downloads the agent binary over HTTPS from the release of its own version. A released CLI is built with the SHA-256 of that release's agent binaries, and checks the download against it, so the agent comes from the same build as the CLI: its origin is the CLI's, which the installer checked. Only then is it cached, in `dockflow/<version>/` under your user's cache directory, and sent to the server. A mismatch stops with `agent.checksum_mismatch` (exit code 4), and nothing is sent. A CLI built without these checksums (from source, with a version) checks against the release's `SHA256SUMS`. `DOCKFLOW_RELEASES_URL` points the download at a mirror; the check is the same, so a mirror cannot substitute another binary. A cached binary is not checked again: the cache directory is as sensitive as the CLI itself.
 - `DOCKFLOW_AGENT_BINARY` replaces the download with a binary you provide. Dockflow does not check it: use it only with binaries you built or verified yourself.
 
 ## Remote builds
@@ -155,7 +159,9 @@ Reject requests whose signature does not match. Use an `https://` URL, so the pa
 - installed in `~dockflow/.ssh/authorized_keys` with `restrict,port-forwarding,pty`, which turns off agent and X11 forwarding and re-enables only what Dockflow uses;
 - one per run: running `server init` again adds a new key, so each environment or CI system can have its own. Remove a key you no longer use from `authorized_keys`.
 
-The administrator's account is used for this run only, and its credentials are never stored.
+The administrator's account is used for this run only, and its credentials are never stored. Provisioning runs as one shell script sent over the administrator's SSH session, built with a command builder that quotes every value: nothing is left on the server but what it installs.
+
+`dockflow server cloud-init` generates the deploy key and the server's ed25519 host key on your machine. The user-data holds the deploy key's public part only, and the server's **private host key**, so that the connection string can pin it before the server exists: keep the user-data as you would the server's disk. `-o user-data.yml` writes it with mode `600`.
 
 ## What provisioning sets up
 

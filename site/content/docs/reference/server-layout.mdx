@@ -36,10 +36,24 @@ Dockflow keeps no database and no service of its own besides the switch, the reg
 └── filter6.rules                     its IPv6 rules
 /etc/systemd/system/dockflow-filter.service   loads them at boot, before Docker
 /etc/systemd/system/dockflow-cloudflare.timer  downloads Cloudflare's ranges every week (cloudflare edge)
+/etc/systemd/system/dockflow-cloudflare.service  the unit the timer starts
 /usr/local/libexec/dockflow-cloudflare-refresh the script it runs: an agent run
 ```
 
-`<stack>` is `<app>-<env>`, for example `shop-production`. `<seq>` is the release number, written with 6 digits in file names (`000042.json.gz`).
+`<stack>` is `<app>-<env>`, for example `shop-production`. `<seq>` is the release number, written with 6 digits in file names (`000042.json.gz`). `<repository>` is `local` for the `dockflow-backups` volume, or the first 16 hex digits of the sha256 of the repository's URL.
+
+### Files `server init` writes outside the state
+
+Preparing a server (`server init <admin>@<host>`, `sudo dockflow server init`, or the user-data of `server cloud-init`) also writes these. `server uninstall` leaves them in place, with the boot units above (it removes the filter's rules, so the filter unit then loads nothing):
+
+| Path | What it is |
+|---|---|
+| `/home/<user>/.ssh/authorized_keys` | The deploy user's key line, with `restrict,port-forwarding,pty` (and `from=` with `--from`); `0600`, in a `0700` directory |
+| `/etc/ssh/sshd_config.d/50-dockflow.conf` | The SSH hardening drop-in, unless `--no-hardening` |
+| `/etc/docker/daemon.json` | Only when Dockflow installed Docker and the file did not exist: the `json-file` log driver, 10 MB per file, 3 files |
+| `/etc/apt/keyrings/docker.asc`, `/etc/apt/sources.list.d/docker.list` | Docker's apt repository, when Dockflow installed Docker |
+| `/etc/nginx/conf.d/00-dockflow-default.conf` | With `--nginx`: the default server that refuses unknown host names (Debian's `sites-enabled/default` link is removed) |
+| `/etc/sudoers.d/dockflow-nginx` | With `--nginx`: the sudo rules of the nginx plugin, `0440` |
 
 - **Owner.** Only agent containers write here, as root. The directory is `0700` and its files `0600`: only root on the server can read them.
 - **Atomic writes.** Every file is written to `<name>.tmp-<run-id>`, synced, then renamed, so a crash never leaves a half-written file.
@@ -67,7 +81,7 @@ Written by `dockflow server init`:
 }
 ```
 
-`switch_listen` and `trusted_proxies` are present with the `external` edge only, and `switch_image` or `registry_image` are absent when the server runs no switch (`--edge none`) or no registry (`--no-registry`). `no_port_filter` and `no_watchdog` record that `server init` was asked to leave the filter or the watchdog out, and `watchdog_image` is absent without the watchdog; `filter_rules` is the digest of the [port filter](/project/security/#the-port-filter)'s rules last applied, so a deploy that changes no port leaves the filter alone.
+`acme_email` and `acme_ca` are present when `server init --acme-email` or `--acme-ca` set them. `switch_listen` and `trusted_proxies` are present with the `external` edge only, and `switch_image` or `registry_image` are absent when the server runs no switch (`--edge none`) or no registry (`--no-registry`). `no_port_filter` and `no_watchdog` record that `server init` was asked to leave the filter or the watchdog out, and `watchdog_image` is absent without the watchdog; `filter_rules` is the digest of the [port filter](/project/security/#the-port-filter)'s rules last applied, so a deploy that changes no port leaves the filter alone.
 
 ### Locks
 
@@ -75,10 +89,12 @@ Written by `dockflow server init`:
 - `apps/<stack>/lock.json` names the holder, for the error message:
 
   ```json
-  { "schema": 1, "run": "01jbx6k3m8w0v7c9q2r5t4y6z8", "op": "deploy", "by": "alice@laptop", "since": "2026-10-26T14:03:11Z" }
+  { "schema": 1, "run": "01jbx6k3m8w0v7c9q2r5t4y6z8", "op": "deploy", "by": "alice@laptop", "ci": "github", "since": "2026-10-26T14:03:11Z" }
   ```
 
-- `apps/<stack>/manual-lock.json` exists while `dockflow lock acquire` holds the environment. Every run refuses to start while it exists, unless given `--force`. It never expires: `dockflow lock release` removes it.
+  `ci` is the CI provider, absent outside CI.
+
+- `apps/<stack>/manual-lock.json` exists while `dockflow lock acquire` holds the environment, with the same fields and the `message` of `-m`. Every run refuses to start while it exists, unless given `--force`. It never expires: `dockflow lock release` removes it.
 
 ### env.json and releases
 
@@ -101,6 +117,7 @@ After a successful run, the agent keeps the newest `releases.keep` releases that
 | `dockflow-watchdog` | The [watchdog](/guides/health-checks/#after-the-deploy-the-watchdog): restarts the containers that stay unhealthy, and brings apps back after a reboot | Permanent, `restart: unless-stopped`, no network. Absent with `--no-watchdog` |
 | `dockflow-run-<run-id>` | The agent of one run ([How it works](/concepts/how-it-works/)) | Exits when the run ends. The 10 most recent finished ones are kept for `dockflow attach`, older ones are removed by the next run |
 | `dockflow-upload-<run-id>-<n>` | A helper that writes an upload to its destination | Removed as soon as it finishes |
+| `dockflow-filter-<run-id>`, `dockflow-probe-<run-id>` | Helpers on the host's network: one applies the port filter's rules, the other checks whether ports 80 and 443 are free (`server check`) | Removed as soon as they finish |
 | `<stack>-<service>-<seq>-<n>` | The `n`-th container of a service, created by release `<seq>`: `shop-production-web-42-1` | Until a later release replaces it. A service left unchanged by a deploy keeps the containers of an older release |
 | `container_name` | A service with a `container_name` keeps that name, and always uses the `stop-first` strategy | As above |
 | `<stack>-<service>-<seq>-job` | A job of release `<seq>` | Removed when the job finishes |
@@ -241,6 +258,15 @@ The switch's admin API listens on no port at all, only on a unix socket.
    sudo rm -rf /etc/dockflow
    sudo iptables -D DOCKER-USER -j DOCKFLOW-FILTER && sudo iptables -F DOCKFLOW-FILTER && sudo iptables -X DOCKFLOW-FILTER
    sudo ip6tables -D DOCKER-USER -j DOCKFLOW-FILTER && sudo ip6tables -F DOCKFLOW-FILTER && sudo ip6tables -X DOCKFLOW-FILTER
+   ```
+
+8. Remove the Cloudflare refresh and the files of `server init` you no longer want (see [above](#files-server-init-writes-outside-the-state)):
+
+   ```sh
+   sudo systemctl disable --now dockflow-cloudflare.timer
+   sudo rm -f /etc/systemd/system/dockflow-cloudflare.timer /etc/systemd/system/dockflow-cloudflare.service /usr/local/libexec/dockflow-cloudflare-refresh
+   sudo rm -f /etc/ssh/sshd_config.d/50-dockflow.conf /etc/sudoers.d/dockflow-nginx
+   sudo systemctl daemon-reload
    ```
 
 </Steps>
