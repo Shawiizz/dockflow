@@ -35,10 +35,14 @@ volumes: { maria: {}, cache: {}, mongo: {} }
 `, mariadbImage, redisImage, mongoImage))
 	writeFile(t, filepath.Join(dir, "dockflow.yml"), "version: 1\napp: "+app+"\nenvironments:\n  production:\n    deploy: { timeout: 3m }\n")
 	t.Cleanup(func() { dockflow(t, dir, "destroy", "production", "--volumes") })
-	// a failed deploy stays in place, so the databases' own logs say why one did not start
-	if r := dockflow(t, dir, "deploy", "--no-rollback"); r.code != 0 {
-		logs, _ := inServer("for c in $(docker ps -aq --filter label=com.docker.compose.project=" + stack + "); do " +
-			"docker inspect -f '{{.Name}} {{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}}' $c; docker logs --tail 30 $c 2>&1; done")
+	// a failed rollout is rolled back, its containers removed: their logs are copied while the deploy runs,
+	// to say why a database did not start
+	go inServer("rm -rf /tmp/" + app + "; mkdir /tmp/" + app + "; for i in $(seq 300); do " +
+		"for c in $(docker ps -aq --filter label=com.docker.compose.project=" + stack + "); do " +
+		"docker inspect -f '{{.Name}} {{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}} health={{if .State.Health}}{{.State.Health.Status}} {{range .State.Health.Log}}{{.Output}}{{end}}{{end}}' $c > /tmp/" + app + "/$c.new 2>&1 && " +
+		"docker logs --tail 30 $c >> /tmp/" + app + "/$c.new 2>&1 && mv /tmp/" + app + "/$c.new /tmp/" + app + "/$c; done; sleep 0.2; done")
+	if r := dockflow(t, dir, "deploy"); r.code != 0 {
+		logs, _ := inServer("cat /tmp/" + app + "/*")
 		t.Fatalf("deploy: exit %d\n%s\n%s", r.code, r.out, logs)
 	}
 	in := func(service, cmd string) string {
