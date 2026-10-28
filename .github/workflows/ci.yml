@@ -77,10 +77,9 @@ jobs:
           version: none
           command: validate production
           working-directory: ${{ runner.temp }}/shop
-      - name: the action installs a release
+      - name: the action installs the newest release
         uses: ./
         with:
-          version: v4.0.0-alpha.9
           command: version
           working-directory: ${{ runner.temp }}/shop
 

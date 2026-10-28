@@ -197,7 +197,7 @@ environments:
 
 	install := "curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh"
 	if v := version.Version; v != "dev" {
-		install += " -s -- --version " + v
+		install += " -s -- --version v" + strings.TrimPrefix(v, "v")
 	}
 	switch ci {
 	case "", "none":

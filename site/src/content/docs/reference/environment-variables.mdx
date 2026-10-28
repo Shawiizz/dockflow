@@ -102,13 +102,13 @@ Local builds run `docker buildx` (or `podman` with `build.engine: podman`) with 
 
 | Variable | Option | Description |
 |---|---|---|
-| `DOCKFLOW_VERSION` | `--version` | The release to install, such as `v4.0.0-alpha.10`. Default: the newest release |
+| `DOCKFLOW_VERSION` | `--version` | The release to install, such as `v1.0.0-alpha.1`. Default: the newest release |
 | `DOCKFLOW_INSTALL_DIR` | `--dir` | Where to put the binary. Default: `/usr/local/bin` when writable, else `~/.local/bin` |
 | `DOCKFLOW_RELEASES_URL` | – | A mirror of the release downloads |
 | `GITHUB_PATH` | – | In GitHub Actions, the install directory is added to it when it is not on `PATH` |
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | DOCKFLOW_VERSION=v4.0.0-alpha.10 sh
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | DOCKFLOW_VERSION=v1.0.0-alpha.1 sh
 ```
 
 <Aside>

@@ -58,7 +58,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: build
-        run: make snapshot VERSION="$TAG"
+        run: make snapshot VERSION="${TAG#v}"
       - uses: sigstore/cosign-installer@v3
       - name: sign the checksums
         run: cosign sign-blob --yes --bundle dist/SHA256SUMS.sigstore.json dist/SHA256SUMS

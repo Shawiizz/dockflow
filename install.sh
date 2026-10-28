@@ -56,6 +56,8 @@ if [ -z "$version" ]; then
 	[ -n "$version" ] || fail "no release found; pass --version"
 fi
 
+case "$version" in [0-9]*) version="v$version" ;; esac
+
 name="dockflow-$os-$arch"
 base="$releases/$version"
 echo "installing dockflow $version ($os/$arch)"

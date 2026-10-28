@@ -19,7 +19,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/events"
 )
 
-// ReleasesURL is where the binaries of a release are downloaded from, under <version>/.
+// ReleasesURL is where the binaries of a release are downloaded from, under its tag, v<version>/.
 // DOCKFLOW_RELEASES_URL overrides it (a mirror).
 const ReleasesURL = "https://github.com/Shawiizz/dockflow/releases/download"
 
@@ -67,7 +67,7 @@ func (l *Launcher) agentBinary(ctx context.Context, arch string) (string, error)
 	if u := os.Getenv("DOCKFLOW_RELEASES_URL"); u != "" {
 		base = strings.TrimSuffix(u, "/")
 	}
-	base += "/" + l.Version + "/"
+	base += "/v" + strings.TrimPrefix(l.Version, "v") + "/"
 	l.Events.Info(events.Log, fmt.Sprintf("downloading the agent binary for linux/%s", arch), map[string]any{"line": "download " + base + name})
 	if err := Download(ctx, http.DefaultClient, base, name, path); err != nil {
 		return "", err

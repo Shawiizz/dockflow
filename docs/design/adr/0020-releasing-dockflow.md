@@ -1,7 +1,7 @@
 # ADR-0020: Releasing Dockflow itself: signed binaries, version-pinned agent
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (version numbers)
+- Date: 2026-10-25, revised 2026-10-26 and 2026-10-28 (version numbers)
 
 ## Context
 
@@ -29,9 +29,9 @@ The CLI ships its own Linux binary to servers ([ADR-0004](0004-ephemeral-agent.m
 
 ### Versioning
 
-- Semantic versioning, with tags `v<semver>`.
-- Release numbers continue the repository's sequence: its earlier releases go up to 3.x, so this line starts at **4.0.0**. A package manager, an installer or a person comparing numbers then sees it as newer, and no number is published twice (npm refuses that). "v2" stays the name of the rewrite, not a version number.
-- Until the roadmap's v1.0 milestone, releases are pre-releases, one or more per milestone: `v4.0.0-alpha.N`. The v1.0 milestone ships as `v4.0.0`.
+- Semantic versioning. The tag of a release is `v<semver>`, as Go and GitHub Actions expect; the version the binary reports, the npm package and the documentation write it without the `v` (`1.0.0`).
+- Numbering starts at **1.0.0**: the roadmap's v1.0 milestone ships as `v1.0.0`, and until then releases are pre-releases, one or more per milestone: `v1.0.0-alpha.N`. "v2" stays the name of the rewrite, not a version number.
+- The tags and releases of Dockflow 1.x (up to 3.1.1, tagged without a `v`) and the first alphas of the rewrite (`v4.0.0-alpha.1` to `.10`) are deleted, so the repository's releases are this line's alone. The commits stay in the history. The npm versions of `@dockflow-tools/cli` up to 3.1.1 cannot be deleted, so they are deprecated; 1.0.0 was never published under that name.
 - The configuration format, the state format and the event schema have their own version numbers (`version: 1`, `schema: 1`, `v: 1`) and change only in a major release.
 
 ## Consequences
