@@ -237,12 +237,13 @@ func TestLabeledNetworksAndPlugins(t *testing.T) {
 	e := newEngine(t)
 	ctx := context.Background()
 	p := project(t)
-	cleanup(t, e, p)
 	shared := domain.Network{Name: p + "-shared", Driver: "bridge", Labels: map[string]string{domain.LabelShared: "true"}}
+	// cleanups run last first: the network goes after the container on it
+	t.Cleanup(func() { e.RemoveNetwork(context.Background(), shared.Name) })
+	cleanup(t, e, p)
 	if err := e.CreateNetwork(ctx, shared, ""); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { e.RemoveNetwork(context.Background(), shared.Name) })
 	img, err := e.ResolveImage(ctx, testImage, "missing", nil)
 	if err != nil {
 		t.Fatal(err)
