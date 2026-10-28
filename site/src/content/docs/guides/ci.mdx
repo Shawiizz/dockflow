@@ -405,6 +405,12 @@ The comment looks like this:
 
 The plan needs the connection secret, to read the server's state. GitHub gives no secrets to pull requests from forks: their plan fails, and the comment says so. A failed plan fails the job.
 
+<Aside type="caution" title="The plan gives pull requests the production connection">
+The connection secret is the deploy user's key: it can deploy, not only read. A pull request's run from a branch of the repository gets it, and that branch can change the workflow. With the plan on pull requests, anyone who can push a branch can reach production.
+
+Turn it on where everyone who pushes branches may deploy anyway, as in a team that reviews changes to its Compose files and `dockflow.yml`. Elsewhere, leave `pull_request` out of the workflow's triggers, or keep the secrets in a [GitHub environment](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-deployments/managing-environments-for-deployment) whose required reviewers approve each run.
+</Aside>
+
 The plan is computed again at deploy time: after a merge, the commit, and maybe the server, changed since the review, so the action deploys the merged code rather than the reviewed plan. To apply exactly a reviewed plan, use `dockflow plan --out` and `dockflow deploy --plan` in one workflow.
 
 ## Deploying from a branch
