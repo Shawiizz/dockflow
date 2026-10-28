@@ -294,7 +294,7 @@ These combinations are refused:
 
 | Combination | Why |
 |---|---|
-| `routes` or `health.http` with `run` | A job serves no traffic |
+| `routes` or `health` with `run` | A job serves no traffic, and its success is its exit code |
 | `stateful` with `run` | A job is not a long-running service |
 | `stateful` with `deploy.replicas` above 1 | A stateful service runs once |
 | `rollout.strategy: switch` without `routes` | Nothing to switch |

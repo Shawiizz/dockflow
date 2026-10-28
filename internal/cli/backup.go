@@ -44,7 +44,7 @@ func (a *app) backupCmd() *cobra.Command {
 			return err
 		},
 	}
-	run.Flags().DurationVar(&waitLock, "wait-lock", 0, "wait up to this long for a deploy or another run to release the lock (10m)")
+	run.Flags().DurationVar(&waitLock, "wait-lock", 0, "wait up to this long for a deploy or another run to release the lock, such as 10m")
 	run.Flags().BoolVar(&server, "server", false, "back up the server's state, /var/lib/dockflow")
 	cmd.AddCommand(run)
 	var listServer bool

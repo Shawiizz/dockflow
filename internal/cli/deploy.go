@@ -76,7 +76,7 @@ func (a *app) planCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&render, "render", false, "also print the service specs that would be sent")
 	cmd.Flags().BoolVar(&noBuild, "no-build", false, "plan without building: built services show as changed")
 	cmd.Flags().StringSliceVar(&only, "only", nil, "plan these services only: the others stay as the current release has them")
-	cmd.Flags().StringVar(&out, "out", "", "also write the plan to this file, for `dockflow deploy --plan`")
+	cmd.Flags().StringVar(&out, "out", "", "also write the plan to this file, for 'dockflow deploy --plan'")
 	cmd.Flags().StringVar(&markdown, "markdown", "", "also write the plan to this file as Markdown, for a pull request's comment")
 	return cmd
 }
@@ -249,9 +249,9 @@ func (a *app) deployCmd() *cobra.Command {
 	f.BoolVar(&force, "force", false, "deploy despite a manual lock")
 	f.DurationVar(&waitLock, "wait-lock", 0, "wait up to this long for another run's lock instead of failing")
 	f.StringSliceVar(&only, "only", nil, "deploy these services only: the others stay as the current release has them")
-	f.BoolVar(&skipBuild, "skip-build", false, "use the images `dockflow build --push` pushed for this version instead of building")
-	f.StringVar(&planFile, "plan", "", "apply this plan, written by `dockflow plan --out`, or fail if anything changed since")
-	f.BoolVar(&detach, "detach", false, "return once the run started on the server; follow it with `dockflow attach`")
+	f.BoolVar(&skipBuild, "skip-build", false, "use the images 'dockflow build --push' pushed for this version instead of building")
+	f.StringVar(&planFile, "plan", "", "apply this plan, written by 'dockflow plan --out', or fail if anything changed since")
+	f.BoolVar(&detach, "detach", false, "return once the run started on the server; follow it with 'dockflow attach'")
 	f.StringVar(&branch, "branch", "", "the git branch recorded in the release (default: from git or the CI)")
 	return cmd
 }

@@ -389,9 +389,13 @@ func DefaultKeyFile() string {
 	dir := os.Getenv("XDG_CONFIG_HOME")
 	if dir == "" {
 		home, _ := os.UserHomeDir()
-		if runtime.GOOS == "darwin" {
+		switch runtime.GOOS {
+		case "darwin":
 			dir = filepath.Join(home, "Library", "Application Support")
-		} else {
+		case "windows":
+			// %AppData%, as sops does
+			dir, _ = os.UserConfigDir()
+		default:
 			dir = filepath.Join(home, ".config")
 		}
 	}
