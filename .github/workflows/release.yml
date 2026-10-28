@@ -75,7 +75,7 @@ jobs:
             --notes "Install: \`curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/$TAG/install.sh | sh -s -- --version $TAG\`, or on Windows \`& ([scriptblock]::Create((irm https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/$TAG/install.ps1))) -Version $TAG\`. The binaries are listed in SHA256SUMS, signed with Sigstore (SHA256SUMS.sigstore.json). The dockflow-agent-linux-* binaries are the agents the other binaries send to servers."
 
   # The npm packages, from the release's binaries: @dockflow-tools/cli and its per-platform optional
-  # dependencies. Started as a run of its own: npm trusts publish-cli.yml by name, and a workflow
+  # dependencies. Started as a run of its own: npm trusts npm.yml by name, and a workflow
   # called from this one would present itself as release.yml.
   npm:
     needs: [version, release]
@@ -86,7 +86,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.version.outputs.tag }}
     steps:
-      - run: gh workflow run publish-cli.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
+      - run: gh workflow run npm.yml --repo "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
 
   # The Homebrew formula: written from the release's checksums, installed once to check it, then
   # committed on main, as this repository is its own tap.
