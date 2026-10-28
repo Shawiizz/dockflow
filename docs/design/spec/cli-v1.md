@@ -1,5 +1,7 @@
 # CLI, version 1
 
+> **Status: frozen from Dockflow 1.0.0.** Version 1 of this format changes only as its Compatibility section allows: additions in a minor release; anything else in a major one.
+
 The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016-interfaces.md)). Every 1.x command has an equivalent here ([parity](../parity.md#commands)), but nothing is kept for compatibility: names follow v2's model.
 
 ## Conventions

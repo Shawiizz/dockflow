@@ -1,5 +1,7 @@
 # Server state, version 1
 
+> **Status: frozen from Dockflow 1.0.0.** Version 1 of this format changes only as its Compatibility section allows: additions in a minor release; anything else in a major one.
+
 All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/0007-state-on-the-server.md)): files under `/var/lib/dockflow`, plus labels on the Docker objects Dockflow creates. This document fixes their layout and formats. Its version, `schema: 1`, changes only in a major release of Dockflow.
 
 ## Conventions

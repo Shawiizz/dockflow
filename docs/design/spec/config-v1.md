@@ -1,5 +1,7 @@
 # Configuration, version 1
 
+> **Status: frozen from Dockflow 1.0.0.** Version 1 of this format changes only as its Compatibility section allows: additions in a minor release; anything else in a major one.
+
 A project is configured by three things, all in its repository ([ADR-0006](../adr/0006-compose-as-written.md)):
 
 - **`dockflow.yml`** at the project root.

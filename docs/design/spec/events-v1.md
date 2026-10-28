@@ -1,5 +1,7 @@
 # Events, version 1
 
+> **Status: frozen from Dockflow 1.0.0.** Version 1 of this format changes only as its Compatibility section allows: additions in a minor release; anything else in a major one.
+
 Every operation reports its progress as a stream of events ([ADR-0016](../adr/0016-interfaces.md)). The agent writes them to its stdout. The CLI renders them for humans, or prints them as they are with `--json`, one JSON object per line (JSON Lines). The web UI, the MCP server and the GitHub Action read the same stream.
 
 ## Envelope
