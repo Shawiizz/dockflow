@@ -1,14 +1,12 @@
 name: npm
 
 # Publishes the npm packages of a release (ADR-0020), from its binaries: @dockflow-tools/cli and
-# its per-platform optional dependencies. Called by the release workflow, or run by hand for a
-# release whose packages were not published. Needs the NPM_TOKEN secret, skipped without it.
+# its per-platform optional dependencies. Started by the release workflow, or by hand for a release
+# whose packages were not published.
+#
+# No token: npm trusts this workflow (trusted publishing, OIDC). Each package names it, by its file
+# name, in its settings on npmjs.com: renaming this file stops the publishing.
 on:
-  workflow_call:
-    inputs:
-      tag:
-        type: string
-        required: true
   workflow_dispatch:
     inputs:
       tag:
@@ -24,12 +22,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # npm provenance: the packages are bound to this workflow
+      # trusted publishing, and the packages' provenance
       id-token: write
     env:
       TAG: ${{ inputs.tag }}
       GH_TOKEN: ${{ github.token }}
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,9 +35,8 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: publish
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::warning::no NPM_TOKEN secret: the npm packages are not published"; exit 0
-          fi
+          # trusted publishing needs npm 11.5.1 or later
+          npm install -g npm@11
           gh release download "$TAG" --dir dist --pattern 'dockflow-*' --pattern SHA256SUMS
           (cd dist && sha256sum -c --quiet SHA256SUMS)
           sh packaging/npm/pack.sh "${TAG#v}" dist npm
