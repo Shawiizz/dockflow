@@ -37,32 +37,43 @@ func TestMCP(t *testing.T) {
 	defer func() { stdin.Close(); cmd.Wait() }()
 	answers := bufio.NewScanner(stdout)
 	answers.Buffer(make([]byte, 0, 1<<20), 16<<20)
-	id := 0
+	id, progress := 0, 0
+	// call sends a request and returns its answer, counting the progress notifications before it
 	call := func(method string, params any) map[string]any {
 		t.Helper()
 		id++
 		b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
 		fmt.Fprintf(stdin, "%s\n", b)
-		done := make(chan bool, 1)
-		go func() { done <- answers.Scan() }()
-		select {
-		case ok := <-done:
-			if !ok {
-				t.Fatalf("%s: the server closed its output", method)
+		for {
+			done := make(chan bool, 1)
+			go func() { done <- answers.Scan() }()
+			select {
+			case ok := <-done:
+				if !ok {
+					t.Fatalf("%s: the server closed its output", method)
+				}
+			case <-time.After(5 * time.Minute):
+				t.Fatalf("%s: no answer", method)
 			}
-		case <-time.After(5 * time.Minute):
-			t.Fatalf("%s: no answer", method)
+			var m map[string]any
+			if err := json.Unmarshal(answers.Bytes(), &m); err != nil {
+				t.Fatalf("%s: %v %s", method, err, answers.Bytes())
+			}
+			if m["method"] == "notifications/progress" {
+				progress++
+				continue
+			}
+			if m["id"] != float64(id) {
+				t.Fatalf("%s: %s", method, answers.Bytes())
+			}
+			return m
 		}
-		var m map[string]any
-		if err := json.Unmarshal(answers.Bytes(), &m); err != nil || m["id"] != float64(id) {
-			t.Fatalf("%s: %v %s", method, err, answers.Bytes())
-		}
-		return m
 	}
 	tool := func(name string, args map[string]any) (string, bool) {
 		t.Helper()
-		res := call("tools/call", map[string]any{"name": name, "arguments": args})["result"].(map[string]any)
-		return res["content"].([]any)[0].(map[string]any)["text"].(string), res["isError"].(bool)
+		res := call("tools/call", map[string]any{"name": name, "arguments": args, "_meta": map[string]any{"progressToken": id + 1}})["result"].(map[string]any)
+		failed, _ := res["isError"].(bool)
+		return res["content"].([]any)[0].(map[string]any)["text"].(string), failed
 	}
 	fingerprint := func(text string) string {
 		t.Helper()
@@ -87,7 +98,12 @@ func TestMCP(t *testing.T) {
 	fmt.Fprintln(stdin, `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
 
 	first := fingerprint(mustTool("plan", map[string]any{"env": "production"}))
+	progress = 0
 	mustTool("deploy", map[string]any{"fingerprint": first})
+	// the deploy's events reached the client as it ran
+	if progress == 0 {
+		t.Fatal("the deploy sent no progress notification")
+	}
 	waitServing(t, host)
 	if got := served(t, host); got != "first" {
 		t.Fatalf("served %q, want first", got)

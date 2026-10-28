@@ -61,3 +61,5 @@ With `--allow-apply`, an assistant can change production. Most clients ask befor
 ## Output
 
 A tool's result is the command's JSON output: its [events](/reference/events/) and its result document, with secrets masked. A command that fails returns its error and exit code, marked as an error. A result longer than 200,000 characters is cut from the start.
+
+While a tool runs, each event's message goes to the client as a progress notification, when the client asks for them: a deploy shows its build, uploads, rollout and switch as they happen. Cancelling a call stops the command as Ctrl+C does: a deploy under way rolls back. The tools run one at a time.
