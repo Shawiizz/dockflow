@@ -63,6 +63,10 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	// the binary runs as outside CI: on a release, the CI's tag would name the environment
+	for _, v := range []string{"GITHUB_ACTIONS", "GITLAB_CI", "BUILDKITE", "BITBUCKET_BUILD_NUMBER", "JENKINS_URL", "CI"} {
+		os.Unsetenv(v)
+	}
 	code, err := setup()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "e2e setup:", err)
