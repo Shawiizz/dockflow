@@ -1,0 +1,10 @@
+{
+  "title": "Concepts",
+  "pages": [
+    "how-it-works",
+    "releases-and-rollbacks",
+    "rollouts",
+    "switch-and-edges",
+    "configuration"
+  ]
+}

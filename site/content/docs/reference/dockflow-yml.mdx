@@ -1,0 +1,467 @@
+---
+title: dockflow.yml
+description: Every key of dockflow.yml, with its type, default and meaning, the naming rules and the order in which variables are looked up.
+---
+
+`dockflow.yml` sits at the root of your project and describes the app and its environments. Your services are described in standard [Compose files](/reference/compose/); `dockflow.yml` holds what Compose has no place for: the environments, the registry, the hooks, the checks and the uploads.
+
+The format is strict. An unknown key is an error (exit code 3, see [exit codes](/reference/exit-codes/)). Later 1.x versions may add keys, never remove or rename one; a file that uses a newer key says so with [`requires`](#top-level). `dockflow validate <env>` checks the file, the Compose files and the variables without contacting a server.
+
+## Conventions
+
+- **Durations** are written like `90s`, `5m`, `1h30m` or `500ms` (units `ms`, `s`, `m`, `h`).
+- **Paths** are relative to the project directory, the one that holds `dockflow.yml`, and must stay inside it unless stated otherwise.
+- **String values are interpolated** with Compose syntax (`${VAR}`, `${VAR:-default}`, `${VAR:?message}`, `$$` for a literal `$`), except `version`, `app`, mapping keys and the values under `environments.<env>.vars`. See [variables](#variables).
+
+## Top level
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `version` | integer | required | The format version. Must be `1`. |
+| `requires` | string | none | The oldest Dockflow that reads this file, such as `"1.2"` or `"1.2.0"`. An older Dockflow stops with `config.newer` and asks for an upgrade, instead of refusing a key it does not know. Set it when you use a key added after 1.0. |
+| `app` | string | required | The app name. See [naming rules](#naming-rules). Never interpolated. |
+| `compose` | list of paths | the first that exists of `compose.yaml`, `compose.yml`, `docker-compose.yaml`, `docker-compose.yml` | The Compose files, merged in order. A listed file that does not exist is an error. An app with no Compose file at all is valid. |
+| `templates` | list | none | Files rendered with Jinja before the build and the uploads. See [`templates`](#templates). |
+| `registry` | map | none: the server's own registry | An external registry for built images. See [`registry`](#registry). |
+| `build` | map | `builder: local`, `engine: docker` | How images are built. See [`build`](#build). |
+| `releases` | map | `keep: 10` | Release retention. See [`releases`](#releases). |
+| `on_failure` | string | `rollback` | What a failed HTTP check does. See [`on_failure`](#on_failure). |
+| `health` | map | none | Public checks, run after the switch. See [`health`](#health). |
+| `uploads` | list | none | Files and directories copied to the server. See [`uploads`](#uploads). |
+| `hooks` | map | none | Commands run around the build and the deploy. See [`hooks`](#hooks). |
+| `notify` | list | none | Webhooks sent when a run finishes. See [`notify`](#notify). |
+| `firewall` | map | none | The published ports open to the internet. See [`firewall`](#firewall). |
+| `plugins` | list | none | Plugins expanded into uploads, templates and hooks. See [`plugins`](#plugins). |
+| `routes` | list | none | Routes that target no service of the app: redirects, proxies, files. See [`routes`](#routes). |
+| `backups` | map | none: a repository on the server | Where backups go. See [`backups`](#backups). |
+| `environments` | map | required, at least one | The environments, by name. See [`environments`](#environments). |
+
+### Keys an environment can override
+
+These top-level keys can also be set inside an environment, where they **replace** the top-level value for that environment (blocks are not merged key by key):
+
+`templates`, `registry`, `build`, `releases`, `on_failure`, `health`, `uploads`, `hooks`, `notify`, `firewall`, `plugins`, `routes`, `backups`.
+
+`version`, `requires`, `app`, `compose` and `environments` cannot be set inside an environment. An environment has its own `compose` key, which replaces the top-level list.
+
+## `templates`
+
+Each entry is either a path, rendered in place, or a `src`/`dest` pair. Templates are rendered into a temporary copy of the build contexts and the upload sources; your source tree is never written to. Undefined variables are errors. The template syntax is described in the [templates guide](/guides/templates/).
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| *(a plain string)* | path | | A file rendered in place: `src` and `dest` are the same path. |
+| `src` | path | required | The template file, inside the project. |
+| `dest` | path | `src` | Where the rendered file goes, inside the project (in the temporary copy). |
+
+## `registry`
+
+Without this block, built images are pushed to the registry Dockflow runs on the server, through the SSH connection.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `url` | string | required when `registry` is set | The registry and namespace, like `ghcr.io/acme`. A leading `https://` or `http://` and a trailing `/` are removed. Images are named `<url>/<app>/<service>`. |
+| `username` | string | none | The user to push and pull with. Goes with `password`. |
+| `password` | string | none | The password or token. Goes with `username`; usually a secret: `${GHCR_TOKEN}`. |
+| `additional_tags` | list of strings | none | Tags pushed in addition to the release's version tag, like `"${DOCKFLOW_ENV}-latest"`. |
+
+## `build`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `builder` | string | `local` | `local` builds on the machine that runs `dockflow`; `remote` builds with the server's Docker. |
+| `engine` | string | `docker` | `docker` (buildx bake) or `podman`. Podman builds locally only, so `engine: podman` with `builder: remote` is refused. |
+
+See the [building images guide](/guides/building-images/).
+
+## `releases`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `keep` | integer | `10` | Releases kept per environment, with their images. At least `2`. |
+
+## `on_failure`
+
+| Value | Effect |
+|---|---|
+| `rollback` | The default. A failed HTTP check (`x-dockflow.health.http` or `health.endpoints`) rolls back to the previous release. |
+| `fail` | The failed release stays in place and the environment is marked degraded (exit code 9). |
+| `ignore` | A failed HTTP check is reported as a warning and the release becomes active. |
+
+A failure of the rollout itself (a container that exits, stays unhealthy or times out) always rolls back, whatever the value. See [releases and rollbacks](/concepts/releases-and-rollbacks/).
+
+## `health`
+
+Public checks, run from the server after the traffic has moved to the new release. They complement the per-service checks of [`x-dockflow.health`](/reference/compose/#health).
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `startup_delay` | duration | `0` | Time waited after the switch, before the first check. |
+| `endpoints` | list | none | The URLs to check, in order. |
+
+Each entry of `endpoints`:
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | the URL's host and path | The name shown in events. |
+| `url` | string | required | An `http` or `https` URL. |
+| `method` | string | `GET` | The HTTP method. |
+| `expected_status` | integer | `200` | The status the URL must answer. |
+| `timeout` | duration | `30s` | Time allowed for one request. |
+| `retries` | integer | `3` | Attempts before the check fails. At least `1`. |
+| `retry_delay` | duration | `5s` | Time between two attempts. |
+| `validate_certs` | boolean | `true` | Whether TLS certificates are verified. |
+
+## `uploads`
+
+Files and directories copied to the server on each deploy, before the containers change. Only changed files are sent. See the [uploads guide](/guides/uploads/).
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `src` | path | required | A file or directory inside the project. Templates apply to it. |
+| `dest` | string | required | `volume:<name>`, a volume declared in the Compose files, or an absolute path on the server. Two uploads cannot share a destination. |
+| `mirror` | boolean | `false` | Delete files at the destination that are not in the source. |
+| `exclude` | list of strings | none | Patterns of paths to leave out, gitignore style. |
+| `mode` | string | unchanged | An octal file mode like `"644"`. Quote it, so YAML keeps it a string. |
+| `owner` | string | unchanged | A numeric owner, `uid` or `uid:gid`. |
+
+## `hooks`
+
+Commands run at fixed points of a deploy. Hook commands are **not** interpolated: the built-in variables, the environment's `vars` and the secrets the hook lists arrive as environment variables. See the [hooks guide](/guides/hooks/).
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `before_build` | list of hooks | none | Before images are built. |
+| `after_build` | list of hooks | none | After images are built and pushed. |
+| `before_deploy` | list of hooks | none | Before the containers change. |
+| `after_deploy` | list of hooks | none | After the release is live. |
+| `after_failure` | list of hooks | none | After a deploy failed. |
+
+Each hook sets exactly one of `run`, `script`, `host` and `exec`:
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `run` | string | | A shell command, run with `sh -c` on the machine running `dockflow`, in the project directory. |
+| `script` | path | | A script of the project, run on the machine running `dockflow` (directly when executable, with `sh` otherwise). |
+| `host` | string | | A shell command run on the server over SSH. |
+| `exec` | list of strings | | A command run in every running container of `service`. Allowed from `before_deploy` on, not in `before_build` or `after_build`. |
+| `service` | string | required with `exec` | The service whose containers run `exec`. Only valid with `exec`. |
+| `name` | string | derived from the command | The name shown in events. |
+| `secrets` | list of keys | none | Secrets passed to the hook as environment variables. A listed secret without a value is an error. |
+| `timeout` | duration | `5m` | Time allowed before the hook is stopped and counts as failed. |
+| `fatal` | boolean | `true` in `before_*` phases, `false` otherwise | Whether a failure stops the deploy. A fatal `before_*` hook stops it before anything changed (exit code 11); a fatal `after_deploy` hook rolls the release back (exit code 8). A non-fatal failure is a warning. |
+
+## `notify`
+
+Webhooks sent when a run finishes. See the [notifications guide](/guides/notifications/).
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `url` | string | required | An `http` or `https` URL that receives a `POST`. |
+| `on` | list of strings | both | `success`, `failure`, or both. |
+| `secret` | string | none | When set, the body is signed with HMAC-SHA256 and the signature sent in `X-Dockflow-Signature: sha256=<hex>`. |
+| `headers` | map of strings | none | Extra request headers. |
+| `timeout` | duration | `10s` | Time allowed for the request. |
+
+## `firewall`
+
+The ports your services publish that the [port filter](/project/security/#the-port-filter) lets in from outside. A port published on every interface (`5432:5432`) and not listed here is dropped; the plan warns about it.
+
+```yaml
+firewall:
+  public_ports:
+    - 25565                                            # tcp and udp, from anywhere
+    - { port: 4326, protocol: tcp, from: [203.0.113.0/24] }
+```
+
+An entry of `public_ports` is a port number, or a map:
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `port` | integer | required | The published (host) port, 1 to 65535. |
+| `protocol` | string | both | `tcp` or `udp`. |
+| `from` | list of strings | anywhere | Addresses or CIDRs, IPv4 or IPv6, the port is open to. |
+
+The filter is one per server: a port an app lists is open for that port, whichever container publishes it. It follows each app environment's current release, so a rollback restores the ports of the release it returns to.
+
+## `plugins`
+
+Plugins to expand into this environment's uploads, templates and hooks. See the [plugins guide](/guides/plugins/).
+
+```yaml
+plugins:
+  - use: nginx
+    with: { domain: "${DOMAIN}", cloudflare: true }
+  - use: ./deploy/plugins/rclone
+    id: archives
+    with: { remote: "ovhs3:archives" }
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `use` | string | required | A built-in plugin, `nginx` or `systemd`, or the path of a directory of the project that holds a `plugin.yml`. |
+| `id` | string | the plugin's name | Names the use: in hook names, the plan, and the plugin's own paths. Matches `^[a-z][a-z0-9_-]{0,31}$`; two uses of one plugin need different ids. |
+| `with` | map | none | The plugin's inputs. An unknown input, or a required one missing, is an error. Values are interpolated like the rest of the file. |
+
+## `routes`
+
+Routes the switch serves that don't target a service of the app. Each has exactly one of `redirect`, `proxy` and `files`.
+
+```yaml
+routes:
+  - domains: [mohistmc.com]
+    path: /maven
+    redirect: "https://maven.mohistmc.com{uri}"
+  - domains: [api.mohistmc.com]
+    proxy: http://valientrp-api:8080       # another app's service, on a shared network
+    network: valientrp
+  - name: maintenance
+    domains: [mohistmc.com]
+    path: /maintenance
+    files: { host_path: /srv/maintenance }
+  - domains: [archives.mohistmc.com]
+    files: { volume: archives, browse: true }
+    auth: { user: team, password: "${ARCHIVES_PASSWORD}" }
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | none | Names the route, for the `error_pages` of other routes. Matches `^[a-z][a-z0-9-]{0,31}$`. |
+| `domains`, `path`, `tls`, `strip_prefix` | | | As on a service's route ([Compose reference](/reference/compose/#routes)). |
+| `redirect` | string | | A URL, or a path, to redirect to. Caddy's placeholders work: `{uri}` is the request's path and query. |
+| `status` | integer | `308` | With `redirect`: `301`, `302`, `303`, `307` or `308`. |
+| `proxy` | string | | An `http` or `https` URL without a path, `http://host:port`, to send requests to. The `Host` header is the URL's, as nginx's `proxy_pass` does. |
+| `network` | string | none | With `proxy`: a [shared network](/guides/shared-servers/#shared-networks) the switch joins to reach the URL's host. |
+| `files` | map | | Serve a directory: `host_path`, an absolute path on the server, or `volume`, a volume of the Compose file; `browse: true` lists directories. The route's path is stripped: `/builds-raw/a.zip` is `a.zip` of the directory. |
+
+A route also takes every option of a service's route: `headers`, `encode`, `max_body`, `timeouts`, `auth`, `caddy` and `error_pages`. A `files` route runs a small file server, `files-<name>` (or `files-<n>`), in the switch's image, which mounts the directory read-only: the switch itself mounts nothing.
+
+## `environments`
+
+A map from environment name to its settings. At least one environment is required. An environment can be empty (`production: {}`) when its server comes from the `<ENV>_CONNECTION` secret.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `server` | map | none | The server, when no connection string is used. See [`server`](#server). |
+| `compose` | list of paths | the top-level `compose` | Replaces the top-level list for this environment. |
+| `profiles` | list of strings | none | Compose profiles to enable. Services with a profile not listed here are left out. |
+| `vars` | map of strings | none | Plain values for interpolation and templates. Keys follow the [key rule](#naming-rules); values are taken literally, never interpolated. |
+| `secrets_file` | path | `secrets/<env>.sops.yaml` when it exists | The environment's SOPS file, encrypted with age: a flat map of secrets, after CI variables and `.env.dockflow`. See [Secrets in a SOPS file](/guides/secrets/#secrets-in-a-sops-file). |
+| `deploy.timeout` | duration | computed | Replaces the computed time every service is given to become healthy, and the time a job is given to finish (`30m` by default). |
+| `ci.tag_suffix` | string | `""` for `production`, the environment's name for the others | The tag suffix that selects this environment in CI: `""` means bare versions (`1.2.0`), `staging` means `1.2.0-staging`. |
+
+It can also hold any of the [keys an environment can override](#keys-an-environment-can-override).
+
+### `server`
+
+How Dockflow finds the server of an environment, first match wins:
+
+1. the `--connection` option;
+2. the `<ENV>_CONNECTION` secret (`PRODUCTION_CONNECTION`), printed by [`dockflow server connection`](/reference/cli/#server-connection);
+3. the `server` block, with the private key from `DOCKFLOW_SSH_KEY_<ENV>`, `DOCKFLOW_SSH_KEY` (the key itself, or a path to it), ssh-agent, or the `IdentityFile` your `~/.ssh/config` gives the host.
+
+Dockflow reads `~/.ssh/config` as OpenSSH does for `HostName`, `Port`, `User` and `IdentityFile`: `Host` patterns (with `*`, `?` and `!`), `Include`, and the first value of each keyword. `Match` blocks are skipped. What `server:` sets wins over the file.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `host` | string | required | The server's address, or a `Host` alias of your `~/.ssh/config`. |
+| `port` | integer | `Port` of `~/.ssh/config`, else `22` | The SSH port. |
+| `user` | string | `User` of `~/.ssh/config`, else `dockflow` | The SSH user. It must be able to use Docker. |
+| `host_key` | string | none | The server's host key fingerprint, `SHA256:…`. Without it, the key must be in `~/.ssh/known_hosts`. A key that is neither pinned nor known is refused. |
+| `name` | string | `main` | The server's name, available as `DOCKFLOW_SERVER`. Matches `^[a-z][a-z0-9_-]{0,31}$`. |
+
+## `backups`
+
+Where the environment's [backups](/guides/backups/) go. Without it, a restic repository on the server, in the `dockflow-backups` volume, with a password Dockflow generates.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `repository` | string | required | An off-site restic repository: `s3:`, `b2:`, `azure:`, `gs:`, `sftp:` or `rest:`. A path is refused: leave `backups` out for the repository on the server. |
+| `password` | string | generated | The repository's password, from a secret: `${RESTIC_PASSWORD}`. Without it, Dockflow generates one and stores it in `/var/lib/dockflow/backups/` on the server. |
+| `env` | map | none | Variables passed to restic: the storage's credentials, such as `AWS_ACCESS_KEY_ID`. |
+
+```yaml title="dockflow.yml"
+backups:
+  repository: s3:s3.eu-west-1.amazonaws.com/acme-backups/${DOCKFLOW_APP}
+  password: ${RESTIC_PASSWORD}
+  env:
+    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+```
+
+## Naming rules
+
+| Name | Rule | Notes |
+|---|---|---|
+| app | `^[a-z][a-z0-9-]{0,22}[a-z0-9]$`, 2 to 24 characters | Part of every container, network and volume name. |
+| environment | `^[a-z][a-z0-9]{0,11}$`, at most 12 characters | No hyphen and no underscore: it is also the prefix of variable names (`PRODUCTION_…`). |
+| stack | `<app>-<env>` | The Compose project name of an environment. Not configurable. |
+| service | `^[a-z0-9][a-z0-9_.-]{0,62}$`, at most 63 characters | Checked on the services of the Compose files. |
+| keys of `vars`, hook `secrets` | `^[A-Z][A-Z0-9_]*$` | Upper case, valid in every CI provider. |
+
+On the command line, an environment can be shortened to a unique prefix: `dockflow deploy prod` deploys `production`. When `dockflow.yml` has a single environment, it can be left out.
+
+## Variables
+
+Values are written in the syntax native to each file:
+
+| Where | Syntax |
+|---|---|
+| Compose files, string values of `dockflow.yml` | Compose interpolation: `${VAR}`, `${VAR:-default}`, `${VAR:?message}`, `$$` for a literal `$` |
+| Files listed under `templates` | Jinja: `{{ VAR }}`, `{{ VAR \| default('x') }}`, `{% if %}`, `{% for %}`, `{% raw %}` |
+| Hook commands | Not interpolated: values arrive as environment variables |
+
+A variable with no value and no default is an error, in both syntaxes.
+
+### Lookup order
+
+For an environment, here `production`, a variable is looked up in this order, and the first match wins:
+
+1. **Built-in variables:**
+
+   | Variable | Value |
+   |---|---|
+   | `DOCKFLOW_APP` | The app name |
+   | `DOCKFLOW_ENV` | The environment name |
+   | `DOCKFLOW_STACK` | `<app>-<env>` |
+   | `DOCKFLOW_VERSION` | The release's version label: `--version`, else the version of the CI tag, else the short commit (with `-dirty` when the tree has changes), else the UTC time of the deploy |
+   | `DOCKFLOW_GIT_SHA` | The full commit, empty outside git |
+   | `DOCKFLOW_GIT_BRANCH` | The branch, empty on a detached checkout unless the CI provider gives it |
+   | `DOCKFLOW_SERVER` | The server's name (`main` by default) |
+
+2. **Secrets.** The key `X` is looked up as `PRODUCTION_X`, then `X`, in each source in turn:
+   1. the process environment, of which only `PRODUCTION_*` variables are read, and the JSON object in `DOCKFLOW_SECRETS`;
+   2. the file `.env.dockflow` at the project root (`KEY=value` lines, values taken literally);
+   3. the environment's [SOPS file](/guides/secrets/#secrets-in-a-sops-file), when there is one.
+3. **The environment's `vars`.**
+
+Names with a double underscore right after the environment's prefix, such as `PRODUCTION__DB__PASSWORD`, are reserved for per-server values, which come with several servers per environment. Do not define such variables.
+
+<Callout type="warn">
+Other process variables are never read: `${HOME}` or `${CI}` are undefined unless you set them in `vars` or as secrets. A Compose `.env` file is not read either.
+</Callout>
+
+<Callout type="idea">
+Only what the environment being deployed uses is interpolated: the blocks of other environments, and the top-level keys this environment overrides, are not. A variable used only in `environments.staging` need not resolve when you deploy `production`.
+</Callout>
+
+Interpolating `DOCKFLOW_VERSION` or `DOCKFLOW_GIT_SHA` into a service changes its spec on every commit, so that service is restarted by every deploy.
+
+## A complete example
+
+This file and its Compose files pass `dockflow validate` for both environments, with the secrets `GHCR_TOKEN`, `JWT_PRIVATE_KEY` and `WEBHOOK_SECRET` set (for example `PRODUCTION_GHCR_TOKEN=…`).
+
+```yaml title="dockflow.yml"
+version: 1
+app: shop
+
+# Compose files, merged in order.
+compose: [compose.yml]
+
+# Rendered with Jinja into a temporary copy, before the build and the uploads.
+templates:
+  - src: config/app.conf.tpl
+    dest: config/app.conf
+  - nginx/default.conf              # rendered in place, in the copy
+
+# Without this block, images go to the server's own registry.
+registry:
+  url: ghcr.io/acme                 # images are ghcr.io/acme/shop/<service>
+  username: acme-bot
+  password: ${GHCR_TOKEN}           # a secret: PRODUCTION_GHCR_TOKEN in CI
+  additional_tags: ["${DOCKFLOW_ENV}-latest"]
+
+build:
+  builder: local                    # local or remote
+  engine: docker                    # docker or podman
+
+releases:
+  keep: 10                          # at least 2
+
+on_failure: rollback                # rollback, fail or ignore
+
+# Public checks, after the switch.
+health:
+  startup_delay: 5s
+  endpoints:
+    - name: site
+      url: https://${DOMAIN}/
+      expected_status: 200
+      timeout: 30s
+      retries: 3
+      retry_delay: 5s
+
+uploads:
+  - src: public
+    dest: volume:static             # a volume of the Compose file
+    mirror: true                    # delete what is not in public/
+    exclude: [.git, "*.map"]
+  - src: deploy/backup.timer
+    dest: /etc/systemd/system/shop-backup.timer
+    mode: "644"
+
+hooks:
+  before_build:
+    - run: ./scripts/generate-keys.sh
+      secrets: [JWT_PRIVATE_KEY]    # arrives as an environment variable
+  before_deploy:
+    - name: clear cache
+      service: web
+      exec: ["sh", "-c", "rm -rf /var/cache/nginx/*"]
+      timeout: 2m
+  after_deploy:
+    - host: sudo systemctl daemon-reload
+      fatal: false
+
+notify:
+  - url: https://hooks.example.com/dockflow
+    on: [failure]
+    secret: ${WEBHOOK_SECRET}
+    headers: { X-Team: shop }
+    timeout: 10s
+
+environments:
+  production:                       # server from the PRODUCTION_CONNECTION secret
+    vars:
+      DOMAIN: shop.example.com
+    deploy:
+      timeout: 15m
+  staging:
+    server:                         # instead of a STAGING_CONNECTION secret
+      host: 203.0.113.20
+      user: dockflow
+      host_key: "SHA256:2kVJbNxZ4m8l9Pq0vXyQ1sXJmVf5tZ8b3c7d6e5f4g0"
+    compose: [compose.yml, compose.staging.yml]
+    profiles: [debug]
+    vars:
+      DOMAIN: staging.shop.example.com
+    on_failure: fail                # replaces the top-level value
+    releases:
+      keep: 3
+    ci:
+      tag_suffix: staging           # the tag 1.2.0-staging deploys here
+```
+
+```yaml title="compose.yml"
+services:
+  web:
+    build: .
+    volumes: [static:/usr/share/nginx/html]
+    x-dockflow:
+      routes:
+        - domains: ["${DOMAIN}"]
+          port: 80
+      health:
+        http: { path: / }
+
+volumes:
+  static: {}
+```
+
+```yaml title="compose.staging.yml"
+services:
+  debug:
+    image: busybox
+    command: ["sleep", "infinity"]
+    profiles: [debug]
+```

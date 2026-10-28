@@ -1,0 +1,278 @@
+---
+title: Configuration
+description: How a Dockflow project is configured, with dockflow.yml, Compose files, environments, variables, secrets and the two interpolation syntaxes.
+---
+
+A project is configured by files in its repository: one `dockflow.yml` for what concerns the deploy, standard Compose files for the app, and secrets that stay out of the repository. This page explains how they fit together; every key is in the [dockflow.yml reference](/reference/dockflow-yml/) and the [Compose reference](/reference/compose/).
+
+## The files
+
+<Files>
+  <Folder name="my-app" defaultOpen>
+    <File name={<>dockflow.yml <span className="df-file-note">the app, its environments, every Dockflow setting</span></>} />
+    <File name={<>compose.yml <span className="df-file-note">the services, with <code>x-dockflow</code> keys</span></>} />
+    <File name={<>.env.dockflow <span className="df-file-note">local secrets, gitignored</span></>} />
+    <File name="Dockerfile" />
+    <Folder name="config" defaultOpen>
+      <File name={<>app.conf.tpl <span className="df-file-note">a template, rendered with Jinja</span></>} />
+    </Folder>
+  </Folder>
+</Files>
+
+- **`dockflow.yml`** sits at the root of the project. Commands look for it in the current directory, then in its parents; `-C <dir>` points at another project. Every key is checked: an unknown key is an error, not a warning.
+- **Compose files** are standard Compose. They run as they are with `docker compose up`. Dockflow's per-service settings (routes, rollout, health, stateful, jobs) go under `x-dockflow`, a key Compose ignores. By default, Dockflow reads the first of `compose.yaml`, `compose.yml`, `docker-compose.yaml` and `docker-compose.yml`; `compose: [a.yml, b.yml]` lists several, merged in order as Compose merges them.
+- **Secrets** come from CI variables, the `DOCKFLOW_SECRETS` variable, or a local `.env.dockflow` file. They never need to be in the repository.
+
+`dockflow validate` checks all of it without contacting a server. `dockflow config show` prints the resolved configuration and services with secrets masked, and `dockflow list services` shows each service as it will be deployed.
+
+## A complete example
+
+```yaml title="dockflow.yml"
+version: 1
+app: shop
+
+on_failure: rollback
+releases:
+  keep: 10
+
+health:
+  endpoints:
+    - url: https://${DOMAIN}/
+
+environments:
+  production:
+    vars:
+      DOMAIN: shop.example.com
+  staging:
+    vars:
+      DOMAIN: staging.shop.example.com
+    on_failure: fail
+    releases:
+      keep: 3
+```
+
+```yaml title="compose.yml"
+services:
+  web:
+    build: .
+    environment:
+      DATABASE_URL: postgres://shop:${DB_PASSWORD}@db:5432/shop
+      APP_ENV: ${DOCKFLOW_ENV}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      db:
+        condition: service_healthy
+    x-dockflow:
+      routes:
+        - domains: ["${DOMAIN}"]
+          port: 3000
+      health:
+        http: { path: /healthz }
+
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shop"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    x-dockflow:
+      stateful: true
+
+volumes:
+  pgdata:
+```
+
+`DOMAIN` comes from the environment's `vars`, `DOCKFLOW_ENV` is built in, `LOG_LEVEL` falls back to `info`, and `DB_PASSWORD` is a secret: `PRODUCTION_DB_PASSWORD` when deploying production, `STAGING_DB_PASSWORD` for staging.
+
+## Names
+
+| Name | Rule | Example |
+|---|---|---|
+| `app` | Lowercase letters, digits and hyphens, starting with a letter, at most 24 characters | `shop`, `api-gateway` |
+| Environment | Lowercase letters and digits, starting with a letter, at most 12 characters: no hyphen or underscore | `production`, `staging2` |
+| Variable and secret keys | Uppercase letters, digits and underscores, starting with a letter | `DB_PASSWORD` |
+
+On the server, an environment of an app is the Compose project `<app>-<env>` (`shop-production`), and its containers, networks and volumes are named after it.
+
+## Environments
+
+`environments` lists where the app is deployed, at least one. Each environment is one server, with its own values.
+
+```sh
+dockflow deploy production
+dockflow deploy pr           # a unique prefix of an environment's name
+dockflow deploy              # when dockflow.yml has a single environment
+```
+
+In CI, `deploy` can also take the environment from the git tag: `1.2.0` selects the environment whose `ci.tag_suffix` is empty (production by default), and `1.2.0-staging` the one whose suffix is `staging`. See [CI](/guides/ci/).
+
+The server of an environment comes from the `<ENV>_CONNECTION` secret, or from `server:` in the environment. See the [Quickstart](/start/quickstart/) for both.
+
+Some keys exist only inside an environment:
+
+| Key | Description |
+|---|---|
+| `server` | The server, when no connection string is used: `host`, `port`, `user`, `host_key`, `name` |
+| `compose` | The Compose files of this environment, replacing the top-level list |
+| `profiles` | The Compose profiles to enable |
+| `vars` | The environment's values |
+| `deploy.timeout` | Replaces the computed health timeout of every service, and bounds jobs |
+| `ci.tag_suffix` | The tag suffix that selects this environment in CI |
+
+## Values
+
+Every `${NAME}` is looked up in three places, in this order. The first match wins.
+
+### 1. Built-in variables
+
+| Variable | Value |
+|---|---|
+| `DOCKFLOW_APP` | The app name |
+| `DOCKFLOW_ENV` | The environment name |
+| `DOCKFLOW_STACK` | `<app>-<env>`, the Compose project name |
+| `DOCKFLOW_VERSION` | The release's version label |
+| `DOCKFLOW_GIT_SHA` | The full commit |
+| `DOCKFLOW_GIT_BRANCH` | The branch |
+| `DOCKFLOW_SERVER` | The server's name (`main` unless set) |
+
+### 2. Secrets
+
+For the environment `production`, the key `X` is looked up as `PRODUCTION_X`, then as `X`, in each source in turn:
+
+1. **The process environment and `DOCKFLOW_SECRETS`.** From the process environment, only variables prefixed with the environment's name are read (`PRODUCTION_DB_PASSWORD`); `PATH`, `HOME` and the rest are never used. `DOCKFLOW_SECRETS` holds a JSON object of keys and values, prefixed or not; in GitHub Actions, `DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}` passes every secret of the repository at once.
+2. **`.env.dockflow`**, at the project root, for deploys from your machine.
+3. **The environment's SOPS file**, `secrets/<env>.sops.yaml` (or `secrets_file`), encrypted with age and kept in git. See [Secrets in a SOPS file](/guides/secrets/#secrets-in-a-sops-file).
+
+```sh title=".env.dockflow"
+PRODUCTION_CONNECTION=eyJ2IjoyLCJzZXJ2ZXJzIjpb…
+PRODUCTION_DB_PASSWORD=correct-horse-battery-staple
+STAGING_DB_PASSWORD="a value with spaces"
+```
+
+The file has one `KEY=value` per line. Lines starting with `#` are comments, and an `export ` prefix is accepted. Values are taken literally: there is no variable expansion, so a password containing `$` is safe. Quotes around a value are removed, and double-quoted values understand `\n`.
+
+<Callout type="warn">
+`.env.dockflow` holds secrets and, often, the connection string, which gives root on the server. Add it to `.gitignore`.
+</Callout>
+
+To hand a secret to a container as a file rather than an environment variable, use Compose `secrets:`: see [Secrets and configs](/guides/secrets/).
+
+### 3. The environment's vars
+
+```yaml title="dockflow.yml"
+version: 1
+app: shop
+
+environments:
+  production:
+    vars:
+      DOMAIN: shop.example.com
+      WORKERS: "4"
+```
+
+`vars` are for values that are not secret and differ per environment. They are taken literally: a `vars` value is not interpolated itself.
+
+### Missing values
+
+A variable with no value and no default is an error, in every syntax: `validate`, `plan` and `deploy` stop with exit code 3, and say which variable is missing where. Nothing is ever deployed with an empty value by accident. To make a variable optional, give it a default: `${LOG_LEVEL:-info}`, or `${SENTRY_DSN:-}` for an empty one.
+
+<Callout type="idea">
+Only what the environment uses is interpolated: the sections of other environments, and the top-level keys the environment overrides, are left alone. A variable used only under `environments.staging` does not need a value when you deploy `production`.
+</Callout>
+
+## Two syntaxes
+
+Each kind of file keeps its own syntax:
+
+| Where | Syntax |
+|---|---|
+| Compose files, and the string values of `dockflow.yml` | Compose interpolation: `${VAR}`, `${VAR:-default}`, `${VAR:?message}`, and `$$` for a literal `$` |
+| Files listed under `templates:` | Jinja: `{{ VAR }}`, `{{ VAR \| default('x') }}`, `{% if %}`, `{% for %}`, `{% raw %}` |
+| Hook commands | None: values arrive as environment variables |
+
+**Compose interpolation** is Compose's own, so a Compose file stays valid for `docker compose up`. In `dockflow.yml`, it applies to string values, except `version`, `app`, the names of environments, mapping keys and `vars`.
+
+**Jinja** is for other files, such as an nginx configuration or a shell script, full of `$` that Compose interpolation would take for variables. Only the files listed under `templates:` are rendered, in a temporary copy of the project, before builds and uploads; your source tree is never modified. The same names are top-level variables: `{{ DOMAIN }}`, `{{ DOCKFLOW_ENV }}`. An undefined variable is an error here too.
+
+```yaml title="dockflow.yml"
+version: 1
+app: shop
+
+templates:
+  - src: config/app.conf.tpl
+    dest: config/app.conf
+
+hooks:
+  before_build:
+    - run: ./scripts/generate-keys.sh
+      secrets: [JWT_PRIVATE_KEY]
+
+notify:
+  - url: https://hooks.example.com/dockflow
+    secret: ${WEBHOOK_SECRET}
+
+environments:
+  production:
+    vars:
+      DOMAIN: shop.example.com
+  staging:
+    vars:
+      DOMAIN: staging.shop.example.com
+    hooks: {}
+```
+
+```jinja
+{# config/app.conf.tpl #}
+server_name {{ DOMAIN }};
+{% if DOCKFLOW_ENV == "production" %}
+log_level warn;
+{% else %}
+log_level debug;
+{% endif %}
+```
+
+**Hook commands** are never interpolated. A hook gets the built-in variables and the environment's `vars` as environment variables, plus the secrets it lists under `secrets:`. Above, `generate-keys.sh` reads `$JWT_PRIVATE_KEY`. See [Templates](/guides/templates/) and [Hooks](/guides/hooks/).
+
+## Per-environment overrides
+
+Every top-level key except `version`, `app`, `compose` and `environments` can also be set inside an environment, where it **replaces** the top-level value for that environment. Values are not merged: an environment that sets `hooks` has only its own hooks.
+
+| Key | Typical override |
+|---|---|
+| `on_failure` | `ignore` on staging, `rollback` on production |
+| `releases` | Fewer releases kept on staging |
+| `registry` | Another registry, or other credentials |
+| `build` | Build on the server for one environment |
+| `health` | Public checks on each environment's own URL |
+| `templates`, `hooks`, `uploads`, `notify` | Different lists per environment; `hooks: {}` removes every hook |
+
+In the example above, staging has no hooks, and keeps the top-level `templates` and `notify`. `compose` is the exception: inside an environment, it is listed with the environment-only keys and replaces the top-level list too.
+
+## The version label
+
+Every release carries a version label, available as `${DOCKFLOW_VERSION}`: `--version` on `deploy`, the git tag in CI, the short commit (with `-dirty` for uncommitted changes), or the time of the deploy outside git. See [Releases and rollbacks](/concepts/releases-and-rollbacks/#version-labels).
+
+<Callout type="warn">
+A service whose spec contains `${DOCKFLOW_VERSION}`, `${DOCKFLOW_GIT_SHA}` or `${DOCKFLOW_GIT_BRANCH}` changes on every commit, so it is restarted by every deploy, even when nothing else changed.
+</Callout>
+
+## Masking secrets
+
+Dockflow knows every secret value of the environment, and replaces each occurrence with `***` in what it shows or stores: events and the `--json` stream, build output, hook and job output, error messages, and `dockflow config show`. The connection string's private key is masked the same way.
+
+```sh
+PRODUCTION_DB_PASSWORD=s3cret dockflow config show production
+```
+
+```text
+"DATABASE_URL=postgres://shop:***@db:5432/shop",
+```
+
+Two exceptions, by design:
+
+- `dockflow exec`, `run` and `ssh` connect your terminal to a command you run yourself: their output is the command's own, not masked.
+- A value interpolated into a container's environment is part of the container, as `docker inspect` shows on the server, and of the release record, readable by root only. Secrets are never written to your project's files or passed on a command line.
+
+See [Security](/project/security/) for the full model.

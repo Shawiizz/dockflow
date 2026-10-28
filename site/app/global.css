@@ -1,0 +1,158 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+/* Fumadocs' neutral theme with Geist and JetBrains Mono for the docs, and Dockflow's two colours for
+   the landing page: the logo blue, and amber next to it. */
+@theme {
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --color-brand: hsl(211, 84%, 46%);
+  --color-brand-foreground: white;
+  --color-brand-200: hsl(211, 90%, 54%);
+  --color-landing-foreground: #0f1d36;
+
+  --color-fd-primary: hsl(211, 84%, 46%);
+  --color-fd-primary-foreground: white;
+}
+
+.dark {
+  --color-brand: #ffc23d;
+  --color-brand-foreground: #1a1100;
+  --color-brand-200: #ffd977;
+  --color-landing-foreground: #e6ebf3;
+
+  --color-fd-primary: hsl(208, 100%, 70%);
+  --color-fd-primary-foreground: hsl(220, 40%, 8%);
+}
+
+:root {
+  --df-accent: #ffb52e;
+  --df-blue: #1482e9;
+  --df-line: rgb(20 130 233 / 0.55);
+}
+
+.dark {
+  --df-line: rgb(108 180 255 / 0.45);
+}
+
+/* Grain: an SVG noise laid over an element, for the textured surfaces of the landing page. */
+.df-grain::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.4 -0.35'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.35;
+  mix-blend-mode: multiply;
+}
+
+.dark .df-grain::after,
+.df-accent-card.df-grain::after {
+  opacity: 0.55;
+  mix-blend-mode: overlay;
+}
+
+.df-grain > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* The solid card: the logo blue, deep to bright, with an amber corner. */
+.df-accent-card {
+  color: white;
+  background:
+    radial-gradient(70% 60% at 100% 100%, rgb(255 181 46 / 0.55), transparent 70%),
+    linear-gradient(150deg, #0b4a98, #1482e9);
+}
+
+/* The two files of the landing page: the docs' code blocks, with the docs' blue for the linked lines */
+:root {
+  --df-blue-accent: hsl(211, 84%, 46%);
+}
+
+.dark {
+  --df-blue-accent: hsl(208, 100%, 70%);
+}
+
+.df-blue-accent {
+  --color-fd-primary: var(--df-blue-accent);
+}
+
+.df-link:not(.highlighted):hover {
+  background-color: color-mix(in oklab, var(--color-fd-primary) 5%, transparent);
+}
+
+.df-link:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--color-fd-primary);
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+body {
+  background-color: var(--color-fd-background);
+}
+
+/* Steps: an ordered list whose items are numbered circles joined by a line. */
+.df-steps > ol {
+  list-style: none;
+  counter-reset: df-step;
+  padding-inline-start: 0;
+  margin-inline-start: 0.875rem;
+  border-inline-start: 1px solid var(--color-fd-border);
+}
+
+.df-steps > ol > li {
+  counter-increment: df-step;
+  position: relative;
+  padding-inline-start: 1.75rem;
+  padding-bottom: 0.5rem;
+  margin: 0;
+}
+
+.df-steps > ol > li::before {
+  content: counter(df-step);
+  position: absolute;
+  inset-inline-start: -0.875rem;
+  top: 0.1rem;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-fd-border);
+  background: var(--color-fd-secondary);
+  color: var(--color-fd-foreground);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.df-steps > ol > li::marker {
+  content: none;
+}
+
+/* the comment after a file name in a file tree */
+.df-file-note {
+  margin-inline-start: 0.75rem;
+  color: var(--color-fd-muted-foreground);
+  font-weight: 400;
+}
+
+.df-inline-code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  border-radius: 0.3rem;
+  border: 1px solid var(--color-fd-border);
+  background: var(--color-fd-muted);
+  color: var(--color-fd-foreground);
+}

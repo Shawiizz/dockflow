@@ -1,0 +1,61 @@
+---
+title: AI agents (MCP)
+description: Let an AI assistant read an app's status, releases and logs, plan a deploy, and, when allowed, deploy the reviewed plan or roll back, through dockflow mcp.
+---
+
+`dockflow mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server over stdio. An AI assistant that speaks MCP (Claude Code, Claude Desktop, Cursor, VS Code and others) starts it in the project's directory and calls its tools. Each tool runs the `dockflow` command of the same name with `--json`, so it does what the command does, with the same configuration, secrets and output masking.
+
+## Set it up
+
+The server runs in the project's directory, with the secrets the CLI reads there: `.env.dockflow`, the SOPS file, or the environment.
+
+With Claude Code, from the project's directory:
+
+```sh
+claude mcp add dockflow -- dockflow mcp
+```
+
+With a client configured by JSON (`.mcp.json`, `.cursor/mcp.json`, Claude Desktop's configuration), give the project's directory with `-C`:
+
+```json
+{
+  "mcpServers": {
+    "dockflow": {
+      "command": "dockflow",
+      "args": ["-C", "/path/to/project", "mcp"]
+    }
+  }
+}
+```
+
+## Tools
+
+| Tool | Arguments | What it does |
+|---|---|---|
+| `validate` | `env` | `dockflow validate`: checks the configuration, without a server. |
+| `status` | `env` | `dockflow status`: the current release, services and containers; without `env`, of every environment. |
+| `releases` | `env`, `count` | `dockflow releases`: the release history. |
+| `logs` | `env`, `service`, `lines`, `since` | `dockflow logs`, without following: 100 lines per container by default. |
+| `plan` | `env`, `only` | `dockflow plan --out`: what a deploy would change, and the plan's fingerprint. It builds and pushes the images it needs, and changes nothing on the server. |
+| `deploy` | `fingerprint` | `dockflow deploy --plan`: applies a plan the `plan` tool computed in this session, by its fingerprint. Refused if anything changed since the plan, as a saved plan is. |
+| `rollback` | `env`, `release`, `service` | `dockflow rollback --to`: re-applies a release, named by its number in `releases`. |
+
+## Writes are off by default
+
+Without `--allow-apply`, the server offers the read tools and `plan` only: an assistant can look and plan, never change a server. With it, `deploy` and `rollback` are offered too:
+
+```sh
+claude mcp add dockflow -- dockflow mcp --allow-apply
+```
+
+Even then, an assistant cannot deploy what nobody saw: `deploy` takes only the fingerprint of a plan this session's `plan` tool returned, and applies exactly that plan or nothing. `rollback` takes the number of a release that `releases` lists.
+
+<Callout type="warn">
+With `--allow-apply`, an assistant can change production. Most clients ask before each tool call; keep that on for `deploy` and `rollback`.
+</Callout>
+
+## Output
+
+A tool's result is the command's JSON output: its [events](/reference/events/) and its result document, with secrets masked. A command that fails returns its error and exit code, marked as an error. A result longer than 200,000 characters is cut from the start.
+
+While a tool runs, each event's message goes to the client as a progress notification, when the client asks for them: a deploy shows its build, uploads, rollout and switch as they happen. Cancelling a call stops the command as Ctrl+C does: a deploy under way rolls back. The tools run one at a time.

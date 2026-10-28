@@ -1,6 +1,7 @@
 node_modules
-dist
-.astro
+.next
+out
+.source
 Dockerfile
 dockflow.yml
 compose.yml

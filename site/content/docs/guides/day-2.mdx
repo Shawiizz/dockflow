@@ -1,0 +1,133 @@
+---
+title: Operating an environment
+description: The commands that inspect, troubleshoot and change a running environment, grouped by task.
+---
+
+Once an environment is deployed, these commands show what runs on the server, get you into a container, and change services between deploys. This page gives each one's purpose and a typical use; the [CLI reference](/reference/cli/) lists every option.
+
+## Choosing the environment
+
+Most commands take `[<env>]` as their first argument. You can leave it out when `dockflow.yml` has a single environment, and a unique prefix is enough (`prod` for `production`). The examples below always name it.
+
+Every command reaches the server the way a deploy does: through the `<ENV>_CONNECTION` secret, the environment's `server:` block, or `--connection`.
+
+## See what runs
+
+| Command | Purpose |
+|---|---|
+| `status` | The current release, each service with its running and desired container counts, the degraded flag and any lock. Without `<env>`, every environment of `dockflow.yml` |
+| `ps` | The app's containers, with their service, release, state and health; `-a` adds stopped and one-off containers |
+| `details` | Every service of the current release in full: image, routes, ports, networks, mounts, limits, restart policy, and the names (never the values) of its environment variables |
+| `releases` | The release history, newest first, with the current one marked; `-n` limits the count, `--stats` adds the success rate and durations |
+| `version` | The version label the environment runs; without `<env>`, the CLI's own version |
+| `list envs` | The environments of `dockflow.yml` and the CI tags that select each |
+| `list services` | The services of an environment as Dockflow will deploy them, read from your project, without the server |
+| `list images` | The app's images on the server; `-a` lists every image of the server |
+
+```sh
+dockflow status
+dockflow ps production -a
+dockflow releases production -n 10 --stats
+dockflow list images production
+```
+
+## Read logs
+
+`logs` prints the logs of the containers that serve the environment, all services or one, each line prefixed with its container when there are several.
+
+```sh
+dockflow logs production web -f
+dockflow logs production web --since 10m --timestamps
+dockflow logs production worker -n all --all
+```
+
+`-n` sets the lines per container (100 by default, 20 with `-f`, or `all`). `--all` adds the previous release's and stopped containers, `--pick` lets you choose one container, `--no-prefix` removes the prefix. Secret values are masked in the output.
+
+<Callout type="warn">
+With a single argument, `logs` reads it as the environment. To select a service, name the environment first: `dockflow logs production web`.
+</Callout>
+
+## Get inside
+
+| Command | Purpose |
+|---|---|
+| `exec` | Runs a command in a running container of a service, or opens a shell (bash when the image has it, else sh). `-u` sets the user, `-w` the directory, `-e` a variable, `-T` disables the terminal for scripts, `--pick` chooses among several containers |
+| `run` | Starts a one-off container with the service's spec and deployed image, without ports or network aliases, and removes it when the command ends. For a console or a one-time script |
+| `cp` | Copies a file or directory between your machine and a container, in either direction; the container side is written `service:/path` |
+| `ssh` | Opens a shell on the server, or runs one command there, as the environment's SSH user |
+
+```sh
+dockflow exec production web
+dockflow exec production web -T -- php artisan cache:clear
+dockflow run production web -e LOG_LEVEL=debug -- ./manage.py shell
+dockflow cp production web:/var/log/app/error.log ./error.log
+dockflow cp production ./dump.sql db:/tmp/
+dockflow ssh production -- df -h
+```
+
+`exec`, `run` and `ssh` exit with the command's own exit code. Their output goes straight to your terminal and is not masked.
+
+## Troubleshoot
+
+`diagnose` looks for the reasons containers don't run and prints one line per problem:
+
+| Problem | What it checks |
+|---|---|
+| `oom killed` | A container killed for lack of memory |
+| `port in use` | A container that could not bind a host port |
+| `exited` | A container that stopped, with its exit code |
+| `crash loop` | A container restarting, or restarted more than twice |
+| `unhealthy` | A failing health check, with the check's last output |
+| `missing containers` | A service running fewer containers than it should |
+| `disk space` | Less than 2 GiB free, or less than 5% of the disk and less than 10 GiB free, on the filesystem that holds Dockflow's state |
+
+```sh
+dockflow diagnose production
+```
+
+It exits with code 0 when it finds nothing, and with code 9 when it finds at least one problem, so a script or a monitor can call it.
+
+`attach` follows a run in progress, for example a deploy started from CI, or replays a finished one. Without a run ID it picks the environment's latest run; the ID is in the `--json` events and in [notifications](/guides/notifications/).
+
+```sh
+dockflow attach production
+dockflow attach production 01JBF3K9Q2M8XW4T6Y7Z1N5R0C
+```
+
+## Change services between deploys
+
+These commands take the environment's lock, change the current release's services, and record what they did as a new release (shown as `(restart)`, `(stop)`… in `dockflow releases`). The next deploy brings the services back to what the Compose file says.
+
+| Command | Purpose |
+|---|---|
+| `restart` | Restarts services with their rollout strategy: routed services get new containers before the old ones stop, so they restart without downtime. Without a service, every long-running service |
+| `stop` | Stops services until the next deploy or `restart`. Without a service, every long-running service |
+| `scale` | Sets a service's replica count until the next deploy. At least 1 (`stop` stops a service); a stateful service or one with `container_name` runs once |
+| `destroy` | Removes the environment from the server: containers, routes, networks and its state. Volumes stay unless you add `--volumes`. `--only` removes some services, unless another service depends on them |
+| `cancel` | Asks the run in progress to stop and roll back, then follows it to the end |
+
+```sh
+dockflow restart production web
+dockflow stop production worker
+dockflow scale production web 4
+dockflow destroy production --only mailer
+dockflow cancel production
+```
+
+To go back to an earlier release, use `dockflow rollback`, described in [releases and rollbacks](/concepts/releases-and-rollbacks/).
+
+<Callout type="error" title="destroy --volumes">
+`dockflow destroy production --volumes` deletes the environment's volumes and the data in them. On a terminal it asks you to type the environment's name; without one it requires `--yes`. Volumes marked `external` are never deleted.
+</Callout>
+
+## Lock an environment by hand
+
+A manual lock holds an environment during a maintenance window: until it is released, every command that takes the lock (`deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`) is refused with exit code 5. A manual lock never expires.
+
+```sh
+dockflow lock acquire production -m "database migration"
+dockflow lock status production
+dockflow lock release production
+```
+
+`dockflow deploy --force` deploys despite a manual lock. `lock acquire --force` takes over someone else's manual lock. `status` shows who holds the lock, since when, and why.

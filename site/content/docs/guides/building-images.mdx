@@ -1,0 +1,178 @@
+---
+title: Building images
+description: How Dockflow builds the services that have a Compose build section, sends their images to the server or to a registry, and pins them by digest.
+---
+
+A service with `build:` in your Compose file is built by Dockflow on every deploy, from the same build keys `docker compose build` reads. The image then travels to the server, sending only the layers the server lacks, and the service runs it pinned by digest.
+
+```yaml title="compose.yml"
+services:
+  web:
+    build:
+      context: .
+      target: runtime
+      args:
+        API_URL: https://${DOMAIN}/api
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+    x-dockflow:
+      routes:
+        - domains: ["${DOMAIN}"]
+          port: 3000
+  worker:
+    build:
+      context: .
+      dockerfile: worker.Dockerfile
+```
+
+```sh
+dockflow deploy production
+```
+
+No registry to set up and nothing to push by hand: by default, images go to a registry that `dockflow server init` runs on the server itself.
+
+## How images are built
+
+On each deploy, after the `before_build` hooks and the rendering of [templates](/guides/templates/):
+
+1. Dockflow writes a `docker buildx bake` definition from the Compose build keys, after interpolating them. `${VAR}` in a build key takes its value from the environment's `vars` and secrets, as everywhere else in the Compose file.
+2. The target platform is the server's architecture, read from its Docker Engine: an `arm64` server gets `linux/arm64` images, whatever machine builds them.
+3. Bake writes each image as an OCI image layout in a temporary directory. The image is never loaded into your local Docker.
+
+The build keys bake receives are `context`, `dockerfile`, `dockerfile_inline`, `args`, `labels`, `target`, `cache_from`, `cache_to`, `no_cache`, `no_cache_filter`, `additional_contexts`, `pull`, `network`, `extra_hosts`, `ssh`, `shm_size` and `entitlements`; `privileged: true` becomes the `security.insecure` entitlement. Paths are relative to the Compose file, and `dockerfile` to the build context, as Compose defines them.
+
+| Build key | Handling |
+|---|---|
+| `platforms`, `tags` | Ignored with a warning: images are built for the server and tagged by Dockflow |
+| `secrets` | Mounted with `RUN --mount=type=secret`, never kept in the image. See [Secrets in builds](/guides/secrets/#secrets-in-builds) |
+| `isolation`, `ulimits`, `provenance`, `sbom` | Refused |
+
+A built service's image is named after the app and the service. An `image:` key on a service that also has `build:` is replaced by that name.
+
+### The builder
+
+Bake runs on your current buildx builder. Writing an OCI layout needs a builder that can export one: the default `docker` driver can only do so with the containerd image store enabled. When it cannot, Dockflow creates a builder named `dockflow` with the `docker-container` driver, and uses it from then on. Its build cache stays in that builder between deploys.
+
+### Attestations are off
+
+Bake runs with `BUILDX_NO_DEFAULT_ATTESTATIONS=1`. A provenance attestation records when the image was built, so building the same code twice would give two different images, and a deploy that changes nothing would replace the containers. Without it, a rebuild of unchanged code from the cache gives the same digest, and the plan is empty.
+
+<Callout type="warn">
+A build argument that changes on every commit, such as `${DOCKFLOW_GIT_SHA}`, gives a new image on every deploy, so that service is replaced by every deploy.
+</Callout>
+
+## How images reach the server
+
+### The server-local registry (default)
+
+`dockflow server init` runs `dockflow-registry`, a registry container published on `127.0.0.1:5959` on the server, reachable from the server only.
+
+1. The CLI opens an SSH tunnel to that port and pushes each image as `127.0.0.1:5959/<app>/<service>:<version>`. Layers the registry already has are skipped: the `push.finished` event says how many were sent and how many were already there.
+2. The agent on the server pulls `127.0.0.1:5959/<app>/<service>@sha256:…` into Docker, and the service runs that exact digest.
+
+This works from Docker Desktop and from any CI runner: the push is made by the CLI process, through SSH, with no registry account. The images of the releases in retention stay on the server, so a [rollback](/concepts/releases-and-rollbacks/) never needs a transfer. Older images are deleted after a successful deploy; see [Cleanup](/guides/cleanup/).
+
+### An external registry
+
+To push to GitHub Container Registry, Docker Hub or your own registry, set `registry:` in `dockflow.yml`:
+
+```yaml title="dockflow.yml"
+version: 1
+app: shop
+registry:
+  url: ghcr.io/acme
+  username: acme-bot
+  password: ${GHCR_TOKEN}
+  additional_tags: ["${DOCKFLOW_ENV}-latest"]
+environments:
+  production:
+    vars:
+      DOMAIN: shop.example.com
+```
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `url` | string | required | The registry and namespace. Images are `<url>/<app>/<service>`. A leading `https://` and a trailing `/` are removed |
+| `username` | string | none | The account to push and pull with. Goes with `password` |
+| `password` | string | none | Its password or token, usually from a secret (`PRODUCTION_GHCR_TOKEN` here) |
+| `additional_tags` | list of strings | `[]` | Tags pushed besides the version label |
+
+Each image is pushed as `<url>/<app>/<service>:<version>`, plus each additional tag. The CLI pushes it, skipping the layers the registry already has. The agent on the server then pulls it by digest with the same credentials: you don't log the server into the registry, and the credentials are not written to the server.
+
+`registry:` can be set per environment, like every top-level key, to push only some environments to a registry.
+
+### The version tag
+
+The tag is the release's version label: the Git tag in CI (see [Deploying from CI](/guides/ci/#tags-select-the-environment-and-the-version)), `--version` when given, otherwise the short commit, with `-dirty` when the working tree has changes. Characters a tag cannot hold become `-`. Services never run an image by its tag, always by its digest, so pushing the same tag twice is harmless.
+
+## Building with Podman
+
+On a machine with Podman instead of Docker:
+
+```yaml title="dockflow.yml"
+version: 1
+app: shop
+build:
+  engine: podman
+environments:
+  production:
+    vars:
+      DOMAIN: shop.example.com
+```
+
+Services are built one after the other with `podman build`, from the keys `context`, `dockerfile`, `dockerfile_inline`, `args`, `labels`, `additional_contexts`, `target`, `cache_from`, `cache_to`, `no_cache`, `pull`, `network`, `extra_hosts`, `ssh` and `shm_size`. Each image is exported as an OCI layout and sent like a bake build. Short image names in `FROM` resolve as Podman's `registries.conf` says: write `docker.io/library/node:22` rather than `node:22` if your configuration has no default registry.
+
+Podman builds run on the machine running the CLI only: `engine: podman` cannot be combined with `builder: remote`.
+
+## Building on the server
+
+With `build.builder: remote`, the build runs on the server's Docker instead of your machine:
+
+```yaml title="dockflow.yml"
+version: 1
+app: shop
+build:
+  builder: remote
+environments:
+  production:
+    vars:
+      DOMAIN: shop.example.com
+  staging:
+    build:
+      builder: local
+    vars:
+      DOMAIN: staging.shop.example.com
+```
+
+The CLI forwards a local socket, in a directory only your user can enter, to the server's Docker socket over SSH, and runs bake against it on the server's default builder. You still need the `docker` CLI with buildx locally, but no local Docker daemon. The build context is sent to the server over SSH.
+
+- **Without an external registry**, each image is loaded into the server's Docker and named after its content: `localhost/<app>/<service>:<first 12 characters of the image ID>`. Services run it by image ID, and nothing is transferred after the build. A name per version would not do: two builds of the same commit share a version, and Docker drops an image whose only name moves to another one.
+- **With `registry:`**, the images are named for the registry, and the server's Docker pushes them there. Services run them by digest.
+
+Remote builds suit a runner without Docker, a slow uplink with a fast server, or a server whose architecture your machine cannot emulate. They use the server's CPU and disk while the current release is serving.
+
+## `dockflow build`
+
+`dockflow build` builds without deploying:
+
+```sh
+dockflow build production                   # build every service, check that it builds
+dockflow build production --only web        # some services only
+dockflow build production --push            # also send the images where a deploy would
+dockflow build production --platform linux/arm64
+```
+
+| Option | Description |
+|---|---|
+| `--only <services>` | Build these services only, comma-separated |
+| `--push` | Connect to the server, build for its platform, and push the images to the registry the environment deploys from: the server-local one, or `registry.url` |
+| `--platform <os/arch>` | The platform to build for, without `--push`. Default: `linux/` and this machine's architecture |
+| `--skip-hooks` | Do not run the `before_build` and `after_build` hooks |
+
+Without `--push`, no server is needed: the images are built, then discarded, which makes it a check for branch builds in CI. With `build.builder: remote`, the build lands on the server, so `--push` is implied.
+
+A deploy always builds the images it needs, even after `dockflow build --push`; with the build cache on the same builder, that second build takes seconds and pushes nothing new.
+
+## When a build fails
+
+A failed build stops the deploy before anything changes on the server, with exit code 7. Dockflow shows the last 40 lines of the build output; `--verbose` shows all of it as `build.log` events. See [Exit codes](/reference/exit-codes/).

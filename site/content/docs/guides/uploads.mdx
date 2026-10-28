@@ -1,0 +1,127 @@
+---
+title: Uploads
+description: Send files and directories to an app volume or a path on the server, incrementally and with exact rollbacks.
+---
+
+`uploads:` sends local files or directories to the server on every deploy: a static site into a volume that a web server container serves, a systemd unit into `/etc/systemd/system`. Only the files that changed travel, each file is replaced atomically, and every release records what it uploaded, so a rollback puts the previous files back.
+
+## A static site served from a volume
+
+```yaml title="compose.yml"
+services:
+  web:
+    image: nginx:1.27-alpine
+    volumes:
+      - site:/usr/share/nginx/html:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
+    x-dockflow:
+      routes:
+        - domains: [docs.example.com]
+          port: 80
+volumes:
+  site: {}
+```
+
+```yaml title="dockflow.yml"
+version: 1
+app: docs
+uploads:
+  - src: public
+    dest: volume:site
+    mirror: true
+    exclude: ["*.map", ".DS_Store"]
+environments:
+  production: {}
+```
+
+On each deploy, the content of `public/` becomes the content of the `site` volume. With `mirror: true`, files you deleted locally are deleted from the volume too. The container's image never changes, so a deploy where only the site changed uploads the changed files and leaves the `web` container running.
+
+## A file on the host
+
+```yaml title="dockflow.yml"
+version: 1
+app: docs
+uploads:
+  - src: deploy/backup.timer
+    dest: /etc/systemd/system/docs-backup.timer
+    mode: "644"
+    owner: "0:0"
+hooks:
+  after_deploy:
+    - host: sudo systemctl daemon-reload
+environments:
+  production: {}
+```
+
+A `host` [hook](/guides/hooks/) can act on the uploaded file once the deploy is done.
+
+## Options
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `src` | path | required | A file or a directory of the project, relative to the project directory |
+| `dest` | string | required | `volume:<name>`, a volume of the Compose file, or an absolute path on the server |
+| `mirror` | boolean | `false` | Delete, at the destination, the files that `src` no longer has. For a directory source only |
+| `exclude` | list of patterns | `[]` | Paths of `src` to leave out, in `.dockerignore` syntax, with `!` to re-include |
+| `mode` | octal string | each file's local mode | The mode of every file written, such as `"644"`. Quote it |
+| `owner` | `"uid"` or `"uid:gid"` | unchanged | The numeric owner of every file written. Names such as `www-data` are refused by `dockflow validate` |
+
+Two entries cannot share a `dest`. `uploads:` can also be set inside an environment, where it replaces the top-level list for that environment.
+
+### Destinations
+
+| `dest` | What it is |
+|---|---|
+| `volume:<name>` | A volume declared under the top-level `volumes:` of the Compose file, by its key (`site`, not `docs-production_site`). The source should be a directory: its content becomes the volume's content. Dockflow creates the volume if it does not exist yet |
+| `/absolute/path` | A file or a directory on the server. Missing parent directories are created |
+
+A `volume:` name that the Compose file does not declare stops `dockflow plan` and `dockflow deploy` with exit code 3. `dockflow validate` checks only the form of `dest`.
+
+<Callout type="warn">
+`exclude` is the only filter: `.gitignore` and `.dockerignore` do not apply to uploads. An upload of `.` sends `.git` unless you exclude it.
+</Callout>
+
+## How an upload works
+
+1. **Templates are rendered.** A file listed under [`templates:`](/guides/templates/) inside `src` is uploaded rendered.
+2. **The CLI describes the source.** It hashes every file (after `exclude`) into a manifest: each path with its SHA-256 and mode. The manifest's digest is recorded in the release, so `dockflow plan` shows an upload for a destination exactly when its files changed.
+3. **Only missing files travel.** The server keeps a content-addressed store of the app's files. The CLI asks which contents the server lacks and sends only those. Each file is checked against its hash on arrival. A 2 GB directory where one file changed sends one file.
+4. **A helper container applies the manifest.** The agent starts a short-lived container that mounts the destination (the volume, or the parent directory of a host path) and the store. Each changed file is written to a temporary file next to its target and renamed over it, so a reader sees either the old file or the new one, never a partial one. With `mirror`, files the manifest does not list are deleted, then empty directories.
+
+The swap is atomic per file, not for the whole directory: while the upload runs, a container serving the volume can see some new files next to some old ones.
+
+Uploads run in the plan after networks and volumes are created and before the jobs and services, so a `before` [job](/guides/jobs/) can read what was uploaded.
+
+## Rollbacks and failed deploys
+
+Before the helper overwrites or deletes a file, it saves that file into the store. Every upload therefore knows how to put its destination back exactly as it was, including removing files that did not exist before.
+
+- **A failed deploy** that rolls back also restores its uploads, newest first.
+- **`dockflow rollback`** applies the manifests recorded in the release it restores, so the files come back with the containers. Their contents are still in the store as long as that release is in [retention](/guides/cleanup/).
+
+<Callout type="warn">
+Removing an entry from `uploads:` does not delete what it uploaded: the files stay at the destination.
+</Callout>
+
+## An app with only uploads
+
+An app does not need any service. Without a Compose file, or with an empty one, a `dockflow.yml` with `uploads:` is a complete app: each deploy sends the files, records a release, and can be rolled back.
+
+```yaml title="dockflow.yml"
+version: 1
+app: maven
+uploads:
+  - src: repository
+    dest: /srv/maven
+    mirror: true
+    exclude: [".git", "*.tmp"]
+environments:
+  production: {}
+```
+
+Here a web server already on the host serves `/srv/maven`. Later deploys send only the artifacts that changed, and `mirror: true` removes deleted ones.
+
+## Disk space
+
+The store keeps the contents of every release in retention, and the files that uploads replaced. Large trees that change often take space on the server until their releases leave retention. See [cleanup](/guides/cleanup/).

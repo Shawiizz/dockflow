@@ -8,8 +8,12 @@
 	root * /srv
 	encode zstd gzip
 
-	@assets path /_astro/* /pagefind/*
+	@assets path /_next/static/*
 	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	# the static search index has no extension
+	@search path /api/search
+	header @search Content-Type "application/json"
 
 	file_server
 	handle_errors 404 {

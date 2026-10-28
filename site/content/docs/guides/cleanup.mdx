@@ -1,0 +1,106 @@
+---
+title: Cleanup and disk space
+description: How many releases Dockflow keeps, what leaves the server with old releases, and how dockflow prune frees the rest.
+---
+
+Every release keeps what a rollback needs on the server: its images and its uploaded files. Dockflow deletes them once the release leaves retention, after each successful run. Docker objects that Dockflow does not track, such as dangling images from other tools or stopped containers, are left alone until you run `dockflow prune`.
+
+## Retention
+
+`releases.keep` sets how many releases an environment keeps. The default is 10 and the minimum is 2.
+
+```yaml title="dockflow.yml"
+version: 1
+app: shop
+releases:
+  keep: 5
+environments:
+  production:
+    releases:
+      keep: 20
+  staging: {}
+```
+
+Here `staging` keeps 5 releases and `production` 20.
+
+After each successful run (a deploy, a rollback, or a `restart`, `stop`, `scale` or `destroy --only`, which also record a release), the agent keeps:
+
+- the newest `keep` releases that succeeded (status `active` or `superseded`);
+- every release newer than the oldest of those, so failed attempts in between stay visible in `dockflow releases`.
+
+It deletes the other release records. A failed run deletes nothing. `dockflow rollback --to <seq>` can restore any listed release that went live (`active` or `superseded`).
+
+### What leaves with an old release
+
+| Object | What happens |
+|---|---|
+| Release record | Deleted from the server's state |
+| Images | Removed from the server's Docker daemon, unless a kept release of the same environment still uses them |
+| Server-local registry | The image manifests of those images are deleted. Their layers are freed by the registry's garbage collection, which runs with `dockflow prune` |
+| Uploaded files | The upload manifests and file contents that no kept release uses are deleted from the store, including the copies of files that uploads replaced |
+
+Containers are not part of retention: when a run succeeds, the containers of the release it replaced are removed right away. A rollback starts new containers from the kept images, so it transfers nothing.
+
+Images pushed to an external registry (`registry.url`) are never deleted from that registry by Dockflow. Use the registry's own retention policies.
+
+## `dockflow prune`
+
+`dockflow prune` removes Docker objects that nothing needs, on the server of the environment you name. It acts on the whole server, not only on that environment's app.
+
+```sh
+dockflow prune production
+```
+
+Without a kind, it removes stopped containers, untagged images and networks that Dockflow does not manage, and runs the server-local registry's garbage collection. With one or more kinds, it does only those:
+
+| Option | What it removes |
+|---|---|
+| `--containers` | Stopped containers (exited, created or dead) that Dockflow does not manage |
+| `--images` | Untagged images that no container uses |
+| `-a`, `--all` | Every unused image, tagged ones too, instead of only untagged ones (implies `--images`) |
+| `--volumes` | Unused anonymous volumes that Dockflow did not create |
+| `--networks` | Unused networks that Dockflow does not manage |
+| `--registry` | The layers of the server-local registry that no kept release uses (its garbage collection) |
+
+It prints what it removed and the space the images took:
+
+```text
+removed 3 containers, 12 images (2.4 GiB), 0 volumes, 2 networks
+```
+
+```sh
+dockflow prune production --images -a
+dockflow prune production --volumes
+dockflow prune production --registry
+```
+
+### What prune never removes
+
+- Containers Dockflow manages, running or stopped: services, including those stopped with `dockflow stop`, the switch, the registry.
+- The app volumes declared in Compose files, and every volume Dockflow created. `--volumes` touches only unused anonymous volumes.
+- The images of every release in retention, of every app on the server, and the images of the switch, the registry and the agent.
+- Images that a container uses, and networks that Dockflow manages.
+
+<Callout type="warn" title="Registry garbage collection">
+The registry's garbage collection must not run while an image is being pushed to it: a layer pushed during the collection can be deleted. Run `dockflow prune` (or `--registry`) when no deploy is in progress, for example from a scheduled job at a quiet hour.
+</Callout>
+
+## Checking disk space
+
+`dockflow diagnose` reports a `disk space` problem, and exits with code 9, when the filesystem that holds Dockflow's state (`/var/lib/dockflow`) has less than 2 GiB free, or less than 5% of its size free. Without problems, it prints the free space:
+
+```sh
+dockflow diagnose production
+```
+
+```text
+No problem found: every service runs its containers (38.2 GiB free on disk).
+```
+
+When space runs low:
+
+1. Run `dockflow prune` to remove unused images, stopped containers and registry layers.
+2. Lower `releases.keep` if each release holds large images or uploads. The next successful deploy deletes what the older releases held.
+3. Check the space taken by uploads of large trees that change often: the store keeps the contents of every release in retention. See [uploads](/guides/uploads/).
+
+`dockflow ssh production -- df -h` shows the server's filesystems; `dockflow list images production -a` lists every image on the server.

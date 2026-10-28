@@ -1,11 +1,12 @@
-# The documentation site: built with Astro, served as static files by Caddy.
-FROM node:24-alpine AS build
+# The documentation site: built with Next.js and Fumadocs as a static export, served as plain files by Caddy.
+FROM oven/bun:1.4.2-alpine AS build
+ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /site
-COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 COPY . .
-RUN npm run build
+RUN bun run build
 
 FROM caddy:2-alpine
 COPY Caddyfile /etc/caddy/Caddyfile
-COPY --from=build /site/dist /srv
+COPY --from=build /site/out /srv

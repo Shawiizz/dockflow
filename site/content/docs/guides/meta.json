@@ -1,0 +1,21 @@
+{
+  "title": "Guides",
+  "pages": [
+    "ci",
+    "building-images",
+    "behind-nginx",
+    "health-checks",
+    "jobs",
+    "hooks",
+    "templates",
+    "uploads",
+    "plugins",
+    "secrets",
+    "notifications",
+    "day-2",
+    "cleanup",
+    "shared-servers",
+    "backups",
+    "ai-agents"
+  ]
+}

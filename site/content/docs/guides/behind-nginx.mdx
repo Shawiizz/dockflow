@@ -1,0 +1,203 @@
+---
+title: Behind nginx or another proxy
+description: Run Dockflow on a server where nginx, Apache or another proxy already holds ports 80 and 443, with the external edge and a vhost that points at the switch.
+---
+
+By default, Dockflow's switch listens on ports 80 and 443 and obtains certificates itself. If your server already runs nginx, Apache, HAProxy or another proxy on those ports, use the **external edge**: the switch listens on one local address, and your proxy sends every routed domain to it. Your proxy keeps TLS; Dockflow keeps zero-downtime deploys.
+
+```sh
+dockflow server init root@203.0.113.10 --edge external
+```
+
+```nginx
+# /etc/nginx/sites-enabled/shop.conf (the essential part)
+location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+}
+```
+
+You write the vhost once. Deploys and rollbacks move traffic inside the switch, so nginx is never reloaded by a deploy, and its configuration never names a container or a port that changes.
+
+## How it fits together
+
+```text
+client ──TLS──▶ nginx :443 ──HTTP──▶ switch 127.0.0.1:8080 ──▶ current containers of the app
+```
+
+- **nginx** terminates TLS, applies whatever you configure in it, and forwards each request to the switch with its `Host` header.
+- **The switch** routes by `Host` and path to the containers of the current release, as declared in each service's `x-dockflow.routes`. During a deploy it moves traffic to the new containers once they are healthy, and lets the old ones finish their requests. See [The switch and the edges](/concepts/switch-and-edges/).
+
+A request for a host name that no route declares gets a 404 from the switch.
+
+## Set up the external edge
+
+<Steps>
+
+1. Prepare the server with the switch in external mode, from an administrator's account (see the [Quickstart](/start/quickstart/)):
+
+   ```sh
+   dockflow server init root@203.0.113.10 --edge external
+   ```
+
+   On a server already prepared for an environment, `dockflow server init production --edge external` does the same through the deploy user. The switch listens on `127.0.0.1:8080` on the server, reachable from the server only. Running `server init` again with another `--edge` changes the mode of an installed server.
+
+2. Keep your routes as they are. Each routed service declares its domains, and the switch matches them against the `Host` header nginx sends:
+
+   ```yaml title="compose.yml"
+   services:
+     web:
+       image: ghcr.io/acme/shop:1.4.2
+       healthcheck:
+         test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+       x-dockflow:
+         routes:
+           - domains: [shop.example.com, www.shop.example.com]
+             port: 3000
+   ```
+
+   With the external edge, the route's `tls` option has no effect: TLS belongs to nginx.
+
+3. Add a vhost for those domains to nginx (below), check it with `sudo nginx -t`, and reload nginx.
+
+4. Deploy:
+
+   ```sh
+   dockflow deploy production
+   ```
+
+</Steps>
+
+### Options of the external edge
+
+| Option | Default | Description |
+|---|---|---|
+| `--switch-listen <ip:port>` | `127.0.0.1:8080` | The address the switch listens on, on the server. The host must be an IP address. Change the port if 8080 is taken; use a private address only when the proxy runs on another machine |
+| `--trusted-proxy <cidr>` | Loopback and private ranges | The networks whose `X-Forwarded-For` header the switch believes. Repeat the option for several ranges |
+
+The default trusted ranges are `127.0.0.0/8`, `::1/128`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` and `fd00::/8`. They are needed even with nginx on the same host: nginx reaches the published port through Docker, so the switch sees a Docker bridge address rather than `127.0.0.1`. `--trusted-proxy` replaces this list rather than adding to it, so only set it when the proxy sits on a known network of its own, and include the Docker bridge range if the proxy also runs on the server.
+
+## The nginx vhost
+
+A complete vhost, with TLS terminated by nginx and certificates from [certbot](https://certbot.eff.org/):
+
+```nginx title="/etc/nginx/sites-enabled/shop.conf"
+# WebSocket upgrades. Define this map once per nginx: remove it here if another file has it.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name shop.example.com www.shop.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name shop.example.com www.shop.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/shop.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/shop.example.com/privkey.pem;
+
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 300s;
+    }
+}
+```
+
+What each part does:
+
+| Directive | Why |
+|---|---|
+| `proxy_pass http://127.0.0.1:8080` | Sends the request to the switch: the address of `--switch-listen` |
+| `proxy_set_header Host $host` | Required. The switch routes by host name; without it, every request gets a 404 |
+| `X-Forwarded-For` | The client's address. The switch trusts it from the trusted ranges and passes it on, so your app sees the real client |
+| `X-Forwarded-Proto $scheme` | Tells the app the request arrived over HTTPS, for redirects and secure cookies |
+| `proxy_http_version 1.1`, `Upgrade`, `Connection` | WebSockets. The switch handles upgrades without configuration; nginx needs these headers to pass them on |
+| `proxy_read_timeout` | nginx closes a connection idle for 60 seconds by default, WebSockets included |
+| `client_max_body_size` | nginx refuses request bodies over 1 MB by default |
+
+To get the certificate without letting certbot rewrite the vhost, use the `certonly` mode:
+
+```sh
+sudo certbot certonly --nginx -d shop.example.com -d www.shop.example.com
+```
+
+`sudo certbot --nginx` also works if you prefer certbot to add the TLS lines to the vhost itself; don't combine it with a vhost [versioned in your repository](#versioning-the-vhost-in-your-repository), which would overwrite those lines.
+
+Apache, HAProxy, Traefik or a load balancer are configured the same way: forward every routed domain to `127.0.0.1:8080`, keep the `Host` header, and set `X-Forwarded-For` and `X-Forwarded-Proto`.
+
+## Checking it
+
+On the server (with `curl` installed there), ask the switch directly, as nginx does:
+
+```sh
+dockflow ssh production -- curl -sI -H 'Host: shop.example.com' http://127.0.0.1:8080/
+```
+
+A response from your app means the switch serves the route; a 404 means no route declares that host name in the current release. Then check through nginx from your machine:
+
+```sh
+curl -I https://shop.example.com/
+```
+
+A 502 from nginx usually means the switch is not listening where `proxy_pass` points: compare it with the `--switch-listen` you used. `dockflow status production` shows the current release and its containers.
+
+## Versioning the vhost in your repository
+
+The built-in [`nginx` plugin](/guides/plugins/#the-nginx-plugin) writes this vhost from your domains, and checks and reloads nginx when it changed:
+
+```yaml title="dockflow.yml"
+plugins:
+  - use: nginx
+    with:
+      domain: [shop.example.com, www.shop.example.com]
+      tls: true
+```
+
+It takes your own vhost too, as a template: `template: deploy/nginx/shop.conf`. Without the plugin, the same is an [upload](/guides/uploads/) and a `host` [hook](/guides/hooks/):
+
+```yaml title="dockflow.yml"
+version: 1
+app: shop
+uploads:
+  - src: deploy/nginx/shop.conf
+    dest: /etc/nginx/sites-enabled/shop.conf
+    mode: "644"
+hooks:
+  after_deploy:
+    - name: reload nginx
+      host: sudo nginx -t && sudo systemctl reload nginx
+      fatal: true
+environments:
+  production: {}
+```
+
+- The upload replaces `/etc/nginx/sites-enabled/shop.conf` atomically, and only when the file changed.
+- After the deploy, the hook checks the whole nginx configuration and reloads nginx. With `fatal: true`, a configuration that fails `nginx -t` rolls the deploy back, and the rollback restores the previous file. nginx keeps serving its previous configuration meanwhile, since it was never reloaded.
+- The hook runs on the server as the SSH user of the environment, without a terminal, so `sudo` must not ask for a password for these two commands. `server init --nginx` installs nginx and this rule for you. Add a rule with `sudo visudo -f /etc/sudoers.d/dockflow-nginx`, using your SSH user's name and the paths `command -v nginx systemctl` prints:
+
+  ```text
+  dockflow ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx
+  ```
+
+To fill in the domain per environment, render the vhost from a [template](/guides/templates/) before it is uploaded.
+
+<Callout type="warn">
+`after_deploy` hooks run only when a deploy creates a release. A deploy whose plan is empty uploads nothing and reloads nothing.
+</Callout>

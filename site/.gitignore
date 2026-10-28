@@ -1,4 +1,6 @@
 node_modules/
-dist/
-.astro/
-bun.lock
+.next/
+out/
+.source/
+next-env.d.ts
+*.tsbuildinfo

@@ -1,0 +1,417 @@
+---
+title: Deploying from CI
+description: Deploy from GitHub Actions, GitLab CI, Jenkins, Buildkite or Bitbucket Pipelines, with the environment and version taken from the Git tag and secrets from CI variables.
+---
+
+The same `dockflow` binary runs on your laptop and on a CI runner. In CI, Dockflow recognises the provider, reads the tag, branch and commit of the run, and takes its secrets from CI variables. A typical setup builds the images on every branch and deploys when you push a tag.
+
+```yaml
+# .github/workflows/deploy.yml (the deploy job)
+- run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.4
+- run: dockflow deploy --wait-lock 10m
+  env:
+    DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+```
+
+Pushing the tag `1.2.0` deploys version `1.2.0` to production. Pushing `1.2.0-staging` deploys version `1.2.0` to staging. The complete workflows for each provider are [at the end of this page](#complete-workflows).
+
+## What Dockflow reads from the CI provider
+
+Dockflow checks the environment variables of the run, in this order, and uses the first provider that matches:
+
+| Provider | Detected by | Tag | Branch | Commit | Actor |
+|---|---|---|---|---|---|
+| GitHub Actions | `GITHUB_ACTIONS=true` | `GITHUB_REF_NAME` when `GITHUB_REF_TYPE` is `tag` | `GITHUB_HEAD_REF`, else `GITHUB_REF_NAME` | `GITHUB_SHA` | `GITHUB_ACTOR` |
+| GitLab CI | `GITLAB_CI=true` | `CI_COMMIT_TAG` | `CI_COMMIT_BRANCH` | `CI_COMMIT_SHA` | `GITLAB_USER_LOGIN` |
+| Buildkite | `BUILDKITE=true` | `BUILDKITE_TAG` | `BUILDKITE_BRANCH`, unless it equals the tag | `BUILDKITE_COMMIT` | `BUILDKITE_BUILD_CREATOR`, else `BUILDKITE_BUILD_AUTHOR` |
+| Bitbucket Pipelines | `BITBUCKET_BUILD_NUMBER` is set | `BITBUCKET_TAG` | `BITBUCKET_BRANCH` | `BITBUCKET_COMMIT` | `BITBUCKET_STEP_TRIGGERER_UUID` |
+| Jenkins | `JENKINS_URL` is set | `TAG_NAME` | `BRANCH_NAME`, else `GIT_BRANCH` | `GIT_COMMIT` | `BUILD_USER_ID` |
+| Any other | `CI` is set | – | – | – | – |
+
+What each value is used for:
+
+- **The tag** selects the environment and gives the release its version label, as described [below](#tags-select-the-environment-and-the-version).
+- **The branch and the commit** fill `DOCKFLOW_GIT_BRANCH` and `DOCKFLOW_GIT_SHA` when the checkout cannot tell: CI checkouts are often detached or shallow. When `git` answers, its values win. Without a tag, the version label is the short commit.
+- **The actor and the provider** are recorded as the release's author, shown by `dockflow releases`, and as the holder of the environment's lock while the run lasts. On Jenkins, `BUILD_USER_ID` is set by the Build User Vars plugin; without it, the author is the runner's system user.
+
+Without a terminal, Dockflow never prompts, so `deploy` applies its plan without `--yes`.
+
+## Tags select the environment and the version
+
+When you run `dockflow deploy` without an environment in a run started by a tag, Dockflow splits the tag at its last hyphen:
+
+| Tag | Version label | Environment |
+|---|---|---|
+| `1.2.0` | `1.2.0` | The environment whose tag suffix is empty: `production` by default |
+| `v1.2.0` | `v1.2.0` | The same |
+| `1.2.0-staging` | `1.2.0` | The environment whose tag suffix is `staging` |
+| `1.2.0-rc` | `1.2.0` | The environment whose tag suffix is `rc` |
+
+A suffix that names no environment is an error (exit code 2): Dockflow never guesses. The default suffix of an environment is empty for `production` and the environment's own name for every other one. Set `ci.tag_suffix` to change it:
+
+```yaml title="dockflow.yml"
+version: 1
+app: shop
+environments:
+  production: {}        # tags 1.2.0
+  staging: {}           # tags 1.2.0-staging
+  preview:
+    ci:
+      tag_suffix: rc    # tags 1.2.0-rc
+```
+
+A pre-release tag with a hyphen, such as `1.2.0-rc.1`, is read the same way: its suffix is `rc.1`. Name the environment on the command line when your tags don't follow this pattern.
+
+An environment named on the command line always wins over the tag: `dockflow deploy staging` in a tag build deploys to staging, and the version label still comes from the tag. `--version <label>` replaces the version label.
+
+
+## Secrets as CI variables
+
+Every secret of an environment is a CI variable prefixed with the environment's name in upper case. For `production`:
+
+| CI variable | What it holds |
+|---|---|
+| `PRODUCTION_CONNECTION` | The connection string of the server: its address, its host key and the deploy key. `dockflow server init <admin>@<host>` prints it when it prepares the server; `dockflow server connection <user@host[:port]> -k <key>` prints one for an existing user and key |
+| `PRODUCTION_DB_PASSWORD` | The value of `${DB_PASSWORD}` in your Compose files and `dockflow.yml`, for production |
+
+Dockflow reads, among the process variables, only those that start with the environment's prefix. A CI variable named `DB_PASSWORD` alone is ignored, so a variable meant for staging never reaches production by accident.
+
+You can also pass a whole set of secrets as one JSON object in `DOCKFLOW_SECRETS`. On GitHub Actions, this gives Dockflow every secret of the repository:
+
+```yaml
+env:
+  DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+```
+
+GitHub may hold the first run of a workflow that hands every secret to a job this way until someone approves it, in the run's page of the Actions tab. To avoid that, name each secret instead: `PRODUCTION_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}`.
+
+Inside `DOCKFLOW_SECRETS`, the key `X` is looked up as `PRODUCTION_X` first, then as `X`, so an unprefixed key there is a value shared by every environment. Process variables and `DOCKFLOW_SECRETS` come before `.env.dockflow`, which you keep out of Git for local deploys.
+
+Secret values are masked as `***` in everything Dockflow prints or stores: events, build and hook output, errors.
+
+<Callout type="idea">
+`dockflow build` and `dockflow deploy` interpolate the whole Compose file, so a build job needs every variable the Compose files use, as the deploy job does. On GitHub, secrets are not given to workflows started from forks.
+</Callout>
+
+## Overlapping runs: `--wait-lock`
+
+Each environment has one lock. A second run that starts while another holds it fails at once with exit code 5. In CI, two runs often overlap (a push to `main` and a tag pushed right after), so let the second one wait:
+
+```sh
+dockflow deploy --wait-lock 10m
+```
+
+The run waits up to that long for the other one to finish, and emits a `lock.waiting` event that names the holder. A lock taken by hand with `dockflow lock acquire` (a maintenance window) is never waited for: the deploy fails with exit code 5 unless you pass `--force`.
+
+## Building on every branch
+
+`dockflow build` builds the images of the services with `build:`, without deploying. It needs no server: it builds for the runner's platform (`--platform` changes it) and checks that every image builds.
+
+```sh
+dockflow build production
+```
+
+In CI, `dockflow build` takes the environment from the tag, as `deploy` does; on a branch, name it when `dockflow.yml` has several. `--only web,worker` builds some services only. With `--push`, it connects to the server and sends the images where a deploy would, for the server's platform. See [Building images](/guides/building-images/).
+
+A runner that builds needs Docker with buildx (or Podman, with `build.engine: podman`). A runner that only deploys services with public images needs no Docker at all: Dockflow reaches the server's Docker over SSH.
+
+## Build in one job, deploy in another
+
+With `--push`, `dockflow build` sends the images where a deploy would. A later job deploys them with `--skip-build`, without building again; both jobs must check out the same commit, which gives the version label and so the image tag.
+
+```sh
+dockflow build production --push        # job 1
+dockflow deploy production --skip-build # job 2, same commit
+```
+
+To have a person review the plan before it is applied, save it in one job and apply it in another, after an approval step:
+
+```sh
+dockflow plan production --out plan.json   # job 1: keep plan.json as an artifact
+dockflow deploy --plan plan.json           # job 2, once approved
+```
+
+The second job builds nothing and applies exactly the reviewed plan. If anything changed in between, on the server or in the project, it fails with `plan.stale` (exit code 6) and changes nothing.
+
+## Complete workflows
+
+Each workflow builds on branches and deploys on tags, with the CLI pinned to a version. The GitHub and GitLab ones also [back up](/guides/backups/#scheduling) on a schedule, as `dockflow init --ci` writes them. Replace `production` with your environment, and add the secrets your Compose files use (`PRODUCTION_DB_PASSWORD` here) as CI variables.
+
+<Tabs items={["GitHub Actions", "GitLab CI", "Jenkins", "Buildkite", "Bitbucket"]} groupId="ci" persist>
+<Tab value="GitHub Actions">
+
+Add `PRODUCTION_CONNECTION` and your other secrets under **Settings → Secrets and variables → Actions**.
+
+```yaml title=".github/workflows/deploy.yml"
+name: Deploy
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["*"]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  build:
+    if: github.event_name == 'push' && github.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dockflow
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.4
+      - name: Build
+        run: dockflow build production
+        env:
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+
+  deploy:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dockflow
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.4
+      - name: Deploy
+        run: dockflow deploy --wait-lock 10m
+        env:
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+
+  # the services that declare x-dockflow.backup, then the server's state
+  backup:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dockflow
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.4
+      - name: Back up
+        run: dockflow backup run production --wait-lock 10m && dockflow backup run production --server
+        env:
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+```
+
+`schedule` runs the `backup` job every night at 03:17 UTC, and `workflow_dispatch` lets you run it from the Actions tab.
+
+The installer adds its directory to `GITHUB_PATH` when it is not already on the `PATH`, so later steps find `dockflow`.
+
+</Tab>
+<Tab value="GitLab CI">
+
+Add `PRODUCTION_CONNECTION` and your other secrets under **Settings → CI/CD → Variables**, masked. A protected variable is only given to protected branches and tags: protect your release tags if you protect the variables.
+
+```yaml title=".gitlab-ci.yml"
+default:
+  image: docker:27
+  services:
+    - docker:27-dind
+  before_script:
+    - apk add --no-cache curl
+    - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.4
+
+variables:
+  DOCKER_TLS_CERTDIR: "/certs"
+
+stages: [build, deploy, backup]
+
+build:
+  stage: build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH
+  script:
+    - dockflow build production
+
+deploy:
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - dockflow deploy --wait-lock 10m
+
+# the services that declare x-dockflow.backup, then the server's state
+backup:
+  stage: backup
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - dockflow backup run production --wait-lock 10m
+    - dockflow backup run production --server
+```
+
+The `backup` job runs only in scheduled pipelines: add one under **Build → Pipeline schedules**, every night for instance.
+
+The `docker:27` image gives the job a Docker CLI with buildx, and the `docker:27-dind` service a daemon to build with. The runner must allow privileged containers for Docker-in-Docker.
+
+</Tab>
+<Tab value="Jenkins">
+
+Use a multibranch pipeline with tag discovery enabled, so tag builds get `TAG_NAME`. Store each secret as a **Secret text** credential.
+
+```groovy title="Jenkinsfile"
+pipeline {
+  agent any
+  stages {
+    stage('Install dockflow') {
+      steps {
+        sh 'curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.4 --dir "$HOME/.local/bin"'
+      }
+    }
+    stage('Build') {
+      when { not { buildingTag() } }
+      steps {
+        withCredentials([string(credentialsId: 'production-db-password', variable: 'PRODUCTION_DB_PASSWORD')]) {
+          sh '"$HOME/.local/bin/dockflow" build production'
+        }
+      }
+    }
+    stage('Deploy') {
+      when { buildingTag() }
+      steps {
+        withCredentials([
+          string(credentialsId: 'production-connection', variable: 'PRODUCTION_CONNECTION'),
+          string(credentialsId: 'production-db-password', variable: 'PRODUCTION_DB_PASSWORD')
+        ]) {
+          sh '"$HOME/.local/bin/dockflow" deploy --wait-lock 10m'
+        }
+      }
+    }
+  }
+}
+```
+
+The CLI is installed outside the workspace: a file left in the checkout would make the commit look modified, and the version label of a branch build would end in `-dirty`.
+
+</Tab>
+<Tab value="Buildkite">
+
+Store each secret with [Buildkite secrets](https://buildkite.com/docs/pipelines/security/secrets/buildkite-secrets) and read it in the step, or export it from an agent `environment` hook.
+
+```yaml title=".buildkite/pipeline.yml"
+steps:
+  - label: "Build"
+    if: build.tag == null
+    command: |
+      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.4 --dir ~/.local/bin
+      export PRODUCTION_DB_PASSWORD="$$(buildkite-agent secret get PRODUCTION_DB_PASSWORD)"
+      ~/.local/bin/dockflow build production
+
+  - label: "Deploy"
+    if: build.tag != null
+    command: |
+      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.4 --dir ~/.local/bin
+      export PRODUCTION_CONNECTION="$$(buildkite-agent secret get PRODUCTION_CONNECTION)"
+      export PRODUCTION_DB_PASSWORD="$$(buildkite-agent secret get PRODUCTION_DB_PASSWORD)"
+      ~/.local/bin/dockflow deploy --wait-lock 10m
+```
+
+`$$` keeps Buildkite from interpolating the command when it uploads the pipeline: the shell of the step runs it.
+
+</Tab>
+<Tab value="Bitbucket">
+
+Add `PRODUCTION_CONNECTION` and your other secrets as secured variables: repository variables, or deployment variables of the `production` deployment.
+
+```yaml title="bitbucket-pipelines.yml"
+image: atlassian/default-image:4
+
+pipelines:
+  branches:
+    "**":
+      - step:
+          name: Build
+          services: [docker]
+          script:
+            - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.4
+            - dockflow build production
+  tags:
+    "*":
+      - step:
+          name: Deploy
+          deployment: production
+          services: [docker]
+          script:
+            - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.4
+            - dockflow deploy --wait-lock 10m
+```
+
+Bitbucket's Docker service does not run privileged containers. When the default builder cannot write the images Dockflow needs, Dockflow creates a `docker-container` builder, which may not start there. In that case, build on the server instead, with `build.builder: remote` (see [Building images](/guides/building-images/#building-on-the-server)).
+
+</Tab>
+</Tabs>
+
+## The GitHub Action
+
+On GitHub, the `Shawiizz/dockflow` action installs the CLI and runs it. On a pull request, it posts the plan of the change as a comment, so a reviewer sees what merging would change on the server; the comment is updated on each push. Elsewhere, it deploys.
+
+```yaml title=".github/workflows/deploy.yml"
+name: Deploy
+
+on:
+  pull_request:
+  push:
+    tags: ["*"]
+
+permissions:
+  contents: read
+  pull-requests: write # the plan's comment
+
+jobs:
+  dockflow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Shawiizz/dockflow@v1.0.0-alpha.4
+        with:
+          env: production # the environment a pull request's plan is for
+          command: ${{ github.event_name == 'push' && 'deploy --wait-lock 10m' || '' }}
+        env:
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+```
+
+The comment looks like this:
+
+> ### Dockflow plan: shop to production
+>
+> Version `4f2c1a9`, server `main`.
+>
+> | | Change | Target | Strategy | Why |
+> |---|---|---|---|---|
+> | ~ | service.update | `web` | start-first | image changed |
+> |  | upload.apply | `/etc/nginx/sites-enabled/shop.conf` |  | changed |
+
+| Input | Default | Description |
+|---|---|---|
+| `command` | `plan` on a pull request, `deploy` otherwise | The command and its arguments, as `deploy staging` or `backup run`. |
+| `env` | none | The environment a pull request's plan is for. Needed when `dockflow.yml` has several. |
+| `comment` | `true` | On a pull request, post the plan as a comment. It is also written to the job's summary. |
+| `build` | `false` | On a pull request, build the images, so the plan says exactly which services change. Off, the pull request's code is not built, and built services show as changed. |
+| `version` | the action's ref when it is a version, else the newest release | The Dockflow version to install; `none` uses the `dockflow` on the `PATH`. |
+| `working-directory` | `.` | The project's directory. |
+| `github-token` | `github.token` | The token that posts the comment. It needs `pull-requests: write`. |
+
+The plan needs the connection secret, to read the server's state. GitHub gives no secrets to pull requests from forks: their plan fails, and the comment says so. A failed plan fails the job.
+
+<Callout type="warn" title="The plan gives pull requests the production connection">
+The connection secret is the deploy user's key: it can deploy, not only read. A pull request's run from a branch of the repository gets it, and that branch can change the workflow. With the plan on pull requests, anyone who can push a branch can reach production.
+
+Turn it on where everyone who pushes branches may deploy anyway, as in a team that reviews changes to its Compose files and `dockflow.yml`. Elsewhere, leave `pull_request` out of the workflow's triggers, or keep the secrets in a [GitHub environment](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-deployments/managing-environments-for-deployment) whose required reviewers approve each run.
+</Callout>
+
+The plan is computed again at deploy time: after a merge, the commit, and maybe the server, changed since the review, so the action deploys the merged code rather than the reviewed plan. To apply exactly a reviewed plan, use `dockflow plan --out` and `dockflow deploy --plan` in one workflow.
+
+## Deploying from a branch
+
+Tags are not required. To deploy every push to `main` to staging, name the environment:
+
+```sh
+dockflow deploy staging --wait-lock 10m
+```
+
+The version label is then the short commit, such as `3f9c2ab`.
+
+## Exit codes
+
+Every failure has its own exit code, so a CI step can tell a refused configuration (3) from a held lock (5), a failed build (7) or a deploy that was rolled back (8). See [Exit codes](/reference/exit-codes/).

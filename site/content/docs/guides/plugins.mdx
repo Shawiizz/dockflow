@@ -1,0 +1,137 @@
+---
+title: Plugins
+description: Reuse bundles of uploads, templates and hooks, such as the built-in nginx vhost and systemd unit, or your own.
+---
+
+A plugin is a bundle of [uploads](/guides/uploads/), [templates](/guides/templates/) and [hooks](/guides/hooks/), filled in with the inputs your project gives it. Dockflow ships two, `nginx` and `systemd`, and a project can write its own. A plugin adds no mechanism of its own: what it uploads is replaced atomically and put back by a rollback, and its hooks run, fail and roll back like yours.
+
+```yaml title="dockflow.yml"
+plugins:
+  - use: nginx                      # built-in
+    with:
+      domain: [shop.example.com, www.shop.example.com]
+  - use: ./deploy/plugins/rclone    # the project's own
+    id: archives
+    with: { remote: "ovhs3:archives" }
+```
+
+`dockflow plugins list` shows the built-in plugins and the project's, with their inputs. `dockflow config show` lists the uploads and hooks they add, and the plan names the plugin of each upload.
+
+## The nginx plugin
+
+The [external edge](/guides/behind-nginx/) puts the switch behind the host's nginx. The `nginx` plugin writes the vhost that sends your domains to the switch, and keeps it in your repository:
+
+```yaml title="dockflow.yml"
+plugins:
+  - use: nginx
+    with:
+      domain: [shop.example.com, www.shop.example.com]
+      tls: true                     # certbot's certificate of the first domain
+```
+
+<Steps>
+
+1. It renders a vhost for the domains, proxying to the switch at `127.0.0.1:8080`, with the `Host`, `X-Forwarded-For` and `X-Forwarded-Proto` headers and WebSockets.
+2. It uploads it to `/etc/nginx/sites-enabled/<app>-<env>.conf`.
+3. After the deploy, when the vhost changed, it runs `sudo nginx -t`, then reloads nginx with `sudo systemctl reload nginx`, or `sudo nginx -s reload` where the first is not allowed. A vhost that `nginx -t` refuses rolls the deploy back, which puts the previous vhost back; nginx, never reloaded, kept serving the previous configuration. A deploy that leaves the vhost unchanged does not touch nginx.
+
+</Steps>
+
+| Input | Default | Description |
+|---|---|---|
+| `domain` | required without `template` | The domains the vhost serves: a list, or one domain. A `template` names its own, and needs none. |
+| `upstream` | `127.0.0.1:8080` | Where nginx sends requests: the switch's `--switch-listen`. |
+| `port` | none | With the `none` edge, a port published on the server's loopback, instead of `upstream`. |
+| `tls` | `false` | Listen on 443 with the certificate in `certificate_dir`, and redirect 80 to 443. Without it, the vhost listens on 80 only, as behind Cloudflare's flexible mode. |
+| `certificate_dir` | `/etc/letsencrypt/live/<first domain>` | The directory of `fullchain.pem` and `privkey.pem`. |
+| `cloudflare` | `false` | Behind Cloudflare: the client's address from `CF-Connecting-IP`, trusted from Cloudflare's ranges only, and the scheme from Cloudflare's `X-Forwarded-Proto`. |
+| `ipv6` | `true` | Listen on IPv6 too. Turn it off on a server whose kernel has no IPv6 (booted with `ipv6.disable=1`), where nginx refuses `listen [::]`. |
+| `max_body_size` | `25m` | nginx's `client_max_body_size`. |
+| `dir` | `/etc/nginx/sites-enabled` | The directory nginx includes vhosts from; `/etc/nginx/conf.d` on Red Hat systems. |
+| `name` | `<app>-<env>.conf`, with `-<id>` for an id other than `nginx` | The vhost's file name. |
+| `template` | none | The project's own vhost, a Jinja template that sees these inputs, instead of the plugin's. |
+
+The hook runs as the SSH user of the environment, without a terminal, so `sudo` must not ask a password for `nginx -t` and one of the two reloads. `server init --nginx` installs nginx and this rule. On a server prepared otherwise, add it with `sudo visudo -f /etc/sudoers.d/dockflow-nginx`, with your SSH user and the paths `command -v nginx systemctl` prints:
+
+```text
+dockflow ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx
+```
+
+`dockflow ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/sbin/nginx -s reload` works too.
+
+To get the certificate first, without letting certbot edit the vhost: `sudo certbot certonly --nginx -d shop.example.com -d www.shop.example.com`.
+
+<Callout type="info">
+Cloudflare's ranges are those Dockflow knows when it is built, written into the vhost's `server` block, so several apps behind Cloudflare can share one nginx. A deploy with a newer Dockflow writes the newer list.
+</Callout>
+
+## The systemd plugin
+
+Installs a unit of your repository, a Jinja template, and enables it:
+
+```yaml title="dockflow.yml"
+plugins:
+  - use: systemd
+    with:
+      unit: deploy/rclone-archives.service
+```
+
+The unit goes to `/etc/systemd/system/rclone-archives.service`. When it changed, the plugin runs `sudo systemctl daemon-reload`, `enable` and `restart` of the unit. A failure is a warning: the release stays. Inputs: `unit` (required, a file of the project) and `name` (default the file's name). The SSH user needs `sudo` without a password for `systemctl`.
+
+## Writing a plugin
+
+A plugin is a directory of your project with a `plugin.yml`. Every other file of the directory belongs to the plugin, and its paths are relative to it.
+
+```yaml title="deploy/plugins/rclone/plugin.yml"
+description: An rclone mount of a remote, as a systemd unit
+inputs:
+  - name: remote
+    required: true
+    description: the rclone remote, like ovhs3:archives
+  - name: mount
+    default: /mnt/archives
+  - name: read_only
+    type: boolean
+templates:
+  - rclone.service                   # rendered in place
+uploads:
+  - src: rclone.service
+    dest: "/etc/systemd/system/rclone-{{ id }}.service"
+    mode: "644"
+hooks:
+  after_deploy:
+    - name: restart the mount
+      host: sudo systemctl daemon-reload && sudo systemctl restart rclone-{{ id }}
+      if_changed: "/etc/systemd/system/rclone-{{ id }}.service"
+```
+
+```ini title="deploy/plugins/rclone/rclone.service"
+[Service]
+ExecStart=/usr/bin/rclone mount {{ remote }} {{ mount }}{% if read_only %} --read-only{% endif %}
+```
+
+| Key | Description |
+|---|---|
+| `name` | The plugin's name, the default `id` of its uses. Default: the directory's name. |
+| `description` | Shown by `plugins list`. |
+| `inputs` | Each with `name`, `description`, `type`, `required` and `default`. `required_unless: <input>` makes it required when that other input is not given. |
+| `templates` | Files of the plugin rendered with Jinja: a path, rendered in place, or `src` and `dest`. |
+| `uploads` | As in `dockflow.yml`, with `src` a path of the plugin. |
+| `hooks` | As in `dockflow.yml`, without `script`. An `after_deploy` hook can take `if_changed`: the destination of one of the plugin's uploads, so it runs only when the deploy changed it. |
+
+Input types:
+
+| Type | Value |
+|---|---|
+| `string` (default) | A string; a number or a boolean is turned into its text. Empty when not given. |
+| `boolean` | `true` or `false`, also as a string from a variable. `false` when not given. |
+| `list` | A list of strings; a single value is a list of one. Empty when not given. |
+| `file` | A file of the project, copied into the plugin as `inputs/<input>/<file name>`: the input's value is that path, for `templates` or `uploads` to use. |
+
+What the plugin sees:
+
+- the strings of `templates`, `uploads` and `hooks` in `plugin.yml` are Jinja templates too, rendered with the inputs, `id`, the [built-in variables](/reference/dockflow-yml/#variables) and the environment's `vars`;
+- template files also see the secrets, as the project's own templates do;
+- an undefined variable is an error, so `{% if x %}` needs `x` declared as an input.
+
+The plugins' uploads and hooks come before the project's own, in the order of `plugins:`; each hook is named `<id>: <name>`. Two uses of one plugin need different `id`s. A plugin removed from `plugins:` leaves its uploaded files on the server, as an upload removed from `uploads:` does.
