@@ -2,28 +2,28 @@
 class Dockflow < Formula
   desc "Deploy Docker Compose apps to your own servers"
   homepage "https://dockflow.shawiizz.dev"
-  version "1.0.0-alpha.3"
+  version "1.0.0-alpha.4"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/Shawiizz/dockflow/releases/download/v1.0.0-alpha.3/dockflow-darwin-arm64"
-      sha256 "9d57e9478ea446a73400ba0f0e94b8b8f5ccc63c98a50aea7c33face39b27c3a"
+      url "https://github.com/Shawiizz/dockflow/releases/download/v1.0.0-alpha.4/dockflow-darwin-arm64"
+      sha256 "382ddf53be2689927cdf3ead87a032a9745ef45f1ffb56a638550f13ee528597"
     end
     on_intel do
-      url "https://github.com/Shawiizz/dockflow/releases/download/v1.0.0-alpha.3/dockflow-darwin-amd64"
-      sha256 "d558a2f44ba8e9e4865ee175b85b288cca7e18c4f110d7f17da132d0dabeffa8"
+      url "https://github.com/Shawiizz/dockflow/releases/download/v1.0.0-alpha.4/dockflow-darwin-amd64"
+      sha256 "454fe013afb8d63033950276bb4b838be09b460134a25bc17e3ed163e2665892"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/Shawiizz/dockflow/releases/download/v1.0.0-alpha.3/dockflow-linux-arm64"
-      sha256 "fdb5db09d19bf63a4d9761a2d865a60c8c990c4088d8f877455e05b51f33a88c"
+      url "https://github.com/Shawiizz/dockflow/releases/download/v1.0.0-alpha.4/dockflow-linux-arm64"
+      sha256 "2aa2aac94d8920a7f6d40764e813d6d9d4c2596f9edf9bceac1fa2f9d9410aa6"
     end
     on_intel do
-      url "https://github.com/Shawiizz/dockflow/releases/download/v1.0.0-alpha.3/dockflow-linux-amd64"
-      sha256 "179a243ec46e6631ee2fc00522a6869fcb35170050aa087c104c74096333c768"
+      url "https://github.com/Shawiizz/dockflow/releases/download/v1.0.0-alpha.4/dockflow-linux-amd64"
+      sha256 "ddde14204be7a40fb0ccc6cbc1faa70d2f34a5b402fea35205ca1b20d22a483e"
     end
   end
 
