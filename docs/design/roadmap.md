@@ -78,7 +78,7 @@ Exit criteria:
 
 ## M4: Data — MohistMC
 
-**Status: in progress.** The items below are done and covered by e2e journeys (`test/e2e/backup*_test.go`) and unit tests. The first exit criterion is an e2e test, against `rclone serve s3` as the S3-compatible storage (`TestOffsiteBackup`). Left: a real Minecraft world and MohistMC's projects.
+**Status: in progress.** The items below are done and covered by e2e journeys (`test/e2e/backup*_test.go`) and unit tests. The first exit criterion is an e2e test, against `rclone serve s3` as the S3-compatible storage (`TestOffsiteBackup`). The second is met: ValientRP's 14 GB world is backed up by v4.0.0-alpha.8 from a scheduled GitHub Actions workflow, with `save-off`/`save-all flush` before the copy and `save-on` after, while the server runs (2026-10-28). Left: MohistMC's projects.
 
 - **Stateful services:** their rules: one container, `stop-first`, updated before the other services, the only ones backed up (done).
 - **Backups with restic:**
