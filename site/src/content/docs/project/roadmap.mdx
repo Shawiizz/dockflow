@@ -9,7 +9,7 @@ import { Aside, Badge } from '@astrojs/starlight/components';
 
 Dockflow is built in milestones. Each one ends with a tool you can use, and is done only when real projects run on it in production and its exit criteria pass as automated tests. Milestones have no dates.
 
-The current release is **v4.0.0-alpha.9**, which delivers milestones M1 to M4.
+The current release is **v4.0.0-alpha.10**, which delivers milestones M1 to M5.
 
 <Aside type="caution">
 Until 4.0.0, releases are alphas. The configuration (`version: 1`), the server state (`schema: 1`) and the event stream (`v: 1`) are designed to stay, but they are frozen only at 4.0.0.
@@ -75,7 +75,7 @@ Exit criteria include a fresh cloud server going from blank to serving an app ov
 - **Backups with restic** <Badge text="Done" variant="success" />: Postgres, MySQL, MongoDB and Redis dumps, volumes and bind mounts, and custom dump commands; a local repository by default and off-site repositories (S3-compatible and others), application-aware quiesce (a database dump, a game server's save), retention and `check`, and the backup of `/var/lib/dockflow` itself.
 - **Commands** <Badge text="Done" variant="success" />: `backup run`, `backup list`, `backup restore` (including from another environment, to restore production data into staging) and `backup prune`, plus scheduled backups in the generated CI workflows.
 
-ValientRP's Minecraft world (14 GB) is backed up every 6 hours by v4.0.0-alpha.9 while the server runs. MohistMC's website, API and 2.7 GB Maven repository run with v4.0.0-alpha.9; a deploy of the Maven repository sends only the files that changed.
+ValientRP's Minecraft world (14 GB) is backed up every 6 hours by Dockflow while the server runs, since v4.0.0-alpha.8. MohistMC's website, API and 2.7 GB Maven repository run with Dockflow since v4.0.0-alpha.8; a deploy of the Maven repository sends only the files that changed.
 
 ### M5: Interfaces
 
@@ -106,5 +106,5 @@ Considered, not committed: a local web UI (`dockflow ui`), preview environments 
 To pin the version your CI installs:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.9
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v4.0.0-alpha.10
 ```
