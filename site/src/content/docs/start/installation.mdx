@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh |
 This installs the newest release. To install a given version, pass `--version`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.3
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.4
 ```
 
 </TabItem>
@@ -59,7 +59,7 @@ irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1 | iex
 This installs the newest release in `%LOCALAPPDATA%\Programs\dockflow` and adds that folder to your user `PATH`. To install a given version, or into another folder:
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1))) -Version v1.0.0-alpha.3 -Dir C:\tools
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1))) -Version v1.0.0-alpha.4 -Dir C:\tools
 ```
 
 `install.ps1` checks the binary as `install.sh` does, below. On Windows on ARM, it installs the `amd64` binary, which Windows runs emulated.
@@ -93,7 +93,7 @@ It needs `curl` or `wget`, and `sha256sum` or `shasum`.
 
 | Option | Environment variable | Default | Effect |
 |---|---|---|---|
-| `--version <tag>` (`-Version`) | `DOCKFLOW_VERSION` | The newest release | The release to install, such as `v1.0.0-alpha.3`; the `v` is optional |
+| `--version <tag>` (`-Version`) | `DOCKFLOW_VERSION` | The newest release | The release to install, such as `v1.0.0-alpha.4`; the `v` is optional |
 | `--dir <path>` (`-Dir`) | `DOCKFLOW_INSTALL_DIR` | `/usr/local/bin`, or `~/.local/bin` (`%LOCALAPPDATA%\Programs\dockflow` on Windows) | Where to install `dockflow` |
 | – | `DOCKFLOW_RELEASES_URL` | `https://github.com/Shawiizz/dockflow/releases/download` | Where releases are downloaded from: a mirror holding `<tag>/<file>` |
 
@@ -114,7 +114,7 @@ dockflow version
 ```
 
 ```text
-dockflow 1.0.0-alpha.3
+dockflow 1.0.0-alpha.4
 ```
 
 With an environment, `dockflow version production` prints the version deployed there instead. `dockflow --help` lists the commands, and `dockflow <command> --help` shows the options of one.
