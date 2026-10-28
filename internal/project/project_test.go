@@ -91,6 +91,18 @@ func TestMissingVariableIsAnError(t *testing.T) {
 	}
 }
 
+// Every missing variable is named, not only the first compose-go reports.
+func TestMissingVariablesAreAllNamed(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "dockflow.yml"), []byte("version: 1\napp: shop\nenvironments:\n  production: {}\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "compose.yml"), []byte("services:\n  web:\n    image: nginx\n    environment:\n      A: ${DB_PASSWORD}\n      B: ${API_KEY}\n  db:\n    image: postgres\n    environment:\n      C: ${DB_PASSWORD}\n"), 0o644)
+	_, err := Load(context.Background(), Options{Dir: dir, Env: "production"})
+	e, ok := errs.As(err)
+	if !ok || e.Message != "Compose: variables API_KEY, DB_PASSWORD are not defined" {
+		t.Fatalf("got %v", err)
+	}
+}
+
 // A command that acts on what the server runs reads dockflow.yml alone: the variables of the
 // Compose files are not needed.
 func TestConfigOnlyNeedsNoComposeVariable(t *testing.T) {

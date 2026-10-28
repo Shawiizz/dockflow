@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -99,14 +100,40 @@ func resolveFiles(dir string, files []string) ([]string, error) {
 }
 
 func composeError(err error) error {
-	var missing *config.MissingVariableError
-	if errors.As(err, &missing) {
-		return errs.Config("Compose: variable %s is not defined", missing.Name).WithCause(err).
-			WithHint("define it under environments.<env>.vars or as a secret, or write ${%s:-default}", missing.Name)
+	if names := missingVariables(err); len(names) == 1 {
+		return errs.Config("Compose: variable %s is not defined", names[0]).WithCause(err).
+			WithHint("define it under environments.<env>.vars or as a secret, or write ${%s:-default}", names[0])
+	} else if len(names) > 1 {
+		return errs.Config("Compose: variables %s are not defined", strings.Join(names, ", ")).WithCause(err).
+			WithHint("define them under environments.<env>.vars or as secrets, or give them a default: ${%s:-default}", names[0])
 	}
 	var required *template.MissingRequiredError
 	if errors.As(err, &required) {
 		return errs.Config("Compose: %s", strings.TrimSpace(required.Error()))
 	}
 	return errs.Config("the Compose files are not valid").WithCause(err)
+}
+
+// missingVariables returns the variables err reports as not defined, sorted: compose-go joins
+// the error of every value it could not interpolate.
+func missingVariables(err error) []string {
+	var names []string
+	var walk func(error)
+	walk = func(err error) {
+		switch e := err.(type) {
+		case *config.MissingVariableError:
+			if !slices.Contains(names, e.Name) {
+				names = append(names, e.Name)
+			}
+		case interface{ Unwrap() []error }:
+			for _, c := range e.Unwrap() {
+				walk(c)
+			}
+		case interface{ Unwrap() error }:
+			walk(e.Unwrap())
+		}
+	}
+	walk(err)
+	sort.Strings(names)
+	return names
 }
