@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
@@ -128,6 +129,11 @@ func readExtension(s types.ServiceConfig) (Extension, error) {
 	if err != nil {
 		return x, errs.Config("service %s: %s cannot be read", s.Name, ExtensionKey).WithCause(err)
 	}
+	// encoding/json matches keys regardless of case: the keys are checked as written first
+	if key := wrongCase(raw, reflect.TypeOf(x)); key != "" {
+		return x, errs.Config("service %s: %s: unknown key %q", s.Name, ExtensionKey, key).
+			WithHint("keys are lowercase, as listed in docs/design/spec/config-v1.md")
+	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&x); err != nil {
@@ -136,6 +142,64 @@ func readExtension(s types.ServiceConfig) (Extension, error) {
 			WithHint("its keys are listed in docs/design/spec/config-v1.md")
 	}
 	return x, nil
+}
+
+// wrongCase returns the first key of v that matches a field of t only regardless of case, such
+// as Stateful for stateful. Values that decode themselves are not looked into.
+func wrongCase(v any, t reflect.Type) string {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if reflect.PointerTo(t).Implements(reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()) {
+		return ""
+	}
+	switch t.Kind() {
+	case reflect.Slice:
+		if list, ok := v.([]any); ok {
+			for _, item := range list {
+				if k := wrongCase(item, t.Elem()); k != "" {
+					return k
+				}
+			}
+		}
+	case reflect.Struct:
+		m, ok := v.(map[string]any)
+		if !ok {
+			return ""
+		}
+		for key, val := range m {
+			f, exact := fieldOf(t, key)
+			if f == nil {
+				continue // unknown keys are refused by the decoder
+			}
+			if !exact {
+				return key
+			}
+			if k := wrongCase(val, f.Type); k != "" {
+				return k
+			}
+		}
+	}
+	return ""
+}
+
+// fieldOf returns the field of t whose JSON name is key, and whether the case matches too.
+func fieldOf(t reflect.Type, key string) (*reflect.StructField, bool) {
+	var folded *reflect.StructField
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if name == "" {
+			name = f.Name
+		}
+		if name == key {
+			return &f, true
+		}
+		if strings.EqualFold(name, key) {
+			folded = &f
+		}
+	}
+	return folded, false
 }
 
 // BackupExt is x-dockflow.backup (ADR-0015).

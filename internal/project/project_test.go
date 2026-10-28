@@ -219,6 +219,31 @@ func TestComposeKeys(t *testing.T) {
 	}{l.App, l.Warnings})
 }
 
+// x-dockflow keys are lowercase: Stateful is not stateful, as encoding/json alone would allow.
+func TestExtensionKeysAreCaseSensitive(t *testing.T) {
+	for name, service := range map[string]string{
+		"top":    "web: {image: nginx, x-dockflow: {Stateful: false}}",
+		"nested": "web: {image: nginx, x-dockflow: {health: {Grace: 2s}}}",
+		"list":   "web: {image: nginx, x-dockflow: {routes: [{Domains: [a.test]}]}}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			os.WriteFile(filepath.Join(dir, "dockflow.yml"), []byte("version: 1\napp: keys\nenvironments:\n  production: {}\n"), 0o644)
+			os.WriteFile(filepath.Join(dir, "compose.yml"), []byte("services:\n  "+service+"\n"), 0o644)
+			_, err := Load(context.Background(), Options{Dir: dir, Env: "production"})
+			if err == nil || !strings.Contains(err.Error(), "unknown key") {
+				t.Fatalf("want an unknown key, got %v", err)
+			}
+		})
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "dockflow.yml"), []byte("version: 1\napp: keys\nenvironments:\n  production: {}\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "compose.yml"), []byte("services:\n  web: {image: nginx, x-dockflow: {stateful: false, health: {grace: 2s}}}\n"), 0o644)
+	if _, err := Load(context.Background(), Options{Dir: dir, Env: "production"}); err != nil {
+		t.Fatalf("lowercase keys: %v", err)
+	}
+}
+
 func TestComposeKeysRefused(t *testing.T) {
 	for name, service := range map[string]string{
 		"network_mode service": "web: {image: nginx, network_mode: \"service:db\"}\n  db: {image: postgres}",

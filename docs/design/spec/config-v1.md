@@ -221,6 +221,8 @@ hooks:                              # as in dockflow.yml, without script
 
 ## `x-dockflow` on a service
 
+Its keys are matched exactly, lowercase as below: an unknown key, or one in another case (`Stateful`), is an error.
+
 ```yaml
 services:
   web:
