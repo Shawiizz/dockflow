@@ -23,7 +23,7 @@ v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no featu
 | `build [env] [--only] [--push] [--skip-hooks]` | `build` with the same options | same | M2 |
 | `init` (scaffolding, CI workflows for GitHub and GitLab) | `init`, same, plus scheduled backups in the workflow | same | M3, backups M4 |
 | `config`, `config show/validate/check/path`, `validate [env]` | `config show [--json]`, `validate [<env>]` | same | M1 |
-| `ui` | `ui` (local web UI, token-protected) | better ([ADR-0016](adr/0016-interfaces.md)) | M5 |
+| `ui` | `ui` (local web UI, token-protected) ([ADR-0016](adr/0016-interfaces.md)) | deferred by decision of the project owner, 2026-10-28 | after v1.0 |
 | `completion`, `help` | `completion`, `help` | same | M1 |
 | Environment prefixes (`pr` for `production`) | Same on the command line; never for CI tags | same | M1 |
 | `logs` (`-f`, `-n`, `--since`, `--timestamps`, `--all-tasks`, `--pick`, `--no-prefix`) | `logs` with the same options | same | M2 |

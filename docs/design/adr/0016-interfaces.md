@@ -1,7 +1,7 @@
 # ADR-0016: One core, a JSON event stream; CLI, local web UI and MCP on top
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (the local web UI is kept and the TUI dropped, so 1.x loses nothing)
+- Date: 2026-10-25, revised 2026-10-26 (the local web UI is kept and the TUI dropped, so 1.x loses nothing), revised 2026-10-28 (the local web UI is deferred after v1.0 by decision of the project owner: none of the projects that shaped v2 needs it; its design below stands for when it comes)
 
 ## Context
 

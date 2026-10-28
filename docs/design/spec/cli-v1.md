@@ -98,7 +98,7 @@ Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`
 
 | Command | What it does |
 |---|---|
-| `dockflow ui [-p <port>] [--no-open]` | The local web UI ([ADR-0016](../adr/0016-interfaces.md)) |
+| `dockflow ui [-p <port>] [--no-open]` | The local web UI ([ADR-0016](../adr/0016-interfaces.md)), deferred after v1.0 |
 | `dockflow mcp [--allow-apply]` | MCP server over stdio |
 | `dockflow completion <shell>` | Shell completion script |
 | `dockflow help [<command>]` | Help, also as `-h` on every command |

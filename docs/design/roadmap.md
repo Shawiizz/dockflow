@@ -96,10 +96,10 @@ Exit criteria:
 
 ## M5: Interfaces
 
-- `dockflow ui`, the local web UI, on the same core ([ADR-0016](adr/0016-interfaces.md)), with its frontend stack chosen here.
 - `dockflow mcp`, with gated write tools.
 - The GitHub Action: plan comment on pull requests, apply of the reviewed plan.
-- Preview environments per pull request: a project and a subdomain per PR, removed when it closes.
+
+The local web UI and preview environments per pull request are deferred after v1.0 by decision of the project owner (2026-10-28): none of the eight projects that shaped v2 needs them, and the web UI alone is a frontend stack to build and maintain.
 
 ## v1.0 (released as 4.0.0)
 
@@ -113,6 +113,8 @@ Until then, milestones ship as pre-releases `v4.0.0-alpha.N` ([ADR-0020](adr/002
 
 ## After v1.0 (not committed)
 
+- `dockflow ui`, the local web UI, on the same core ([ADR-0016](adr/0016-interfaces.md)), with its frontend stack chosen then.
+- Preview environments per pull request: a project and a subdomain per PR, removed when it closes.
 - Several independent servers per environment ([ADR-0023](adr/0023-several-servers-later.md)), with per-server values.
 - Podman as the server's engine, rootless.
 - DNS-01 through Cloudflare, wildcard certificates.

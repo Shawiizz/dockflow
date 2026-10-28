@@ -39,7 +39,7 @@ Dockflow keeps the Compose file as the source of truth. On the server, an app is
 3. **Plan, then apply.** Every change to a server is computed as a plan the user can read, save and review, then applied exactly.
 4. **Finish what was started.** A deploy runs on the server itself. Losing the CLI, the network or the CI runner never leaves an app half-deployed: the run completes or rolls back on its own.
 5. **Delegate.** Docker runs containers. buildx builds. Caddy terminates TLS and switches traffic. gonja renders templates. restic stores backups. SOPS encrypts secrets. Dockflow composes them.
-6. **One core, several faces.** The CLI, the local web UI, the MCP server and the GitHub Action call the same functions and read the same event stream.
+6. **One core, several faces.** The CLI, the MCP server and the GitHub Action (and, after v1.0, a local web UI) call the same functions and read the same event stream.
 7. **Fail loudly.** A missing variable, an unknown key, an unsupported Compose feature or an unverified host key is an error, never a silent default.
 8. **Honest security.** Access to the Docker socket is root. Dockflow says so, limits who holds the keys, and does not pretend otherwise.
 9. **Nothing lost from 1.x.** Every feature of Dockflow 1.x has an equivalent in v2, often built differently. [parity.md](parity.md) maps each one. A feature leaves that table only by a decision of the project owner; the only one so far is multi-node Swarm clustering.
