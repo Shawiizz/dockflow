@@ -28,6 +28,10 @@ func backupOf(at string, x *BackupExt, svc *domain.Service, s types.ServiceConfi
 		if len(x.Volumes) > 0 || x.Quiesce.Mode != "" || len(x.Dump) > 0 || len(x.Restore) > 0 {
 			return nil, errs.Config("%s: type %s takes database, dump_options, restore_options and keep; volumes, quiesce, dump and restore go with the volume and command types", at, x.Type)
 		}
+		if x.Type == domain.BackupRedis && x.RestoreOptions != "" {
+			// a redis restore replaces the data file: no command takes the options
+			return nil, errs.Config("%s: type redis has no restore_options: its restore replaces the data file", at)
+		}
 	case x.Type == domain.BackupVolume:
 		if x.Database != "" || x.DumpOptions != "" || x.RestoreOptions != "" || len(x.Dump) > 0 || len(x.Restore) > 0 {
 			return nil, errs.Config("%s: type volume takes volumes, quiesce and keep", at)

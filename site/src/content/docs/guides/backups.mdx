@@ -54,7 +54,7 @@ A service is backed up when it is `stateful` and declares `backup`. Its `type` s
 |---|---|---|---|
 | `type` | string | required | See above. |
 | `database` | string | the image's | `postgres`, `mysql`, `mongo`: the database to dump. |
-| `dump_options`, `restore_options` | string | none | `postgres`, `mysql`, `mongo`, `redis`: extra arguments of the dump and restore tools, split on spaces, like `"--no-owner --no-acl"`. |
+| `dump_options`, `restore_options` | string | none | Extra arguments of the dump tool (`postgres`, `mysql`, `mongo`, `redis`) and of the restore tool (`postgres`, `mysql`, `mongo`; a `redis` restore replaces the data file and takes none), split on spaces, like `"--no-owner --no-acl"`. |
 | `volumes` | list | every volume and bind mount | `volume`: the volumes, by their key in the Compose file, and bind mounts, by their path on the server, to copy. |
 | `quiesce` | `stop`, `none` or map | `stop` | `volume`: how writes stop during the copy. `stop` stops the service's containers, then starts them again; `none` copies while it runs; `{ exec: { pre: [...], post: [...] } }` runs `pre` in the running container before the copy and `post` after, even when the copy fails. |
 | `dump`, `restore` | argument lists | required for `command` | The commands of the `command` type. |

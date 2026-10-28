@@ -256,6 +256,7 @@ func TestComposeKeysRefused(t *testing.T) {
 		"backup unknown type":  "db: {image: postgres, x-dockflow: {stateful: true, backup: {type: oracle}}}",
 		"backup dump volumes":  "db: {image: postgres, volumes: [\"d:/d\"], x-dockflow: {stateful: true, backup: {type: postgres, volumes: [d]}}}\nvolumes: {d: {}}",
 		"backup no volume":     "db: {image: redis, x-dockflow: {stateful: true, backup: {type: volume}}}",
+		"redis restore opts":   "db: {image: redis, x-dockflow: {stateful: true, backup: {type: redis, restore_options: \"-x\"}}}",
 		"backup other volume":  "db: {image: redis, volumes: [\"d:/d\"], x-dockflow: {stateful: true, backup: {type: volume, volumes: [e]}}}\nvolumes: {d: {}}",
 		"backup command half":  "db: {image: redis, x-dockflow: {stateful: true, backup: {type: command, dump: [cat]}}}",
 		"backup quiesce":       "db: {image: redis, volumes: [\"d:/d\"], x-dockflow: {stateful: true, backup: {type: volume, quiesce: pause}}}\nvolumes: {d: {}}",
