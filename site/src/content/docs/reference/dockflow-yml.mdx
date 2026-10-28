@@ -22,6 +22,7 @@ The format is strict. An unknown key is an error (exit code 3, see [exit codes](
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `version` | integer | required | The format version. Must be `1`. |
+| `requires` | string | none | The oldest Dockflow that reads this file, such as `"1.2"` or `"1.2.0"`. An older Dockflow stops with `config.newer` and asks for an upgrade, instead of refusing a key it does not know. Set it when you use a key added after 1.0. |
 | `app` | string | required | The app name. See [naming rules](#naming-rules). Never interpolated. |
 | `compose` | list of paths | the first that exists of `compose.yaml`, `compose.yml`, `docker-compose.yaml`, `docker-compose.yml` | The Compose files, merged in order. A listed file that does not exist is an error. An app with no Compose file at all is valid. |
 | `templates` | list | none | Files rendered with Jinja before the build and the uploads. See [`templates`](#templates). |
@@ -44,7 +45,7 @@ These top-level keys can also be set inside an environment, where they **replace
 
 `templates`, `registry`, `build`, `releases`, `on_failure`, `health`, `uploads`, `hooks`, `notify`, `firewall`, `plugins`, `routes`.
 
-`version`, `app`, `compose` and `environments` cannot be set inside an environment. An environment has its own `compose` key, which replaces the top-level list.
+`version`, `requires`, `app`, `compose` and `environments` cannot be set inside an environment. An environment has its own `compose` key, which replaces the top-level list.
 
 ## `templates`
 

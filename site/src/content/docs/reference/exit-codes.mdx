@@ -74,6 +74,7 @@ The codes below are the ones you are most likely to meet. A few errors use a gen
 | Code | Exit | What it means | What to do |
 |---|---|---|---|
 | `config.invalid` | 3 | `dockflow.yml`, Compose, a secret or a variable is wrong. The message names the file and the key. | Fix what the message names. A missing variable needs a value in `vars`, a secret, or a default (`${X:-default}`). Run `dockflow validate` to check without a server. |
+| `config.newer` | 3 | `dockflow.yml` is in a newer format version, or its `requires` names a later Dockflow than this one. | Upgrade Dockflow. |
 | `usage.invalid` | 2 | A bad argument or flag, or an environment prefix that matches several environments. | Check `dockflow <command> --help`. |
 | `run.unknown` | 2 | `dockflow attach` was given a run that is not on the server. | Only the 10 most recent finished runs are kept. |
 

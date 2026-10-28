@@ -24,6 +24,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/notify"
 	"github.com/Shawiizz/dockflow/internal/render"
 	"github.com/Shawiizz/dockflow/internal/upload"
+	"github.com/Shawiizz/dockflow/internal/version"
 )
 
 // FileName is the name of the configuration file at the project root.
@@ -32,6 +33,7 @@ const FileName = "dockflow.yml"
 // File is dockflow.yml.
 type File struct {
 	Version      int                     `yaml:"version"`
+	Requires     string                  `yaml:"requires"`
 	App          string                  `yaml:"app"`
 	Compose      []string                `yaml:"compose"`
 	Environments map[string]*Environment `yaml:"environments"`
@@ -341,6 +343,10 @@ func Read(dir string) (*Raw, error) {
 	r := &Raw{Dir: dir}
 	if err := yaml.Unmarshal(b, &r.root); err != nil {
 		return nil, errs.Config("%s is not valid YAML", FileName).WithCause(err)
+	}
+	// before anything else: a file for a newer Dockflow fails on its version, not on a key
+	if err := checkVersion(&r.root); err != nil {
+		return nil, err
 	}
 	if err := checkLater(&r.root, ""); err != nil {
 		return nil, err
@@ -836,10 +842,6 @@ func (s *Server) validate(env string) error {
 }
 
 func (f *File) validateNames() error {
-	if f.Version != 1 {
-		return errs.Config("%s: version must be 1, not %d", FileName, f.Version).
-			WithHint("add `version: 1` at the top of %s", FileName)
-	}
 	if !domain.AppName.MatchString(f.App) {
 		return errs.Config("%s: app %q must match %s (at most 24 characters)", FileName, f.App, domain.AppName)
 	}
@@ -904,6 +906,49 @@ func checkLater(root *yaml.Node, env string) error {
 	return nil
 }
 
+// checkVersion reads version and requires from the document before it is decoded: a file
+// written for a newer Dockflow asks for an upgrade instead of failing on a key it adds.
+func checkVersion(root *yaml.Node) error {
+	doc := root
+	if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
+		doc = doc.Content[0]
+	}
+	var ver, req *yaml.Node
+	if doc.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(doc.Content); i += 2 {
+			switch doc.Content[i].Value {
+			case "version":
+				ver = doc.Content[i+1]
+			case "requires":
+				req = doc.Content[i+1]
+			}
+		}
+	}
+	if ver == nil {
+		return errs.Config("%s: version is required", FileName).
+			WithHint("add `version: 1` at the top of %s", FileName)
+	}
+	n, err := strconv.Atoi(ver.Value)
+	if err != nil || ver.Kind != yaml.ScalarNode || n < 1 {
+		return errs.Config("%s: version must be 1, not %q", FileName, ver.Value)
+	}
+	if n > 1 {
+		return errs.Newf("config.newer", errs.ExitConfig, "%s is in format version %d, and this Dockflow (%s) reads version 1", FileName, n, version.Version).
+			WithHint("upgrade Dockflow")
+	}
+	if req == nil {
+		return nil
+	}
+	if req.Kind != yaml.ScalarNode || !version.Valid(req.Value) {
+		return errs.Config("%s: requires %q is not a version, such as \"1.2\" or \"1.2.0\"", FileName, req.Value)
+	}
+	if ok, known := version.AtLeast(version.Version, req.Value); known && !ok {
+		return errs.Newf("config.newer", errs.ExitConfig, "%s requires Dockflow %s or later, and this is %s", FileName, req.Value, version.Version).
+			WithHint("upgrade Dockflow")
+	}
+	return nil
+}
+
 func notYet(key, milestone string) error {
 	return errs.Config("%s: `%s` is not available yet in this version of Dockflow", FileName, key).
 		WithHint("it arrives with milestone %s (docs/design/roadmap.md); remove it for now", milestone)
@@ -920,7 +965,7 @@ func decodeStrict(node *yaml.Node, out any) error {
 		var te *yaml.TypeError
 		if errors.As(err, &te) {
 			return errs.Config("%s: %s", FileName, strings.Join(te.Errors, "; ")).
-				WithHint("every key is listed in docs/design/spec/config-v1.md")
+				WithHint("every key is listed in docs/design/spec/config-v1.md; a key added by a newer Dockflow needs an upgrade")
 		}
 		return errs.Config("%s is not valid", FileName).WithCause(err)
 	}

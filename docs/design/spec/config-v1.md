@@ -59,6 +59,9 @@ Every key is listed here. An unknown key is an error.
 ```yaml
 # dockflow.yml
 version: 1                          # required; the format version
+requires: "1.2"                     # optional; the oldest Dockflow that reads this file, as
+                                    # major.minor or major.minor.patch: an older one stops
+                                    # with config.newer and asks for an upgrade
 app: shop                           # required
 
 compose: [compose.yml]              # optional; default: the first that exists of compose.yaml,
@@ -182,7 +185,9 @@ environments:                       # required; at least one
       DOMAIN: staging.shop.example.com
 ```
 
-Every top-level key except `version`, `app`, `compose` and `environments` can also be set inside an environment, where it replaces the top-level value for that environment.
+`version` and `requires` are read before any other key. A file in a format version other than 1, or that requires a later Dockflow, stops with `config.newer` (exit 3) and the hint to upgrade, rather than with an unknown key. A development build (`dev`) does not check `requires`.
+
+Every top-level key except `version`, `requires`, `app`, `compose` and `environments` can also be set inside an environment, where it replaces the top-level value for that environment.
 
 ## `plugin.yml`
 
