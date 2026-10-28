@@ -38,15 +38,19 @@ No event carries a secret value. Text fields (`msg`, `line`, `error.message`) ar
 
 - Within version 1, fields and types are only added, never renamed or removed, and their meaning doesn't change.
 - Consumers ignore unknown types and unknown fields.
+- **Enumerations are open.** A minor release may add values to an enumerated field: `level`, `outcome`, `container.state`'s `state`, `service.failed`'s `reason`, an action's `kind`, `run.started`'s `op`, `error.code` and `warning`'s `code`. A consumer treats a value it does not know as opaque: it shows it and does not act on it. An unknown `level` counts as `info`. A new `outcome` comes with an `exit_code` that already exists ([cli-v1](cli-v1.md#exit-codes)): a new exit code needs a major release.
 - The last event of every stream is `run.finished`. A stream that ends without it was cut off. The run may still be going on: `dockflow attach` follows it.
+- **One stream per server.** Several servers per environment come later ([ADR-0023](../adr/0023-several-servers-later.md)). A deploy to several servers will be one run, and one stream, per server, each `run.started` naming its `server`; version 1's events stay as they are.
+
+The stream is the only machine-readable output covered by this version. The documents that read commands print with `--json` (`result`, below) are not: see [cli-v1](cli-v1.md#compatibility).
 
 ## Types
 
 | Type | `data` |
 |---|---|
-| `run.started` | `app`, `env`, `op` (`deploy`, `rollback`, `restart`, `backup`, `restore`, `run`, `server.*`), `dockflow_version`, `server` |
+| `run.started` | `app`, `env`, `op` (below), `dockflow_version`, `server` |
 | `config.loaded` | `files` (paths of the Compose files, `dockflow.yml` and the secrets file), `services`; emitted (`debug`) once connected, by the operations that reach the server |
-| `warning` | `code` (stable, for example `compose.depends_on_ignored`), `detail`, `service?` |
+| `warning` | `code` (stable, for example `compose.warning`), `detail`, `service?` |
 | `lock.waiting` | `holder`, `op`, `by`, `since` |
 | `lock.acquired` | `scope` |
 | `lock.taken_over` | `scope` (`manual`), `previous_holder`: `lock acquire --force` took over someone else's manual lock |
@@ -84,9 +88,20 @@ No event carries a secret value. Text fields (`msg`, `line`, `error.message`) ar
 | `rollback.finished` | `ok` |
 | `cancel.requested` | `by` (`signal`, `cancel`) |
 | `log` | `line` (anything else worth showing) |
-| `result` | The document a read operation returns (`status`, `releases`, `lock`), as its data. The CLI prints it, alone, with `--json` |
+| `result` | The document a read operation returns (`status`, `releases`, `lock`), as its data. The CLI prints it, alone, with `--json`. Its content is not covered by version 1 ([cli-v1](cli-v1.md#compatibility)) |
 | `run.finished` | `outcome`, `exit_code`, `release_seq?`, `duration_ms`, `error?` |
 
 `outcome` is one of: `success`, `noop`, `rolled_back`, `failed`, `cancelled`, `lock_lost`, `hook_failed`. `exit_code` is the [CLI's exit code](cli-v1.md#exit-codes) for that outcome.
 
-`error` is `{ "code": "…", "message": "…", "hint": "…" }`. `code` is stable and dotted (`config.invalid`, `ssh.host_key_mismatch`, `plan.stale`, `plan.domain_conflict`, `build.failed`, `health.failed`, …). `hint` says what to do about it.
+`op` names the operation the agent runs, dotted. Version 1's agents emit:
+
+| Group | `op` |
+|---|---|
+| An environment | `plan`, `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `prune`, `details`, `status`, `releases`, `upload.have`, `secrets.revoke` |
+| Its lock | `lock.acquire`, `lock.release`, `lock.status` |
+| Backups | `backup.run`, `backup.list`, `backup.restore`, `backup.prune` |
+| The server | `server.init`, `server.status`, `server.check`, `server.uninstall`, `server.cloudflare.refresh`, `server.network.create`, `server.network.list`, `server.network.remove`, `server.plugin.install`, `server.plugin.list`, `server.plugin.remove` |
+
+The set is open: a minor release may add operations. `server upgrade` and `server edge` run `server.init`; `upload.have` asks which upload contents the server lacks, before a deploy.
+
+`error` is `{ "code": "…", "message": "…", "hint": "…" }`. `code` is stable and dotted (`config.invalid`, `ssh.host_key_mismatch`, `plan.stale`, `plan.domain_conflict`, `build.failed`, `health.failed`, …); the [error codes](cli-v1.md#error-codes) list them. `hint` says what to do about it.

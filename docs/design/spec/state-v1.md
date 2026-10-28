@@ -12,7 +12,8 @@ All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/000
 
 ## Compatibility
 
-- **What a minor release may change.** Add fields to a document, add documents, add label values. It never removes or renames a field, nor changes its type or meaning. A new field's zero value, or its absence, means the behaviour from before it existed.
+- **What a minor release may change.** Add fields to a document, add documents, add label values. It never removes or renames a field, nor changes its type or meaning. A new field's zero value, or its absence, means the behaviour from before it existed. A field of the container spec also keeps the [service hash](#service-hash) unchanged.
+- **Enumerations are open.** A minor release may add values to an enumerated field: a release's `status` and `op`, `dockflow.kind`, an error `code`. A reader must treat a value it does not know as opaque and not act on it; a release whose `status` it does not know counts as one that never went live: not a rollback target, and not counted among the `releases.keep` releases of retention.
 - **Reading.** A reader ignores the fields it does not know, so any Dockflow of the same major reads the state of a newer one: `status`, `releases`, `logs` work.
 - **Writing.** A Dockflow does not change a scope (an app environment, `apps/<stack>/`, or the server, every other file) after reading a file of it that holds fields it does not know: rewriting the scope, or rebuilding containers from a release it only partly understands, would lose what a newer Dockflow recorded. It stops with `state.newer` (exit 13) and the hint to upgrade. A file is also checked before it is replaced, read or not. A newer Dockflow that used none of its new fields blocks nothing.
 - **Schema.** A document whose `schema` is not 1 stops every run with `state.schema` (exit 13): a newer major wrote it, or an older one.
@@ -64,10 +65,21 @@ Dockflow's own labels:
 
 | Label | Value |
 |---|---|
-| `dockflow.schema` | `1` |
+| `dockflow.managed` | `true` on every container Dockflow creates, and on the app networks and volumes it creates. `prune` never removes what carries it |
+| `dockflow.schema` | `1`. Informational: written on containers, never read |
 | `dockflow.release` | The release sequence number the container belongs to |
+| `dockflow.hash` | On service containers, and the switch, registry and watchdog: the [service hash](#service-hash). The planner compares it to the desired one: an unchanged hash keeps the container |
 | `dockflow.shared` | `true` on a network shared between apps (`server network create`) |
-| `dockflow.kind` | `service`, `job`, `run` (agent), `oneoff` (`dockflow run`), `switch`, `registry`, `watchdog` or `helper` |
+| `dockflow.kind` | `service`, `job`, `run` (agent), `oneoff` (`dockflow run`), `switch`, `registry`, `watchdog` or `helper` on containers; `agent` on the agent's image |
+| `dockflow.op` | On agent containers: the operation they run ([events-v1](events-v1.md#types)). Informational |
+
+A minor release may add values to `dockflow.kind`. A reader must treat a kind it does not know as an opaque value: a Dockflow container that it shows and does not act on.
+
+### Service hash
+
+`dockflow.hash`, and the release record's `hashes`, are the first 16 hex digits of the sha256 of the JSON encoding of a service's container spec (`desired.services[].spec`), together with its replica count, its name, its `container_name`, and whether it is stopped. Two releases with the same hash for a service run the same containers, so a deploy leaves them in place.
+
+A field added to the container spec in a minor release is omitted from that encoding while it holds its zero value, and its zero value means the behaviour from before it existed. An upgrade of Dockflow then computes the same hashes for an unchanged app, and recreates no container.
 
 **Naming:**
 
@@ -98,7 +110,7 @@ A service with `container_name` keeps that name and uses the `stop-first` strate
   { "schema": 1, "run": "01jbx6k3…", "op": "deploy", "by": "shawiizz@laptop", "ci": null, "since": "2026-10-26T14:03:11Z" }
   ```
 
-- **When it is held.** A run that cannot take it reads `lock.json` and fails with `LockHeld`, exit code 5. With `--wait-lock`, it retries until the lock is free or the given duration has passed.
+- **When it is held.** A run that cannot take it reads `lock.json` and fails with `lock.held`, exit code 5. With `--wait-lock`, it retries until the lock is free or the given duration has passed.
 - **When the holder dies.** The kernel releases the lock. There is no lease and no takeover.
 - **Manual locks.** `dockflow lock acquire` writes `manual-lock.json` (who, why, when). Every run refuses to start while it exists, unless given `--force`. `dockflow lock release` removes it.
 
@@ -120,6 +132,8 @@ applying ──► active ──► superseded
    ├──► failed          the run failed and was left in place (on_failure: fail, --no-rollback), or its rollback failed
    └──► abandoned       the agent died; found by the next run
 ```
+
+A minor release may add statuses ([compatibility](#compatibility)).
 
 **`env.json`:**
 
@@ -183,7 +197,7 @@ It deletes the other release files, then the images, registry manifests, secret 
 - **`desired`** is the app as it was deployed: every service with its container spec, the input of the Engine's create call, with images pinned by digest. A rollback recreates the same containers from it.
 - **`op`** is what made the release: `deploy`, `rollback`, `restart`, `stop`, `scale` or `destroy` (of some services).
 - **`serving`** says, per service, which release's containers serve it: a service a deploy left unchanged keeps the containers of an older release.
-- **`hashes`** identify each service's containers: an unchanged hash means unchanged containers.
+- **`hashes`** identify each service's containers, as the [service hash](#service-hash): an unchanged hash means unchanged containers.
 - **`error`** is set on a release that is `rolled_back`, `failed` or `abandoned`: `{ "code": "…", "message": "…" }`.
 - **Interpolated values.** Values interpolated into environment variables are part of the spec, as they are of `docker inspect`. The file is readable by root only.
 - **Jobs** are services of `desired` with `"job": "before"` or `"after"`; they have no containers once the run is over.

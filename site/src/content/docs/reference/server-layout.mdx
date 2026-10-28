@@ -141,8 +141,8 @@ Dockflow's own labels:
 | Label | Value |
 |---|---|
 | `dockflow.managed` | `true` on the containers Dockflow creates, and on the app networks and volumes it creates |
-| `dockflow.schema` | `1` (containers) |
-| `dockflow.kind` | `service`, `job`, `oneoff` (`dockflow run`), `run` (an agent), `helper`, `switch`, `registry` or `watchdog` |
+| `dockflow.schema` | `1` (containers). Informational: Dockflow never reads it |
+| `dockflow.kind` | `service`, `job`, `oneoff` (`dockflow run`), `run` (an agent), `helper`, `switch`, `registry` or `watchdog` on containers; `agent` on the agent's image. Later versions may add kinds |
 | `dockflow.shared` | `true` on the [shared networks](/guides/shared-servers/#shared-networks) of the server |
 | `dockflow.release` | The release that created the container |
 | `dockflow.hash` | A hash of the container's specification: an unchanged hash means an unchanged container |

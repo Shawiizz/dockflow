@@ -46,7 +46,7 @@ Two syntaxes, each where it is native ([ADR-0006](../adr/0006-compose-as-written
    3. the SOPS file.
 3. **The environment's `vars`.**
 
-An environment is one server in v1, so its values are that server's. Per-server overrides come with several servers ([ADR-0023](../adr/0023-several-servers-later.md)).
+An environment is one server in v1, so its values are that server's. Per-server overrides come with several servers ([ADR-0023](../adr/0023-several-servers-later.md)). Their names are reserved now: a variable whose name has a double underscore right after the environment's prefix (`PRODUCTION__…`, such as `PRODUCTION__DB__PASSWORD`) is kept for per-server values, so that it never collides with `<ENV>_<KEY>`, whose key starts with a letter. A project should not define such variables.
 
 A variable with no value and no default is an error, in both syntaxes. In `dockflow.yml`, only what the environment uses is interpolated: other environments' sections, and the top-level keys the environment overrides, may use variables it does not define.
 
@@ -191,6 +191,16 @@ Durations are written as Go durations: `30s`, `2m`, `1h30m`. File modes are octa
 
 Every top-level key except `version`, `requires`, `app`, `compose` and `environments` can also be set inside an environment, where it replaces the top-level value for that environment.
 
+`server:` is singular in format 1: an environment is one server. Several servers per environment ([ADR-0023](../adr/0023-several-servers-later.md)) will add a `servers:` key beside it, in a minor release, without changing what `server:` means.
+
+### Compatibility
+
+The format is strict, and version 1 changes only by additions:
+
+- **A minor release may add keys**, and values to an enumerated key. A key's absence keeps the behaviour from before it existed. A file that uses a new key says so with `requires:`, so that an older Dockflow stops with `config.newer` rather than with an unknown key.
+- **It never removes or renames a key, nor changes its type, default or meaning.** That needs a new format version, which is a major release.
+- **Unknown keys are errors**, in `dockflow.yml`, `plugin.yml` and `x-dockflow`: a typo is never ignored.
+
 ## `plugin.yml`
 
 A plugin ([ADR-0017](../adr/0017-plugins.md)) is a directory with a `plugin.yml`; `use:` names a built-in plugin (`nginx`, `systemd`) or a directory of the project (a path, with a `/`). Unknown keys are refused.
@@ -240,8 +250,10 @@ services:
             -Server: ""              # a leading "-" removes a header
           encode: [zstd, gzip]
           max_body: 25MB
-          timeouts: { read: 90s, dial: 10s }
-          error_pages: { "502,503,504": { route: maintenance } }
+          timeouts: { read: 90s, write: 90s, dial: 10s }   # default: Caddy's
+          error_pages:               # statuses to { route: <a named route of dockflow.yml> }
+            "502,503,504": { route: maintenance }
+            "404": { body: "<h1>Not found</h1>" }          # or an inline page
           auth: { user: admin, password: ${PANEL_PASSWORD} }
           caddy: |                   # raw Caddyfile directives, the escape hatch
             @ws header Connection *Upgrade*
@@ -265,12 +277,15 @@ services:
       backup:                        # ADR-0015; stateful services only
         type: postgres               # postgres, mysql, mongo, redis, volume or command
         database: shop
-        dump_options: "--no-owner"   # split on spaces
-        volumes: [pgdata]            # volume type
-        quiesce: { exec: { pre: ["rcon-cli", "save-off"], post: ["rcon-cli", "save-on"] } }
+        dump_options: "--no-owner"   # postgres, mysql, mongo, redis; split on spaces
+        restore_options: "--no-owner"   # postgres, mysql, mongo; added to the restore command
+        volumes: [pgdata]            # volume type; default: every volume and bind mount
+        quiesce: stop                # volume type: stop (default), none, or
+                                     # { exec: { pre: ["rcon-cli", "save-off"], post: ["rcon-cli", "save-on"] } }
         dump: ["sh", "-c", "my-dump"]       # command type
         restore: ["sh", "-c", "my-restore"] # command type
-        keep: { last: 24, daily: 30, weekly: 26 }
+        keep: { last: 24, daily: 30, weekly: 26 }   # last, hourly, daily, weekly, monthly;
+                                     # default { last: 7, daily: 14, weekly: 8, monthly: 6 }
 ```
 
 These combinations are refused:

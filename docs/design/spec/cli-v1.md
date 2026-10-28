@@ -22,7 +22,7 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 
 - **What is read:** `deploy`, `plan`, `build`, `rollback`, `run`, `validate`, `config show` and `list services` load `dockflow.yml` and the Compose files, and need every variable they use. Every other command that reaches a server acts on what it runs: it loads `dockflow.yml` alone (the environment, its server, the connection secret), never the Compose files or plugins.
 - **Prompts:** a command that changes a server shows its plan and asks for confirmation on a terminal. Without a terminal it never prompts.
-- **`--json`:** operations print [events](events-v1.md) as JSON Lines. Read commands print one JSON document.
+- **`--json`:** operations print [events](events-v1.md) as JSON Lines. Read commands print one JSON document, whose fields are not frozen ([compatibility](#compatibility)).
 
 ## Project and deploy
 
@@ -152,8 +152,32 @@ The file holds no secret value: a changed secret changes the fingerprint, so the
 | 11 | A fatal hook failed before anything changed |
 | 12 | A backup or a restore failed |
 | 13 | The server's state needs another Dockflow: a newer one wrote fields this one does not know (`state.newer`), or another major wrote it (`state.schema`). Nothing was changed |
-| 130 | Interrupted: the run was cancelled and rolled back |
+| 130 | Interrupted or declined: the run was cancelled and rolled back, or never started. The error code tells them apart: `run.cancelled` (Ctrl+C or `cancel`, rolled back), `run.declined` (no at a confirmation prompt, nothing changed), `run.detached` (a second Ctrl+C left the agent rolling back on the server) |
 
 `exec`, `run` and `ssh` exit with the command's own exit code. When they cannot start it, they use the codes above. They connect the terminal to the command, so their output is the command's own, not masked: the user runs it.
 
 **Ctrl+C** cancels a command, except during an agent's run: then the first one asks the agent to stop and roll back, and a second one detaches ([ADR-0004](../adr/0004-ephemeral-agent.md)).
+
+## Error codes
+
+A failed command reports an error `{code, message, hint}`: in `run.finished` ([events-v1](events-v1.md#types)), or, when the CLI fails before or without an agent's run, with `--json`, as the error document on stdout:
+
+```json
+{"error":{"code":"config.invalid","message":"…","hint":"…"},"exit_code":3}
+```
+
+`code` is a stable dotted name (`lock.held`, `plan.stale`); `hint` is left out when there is none. Every code, with its exit code and what to do about it, is listed in the user reference, [Exit codes and errors](../../../site/src/content/docs/reference/exit-codes.mdx). Each code maps to one of the exit codes above (a few to two, by when they happen: `hook.failed`, `health.check_failed`, `backup.snapshot`). A minor release may add codes, mapped to existing exit codes; a consumer treats a code it does not know by its exit code. Warning codes (`warning` events) follow the same rules.
+
+## Compatibility
+
+What a minor release of version 1 may change, and what needs a major one:
+
+| A minor release may | Only a major release may |
+|---|---|
+| Add commands, subcommands and options | Remove or rename a command or an option, or change what it does |
+| Add error and warning codes | Add an exit code, or change an exit code's meaning |
+| Add fields to the error document | Change the error document `{"error":{code,message,hint},"exit_code"}` otherwise |
+| Add event types, fields and values, as [events-v1](events-v1.md#compatibility-rules) allows | Change the event stream otherwise |
+
+- **Human output** (tables, colours, wording, messages) is not stable: scripts do not parse it.
+- **Read commands' JSON documents** (`status`, `releases`, `config show`, `server status`, `server connection`, `list`, `lock status`, `backup list`, …) are not frozen: a minor release may add, rename or remove their fields. Scripts rely on the event stream, the error document and the exit codes, which are.

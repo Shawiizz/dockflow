@@ -9,7 +9,7 @@ import { Aside, Badge } from '@astrojs/starlight/components';
 
 `dockflow.yml` sits at the root of your project and describes the app and its environments. Your services are described in standard [Compose files](/reference/compose/); `dockflow.yml` holds what Compose has no place for: the environments, the registry, the hooks, the checks and the uploads.
 
-The format is strict. An unknown key is an error (exit code 3, see [exit codes](/reference/exit-codes/)), and so is a key that exists in the format but is [not available yet](#not-available-yet). `dockflow validate <env>` checks the file, the Compose files and the variables without contacting a server.
+The format is strict. An unknown key is an error (exit code 3, see [exit codes](/reference/exit-codes/)). Later 1.x versions may add keys, never remove or rename one; a file that uses a newer key says so with [`requires`](#top-level). `dockflow validate <env>` checks the file, the Compose files and the variables without contacting a server.
 
 ## Conventions
 
@@ -37,13 +37,14 @@ The format is strict. An unknown key is an error (exit code 3, see [exit codes](
 | `firewall` | map | none | The published ports open to the internet. See [`firewall`](#firewall). |
 | `plugins` | list | none | Plugins expanded into uploads, templates and hooks. See [`plugins`](#plugins). |
 | `routes` | list | none | Routes that target no service of the app: redirects, proxies, files. See [`routes`](#routes). |
+| `backups` | map | none: a repository on the server | Where backups go. See [`backups`](#backups). |
 | `environments` | map | required, at least one | The environments, by name. See [`environments`](#environments). |
 
 ### Keys an environment can override
 
 These top-level keys can also be set inside an environment, where they **replace** the top-level value for that environment (blocks are not merged key by key):
 
-`templates`, `registry`, `build`, `releases`, `on_failure`, `health`, `uploads`, `hooks`, `notify`, `firewall`, `plugins`, `routes`.
+`templates`, `registry`, `build`, `releases`, `on_failure`, `health`, `uploads`, `hooks`, `notify`, `firewall`, `plugins`, `routes`, `backups`.
 
 `version`, `requires`, `app`, `compose` and `environments` cannot be set inside an environment. An environment has its own `compose` key, which replaces the top-level list.
 
@@ -273,7 +274,7 @@ Dockflow reads `~/.ssh/config` as OpenSSH does for `HostName`, `Port`, `User` an
 | `host_key` | string | none | The server's host key fingerprint, `SHA256:…`. Without it, the key must be in `~/.ssh/known_hosts`. A key that is neither pinned nor known is refused. |
 | `name` | string | `main` | The server's name, available as `DOCKFLOW_SERVER`. Matches `^[a-z][a-z0-9_-]{0,31}$`. |
 
-## backups
+## `backups`
 
 Where the environment's [backups](/guides/backups/) go. Without it, a restic repository on the server, in the `dockflow-backups` volume, with a password Dockflow generates.
 
@@ -335,8 +336,11 @@ For an environment, here `production`, a variable is looked up in this order, an
 
 2. **Secrets.** The key `X` is looked up as `PRODUCTION_X`, then `X`, in each source in turn:
    1. the process environment, of which only `PRODUCTION_*` variables are read, and the JSON object in `DOCKFLOW_SECRETS`;
-   2. the file `.env.dockflow` at the project root (`KEY=value` lines, values taken literally).
+   2. the file `.env.dockflow` at the project root (`KEY=value` lines, values taken literally);
+   3. the environment's [SOPS file](/guides/secrets/#secrets-in-a-sops-file), when there is one.
 3. **The environment's `vars`.**
+
+Names with a double underscore right after the environment's prefix, such as `PRODUCTION__DB__PASSWORD`, are reserved for per-server values, which come with several servers per environment. Do not define such variables.
 
 <Aside type="caution">
 Other process variables are never read: `${HOME}` or `${CI}` are undefined unless you set them in `vars` or as secrets. A Compose `.env` file is not read either.

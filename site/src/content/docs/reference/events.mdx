@@ -50,7 +50,16 @@ Fields marked `?` are present only when they apply.
 | `cancel.requested` | warn | `by`: `signal` |
 | `log` | info or debug | `line`: anything else worth showing (an image pull, the agent being installed, files received) |
 
-`op` is the operation the agent runs: `plan`, `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `prune`, `status`, `releases`, `details`, `lock.acquire`, `lock.release`, `lock.status`, `server.init` or `upload.have`.
+`op` is the operation the agent runs, a dotted name:
+
+| Group | `op` |
+|---|---|
+| An environment | `plan`, `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `prune`, `details`, `status`, `releases`, `upload.have` (which files a deploy must send), `secrets.revoke` |
+| Its lock | `lock.acquire`, `lock.release`, `lock.status` |
+| Backups | `backup.run`, `backup.list`, `backup.restore`, `backup.prune` |
+| The server | `server.init` (also for `server upgrade` and `server edge`), `server.status`, `server.check`, `server.uninstall`, `server.cloudflare.refresh` (the weekly refresh of Cloudflare's ranges), `server.network.create`, `server.network.list`, `server.network.remove`, `server.plugin.install`, `server.plugin.list`, `server.plugin.remove` |
+
+New operations may appear in a minor release: treat an `op` you do not know as a name to show, not as an error.
 
 ### Warning
 
@@ -89,7 +98,7 @@ These events come from the CLI, before the agent starts.
 | `plan.empty` | info | None: there is nothing to change |
 | `release.created` | info | `seq`, `version` |
 
-An action's `kind` is one of `network.create`, `volume.create`, `service.create`, `service.update`, `service.remove`, `routes.apply`, `job.run` and `upload.apply`. Its `id` is stable within a plan, for example `01-service.update-web`, and `strategy` is `switch`, `start-first` or `stop-first`.
+An action's `kind` is one of `network.create`, `volume.create`, `secret.create`, `config.create`, `service.create`, `service.update`, `service.remove`, `routes.apply`, `ports.apply`, `job.run` and `upload.apply`. Its `id` is stable within a plan, for example `01-service.update-web`, and `strategy` is `switch`, `start-first` or `stop-first`.
 
 ### Actions and containers
 
@@ -178,6 +187,8 @@ The agent's last event says how its run ended:
 - **Errors before the agent.** When a command fails before the agent starts (an invalid configuration, a failed build, a refused connection), there is no `run.finished`: the last line is the error document `{"error":{…},"exit_code":N}` described in [error format](/reference/exit-codes/#error-format).
 - **Masking.** No event carries a secret value. The emitter replaces every occurrence of a secret's value with `***` in `msg` and in `data`, before the line is written. Values shorter than 4 characters are not masked, because they would hide ordinary words.
 - **Compatibility.** Within `v: 1`, fields and types are only added, never renamed or removed, and their meaning does not change. Ignore types and fields you do not know.
+- **Open enumerations.** A minor release may add values to `level`, `outcome`, a `container.state`'s `state`, a `service.failed`'s `reason`, an action's `kind`, `op`, and error and warning codes. Treat a value you do not know as opaque: show it, do not act on it. Count an unknown `level` as `info`. A new outcome always comes with an existing exit code: new exit codes only come with a major release.
+- **What is stable.** The event stream, the exit codes and the [error document](/reference/exit-codes/#json-output) are covered by these rules. The single JSON documents that read commands print (`status`, `releases`, `config show`, `server status`, `server connection`, …) are not: a minor release may add, rename or remove their fields. Scripts should rely on the event stream and the exit codes.
 
 <Aside type="caution">
 `dockflow exec`, `dockflow run` and `dockflow ssh` connect your terminal to the command they run. Their output is the command's own: it is neither an event stream nor masked.

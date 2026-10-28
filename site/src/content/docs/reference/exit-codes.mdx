@@ -1,13 +1,15 @@
 ---
 title: Exit codes and errors
-description: Every exit code of the dockflow CLI, the format of its errors, and the error codes you are most likely to meet, with what to do about each.
+description: Every exit code of the dockflow CLI, the format of its errors, and every error and warning code, with what to do about each.
 sidebar:
   order: 4
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-Every `dockflow` command ends with an exit code that tells a script or a CI job what happened, without parsing text. When a command fails, it also prints an error with a stable code and a hint that says what to do next.
+Every `dockflow` command ends with an exit code that tells a script or a CI job what happened, without parsing text. When a command fails, it also prints an error with a stable code and a hint that says what to do next. This page lists every exit code and every error code.
+
+Exit codes are fixed for the whole of 1.x: a new one only comes with a major release. New error and warning codes may appear in a minor release, each mapped to an existing exit code.
 
 ## Exit codes
 
@@ -16,7 +18,7 @@ Every `dockflow` command ends with an exit code that tells a script or a CI job 
 | `0` | OK | Success, including a plan with nothing to do | A deploy that went live, a deploy with nothing to change, a read command |
 | `1` | Internal | Unexpected error. This is a bug: please report it | The agent stopped before finishing, a corrupt state file, the switch's admin API not answering |
 | `2` | Usage | Wrong usage | Unknown command or flag, a bad argument, an unknown run id for `attach`, a CI tag whose suffix names no environment |
-| `3` | Config | Invalid configuration | An error in `dockflow.yml` or Compose, a variable with no value, an unreadable `.env.dockflow`, a key that is not available yet, an SSH key protected by a passphrase |
+| `3` | Config | Invalid configuration | An error in `dockflow.yml` or Compose, a variable with no value, an unreadable `.env.dockflow`, a key from a later Dockflow, an SSH key protected by a passphrase |
 | `4` | Connect | Cannot connect | SSH unreachable or refused, unknown or changed host key, Docker API unreachable, Docker older than 27, the agent binary cannot be downloaded |
 | `5` | Locked | Another run holds the lock | A deploy already running on the same environment, a manual lock taken with `dockflow lock acquire` |
 | `6` | Plan | The plan is refused; nothing was changed | A saved plan that is stale, a domain routed twice, an image the server cannot pull, routes on a server without a switch, nothing to roll back to |
@@ -27,7 +29,7 @@ Every `dockflow` command ends with an exit code that tells a script or a CI job 
 | `11` | Hook | A fatal hook failed before anything changed | A fatal `before_build`, `after_build` or `before_deploy` hook that exited with a non-zero code |
 | `12` | Backup | A backup failed | A dump that exits with an error, a repository that cannot be opened or fails its check, a service that is not running |
 | `13` | State | The server's state needs another Dockflow; nothing was changed | A newer Dockflow changed this environment or this server, and recorded something this version does not know: a CI pinned to an older version, after a deploy with a newer one |
-| `130` | Interrupted | The run was cancelled, and rolled back if it had started | Ctrl+C, `dockflow cancel`, answering no at a confirmation prompt, detaching with a second Ctrl+C |
+| `130` | Interrupted or declined | The run was cancelled and rolled back, or never started | Ctrl+C or `dockflow cancel` (`run.cancelled`), answering no at a confirmation prompt (`run.declined`), detaching with a second Ctrl+C (`run.detached`). See [cancelling](#cancelling) |
 
 `dockflow exec`, `dockflow run` and `dockflow ssh` exit with the exit code of the command they ran. When they cannot start it, they use the codes above.
 
@@ -41,7 +43,7 @@ Every error Dockflow understands carries three parts:
 
 | Part | Description |
 |---|---|
-| `code` | A stable, dotted identifier, such as `lock.held` or `ssh.host_key_mismatch`. Scripts may match on it; it does not change between versions. |
+| `code` | A stable, dotted identifier, such as `lock.held` or `ssh.host_key_mismatch`. Scripts may match on it; it does not change between versions. A code a script does not know is handled by its exit code. |
 | `message` | What went wrong, in one sentence. Secret values in it are replaced by `***`. |
 | `hint` | What to do about it. Not every error has one. |
 
@@ -66,9 +68,9 @@ When the error happens during the agent's run on the server, it is already in th
 
 Errors from the argument parser itself (an unknown command or flag) are printed as `error: …` on standard error, also with `--json`, and exit with code 2.
 
-## Common error codes
+## Error codes
 
-The codes below are the ones you are most likely to meet. A few errors use a generic code for their class: `config.invalid` (3), `usage.invalid` (2), `connect.failed` (4) and `internal` (1); their message says what went wrong.
+This section lists every error code. Each one maps to the exit code given here. A few errors use a generic code for their class: `config.invalid` (3), `usage.invalid` (2), `connect.failed` (4) and `internal` (1); their message says what went wrong. Later 1.x versions may add codes, always with one of the exit codes above: a script that meets a code it does not know can act on the exit code.
 
 ### Configuration and usage
 
@@ -76,10 +78,12 @@ The codes below are the ones you are most likely to meet. A few errors use a gen
 |---|---|---|---|
 | `config.invalid` | 3 | `dockflow.yml`, Compose, a secret or a variable is wrong. The message names the file and the key. | Fix what the message names. A missing variable needs a value in `vars`, a secret, or a default (`${X:-default}`). Run `dockflow validate` to check without a server. |
 | `config.newer` | 3 | `dockflow.yml` is in a newer format version, or its `requires` names a later Dockflow than this one. | Upgrade Dockflow. |
+| `secrets.file` | 3 | The environment's SOPS file cannot be decrypted. | Give the age key: `SOPS_AGE_KEY` in CI, or the key file SOPS reads on your machine. |
 | `usage.invalid` | 2 | A bad argument or flag, or an environment prefix that matches several environments. | Check `dockflow <command> --help`. |
+| `init.exists` | 2 | `dockflow init` would replace a file that exists. | Run it with `--force`, or move the file. |
 | `run.unknown` | 2 | `dockflow attach` was given a run that is not on the server. | Only the 10 most recent finished runs are kept. |
 
-### Connecting
+### Connecting and provisioning
 
 | Code | Exit | What it means | What to do |
 |---|---|---|---|
@@ -90,6 +94,13 @@ The codes below are the ones you are most likely to meet. A few errors use a gen
 | `agent.no_binary` | 4 | A development build of the CLI has no release to download the agent binary from: it does not run on Linux with the server's architecture, or it is linked dynamically (built with cgo), and the agent's image holds no C library. | Build it with `CGO_ENABLED=0` (`make build` does), or set `DOCKFLOW_AGENT_BINARY` to a static dockflow binary for the server's architecture. |
 | `agent.download_failed` | 4 | The agent binary for the server could not be downloaded from the release. | Check that this machine reaches GitHub (or your mirror in `DOCKFLOW_RELEASES_URL`), or set `DOCKFLOW_AGENT_BINARY`. |
 | `agent.checksum_mismatch` | 4 | The downloaded agent binary does not match the checksum the CLI was built with (the release's `SHA256SUMS` for a CLI built without one). Nothing was sent to the server. | Try again. Report it if it persists. |
+| `provision.sudo` | 4 | `server init` connected as a user that cannot use sudo without a password. | Connect as root, or give that user passwordless sudo for the time of `server init`. |
+| `provision.no_docker` | 4 | Docker is not installed on the server, and `--skip-docker-install` was given. | Install Docker 27 or later, or drop `--skip-docker-install`. |
+| `provision.unsupported_os` | 4 | Docker is not installed, and the server is not Debian or Ubuntu, where Dockflow installs it. | Install Docker 27 or later yourself, then run `server init` again. |
+| `provision.docker_too_old` | 4 | The server's Docker is older than 27, or not running. | Upgrade Docker Engine to 27 or later and start it. |
+| `provision.no_nginx` | 4 | `--nginx` was given, nginx is not installed, and the server is not Debian or Ubuntu, where Dockflow installs it. | Install nginx yourself, then run `server init` again. |
+| `provision.no_ssh_server` | 4 | `server init` without a target, on the server itself, found no SSH host key: no SSH server is installed. | Install and start OpenSSH, then run `server init` again. |
+| `provision.failed` | 4 | A step of the provisioning script failed. | The output above says which step. Every step can be run again safely. |
 
 ### Locks
 
@@ -100,31 +111,44 @@ The codes below are the ones you are most likely to meet. A few errors use a gen
 
 ### Planning
 
+Nothing was changed on the server.
+
 | Code | Exit | What it means | What to do |
 |---|---|---|---|
 | `plan.stale` | 6 | The server changed between the plan you confirmed and the apply. | Run the command again to compute a new plan. |
 | `plan.image_missing` | 6 | The server cannot pull an image, or it is absent with `pull_policy: never`. | Check the image name, and that the server can reach the registry and is logged in to it. |
+| `plan.pull_policy` | 6 | A service's `pull_policy` is one the server cannot apply. | Use `missing`, `always` or `never`. |
 | `plan.caddy` | 6 | A route's raw `caddy` directives do not parse. | Fix them: they are Caddyfile directives, as inside a site block. |
 | `plan.domain_conflict` | 6 | A domain and path is routed twice on the server, by two services or two apps. | Routes are unique per domain and path on a server: change one of them. |
 | `plan.no_switch` | 6 | The app declares routes, and the server has no switch. | Run `dockflow server init`. |
 | `plan.routes_without_switch` | 6 | The server was set up with `--edge none`, and the app declares routes. | Publish ports instead, or run `dockflow server init --edge builtin`. |
+| `server.routes_in_use` | 6 | `--edge none` was asked for, and routes still go through the switch. | Remove the routes of the apps on this server first. |
 | `plan.network_missing`, `plan.volume_missing` | 6 | A network or volume marked `external: true` does not exist on the server. | For a [shared network](/guides/shared-servers/#shared-networks), run the `dockflow server network create` the hint gives; otherwise create it on the server, or remove `external: true`. |
 | `plan.volume_driver` | 6 | A volume's `driver` is not a volume plugin the server has. | Run `dockflow server plugin install <plugin> --alias <driver>`. |
+| `plan.network_foreign` | 6 | A network of the app's name exists on the server but belongs to something else: a Docker Swarm stack, another Compose project, or a network created by hand. Dockflow never takes it over. | Remove it once nothing uses it (`docker stack rm` for a Swarm stack), or give the network another name in `compose.yml`. |
+| `plan.only_dependency` | 6 | `--only` names a service that depends on one that is not deployed. | Add that service to `--only`. |
+| `plan.dependency_removed` | 6 | `destroy --only` would remove a service that another one depends on. | Destroy them together. |
+| `plan.stateful_replicas`, `plan.container_name_replicas` | 6 | `dockflow scale` was asked for several replicas of a service that runs once. | Stateful services and services with a `container_name` keep one container. |
+| `secret.not_tmpfs` | 6 | `/run/dockflow` on the server is not a tmpfs, so Compose secrets cannot be written to memory. | Mount a tmpfs on `/run/dockflow` (systemd mounts one on `/run`). `dockflow server check` checks it. |
+| `secret.missing`, `config.missing` | 6 | A rollback needs a secret or config file that is gone from the server (a reboot empties the tmpfs), and this run does not have its value. | Deploy the current version: the CLI sends the values it has. |
 | `network.in_use`, `plugin.in_use` | 6 | A shared network has containers, or a volume plugin has volumes. | Remove them from the apps and deploy, or destroy the environments that use them, first. |
 | `network.exists`, `network.not_shared`, `plugin.exists`, `plugin.install` | 6 | The network's name belongs to a network that is not shared, the plugin's name is taken, or the plugin cannot be pulled or enabled. | Choose another name or `--alias`; check the plugin's name and that the server reaches its registry. |
-| `plan.network_foreign` | 6 | A network of the app's name exists on the server but belongs to something else: a Docker Swarm stack, another Compose project, or a network created by hand. Dockflow never takes it over. | Remove it once nothing uses it (`docker stack rm` for a Swarm stack), or give the network another name in `compose.yml`. |
-| `plan.stateful_replicas`, `plan.container_name_replicas` | 6 | `dockflow scale` was asked for several replicas of a service that runs once. | Stateful services and services with a `container_name` keep one container. |
 | `rollback.no_previous`, `rollback.unknown_release` | 6 | There is no release to roll back to, or the one asked for is no longer kept. | List the releases with `dockflow releases`. |
+| `rollback.current` | 6 | The release or version asked for is the current one. | Nothing to do, or pick another with `--to`. |
+| `rollback.not_deployable` | 6 | The release asked for never went live: it was rolled back, failed or abandoned. | Pick a release whose status is `active` or `superseded` in `dockflow releases`. |
 | `env.never_deployed` | 6 | The command needs a deployed release, and the environment has none. | Deploy it first. |
 
 ### Building and pushing
 
+Nothing was changed on the server.
+
 | Code | Exit | What it means | What to do |
 |---|---|---|---|
-| `build.failed` | 7 | The image build failed. Nothing was changed on the server. | The build output above the error says why. With `-v`, every build line is shown. |
+| `build.failed` | 7 | The image build failed. | The build output above the error says why. With `-v`, every build line is shown. |
 | `build.no_buildx` | 7 | `docker buildx` cannot run on this machine. | Install Docker with the buildx plugin. |
 | `build.no_builder` | 7 | The buildx builder cannot export images. | Enable the containerd image store, or create a `docker-container` builder. |
 | `build.no_podman` | 7 | `build.engine: podman` is set, and Podman cannot run. | Install Podman on this machine. |
+| `build.not_pushed` | 7 | `deploy --skip-build` found no image of a service for this version in the registry. | Build and push it first with `dockflow build --push`, for the same version, or deploy without `--skip-build`. |
 | `push.failed` | 7 | An image cannot be pushed to the server's registry or to your external registry. | Check that the registry is reachable and that the credentials can push. |
 
 ### During the rollout
@@ -137,20 +161,32 @@ The codes below are the ones you are most likely to meet. A few errors use a gen
 | `hook.failed` | 11 or 8 | A fatal hook failed: before anything changed (11), or an `after_deploy` hook once the release went live (8, and the previous release is restored). A non-fatal hook only prints a warning. | Its output is in the stream above. |
 | `upload.failed` | 8 | An upload could not be written on the server. | Check the destination path and its permissions. |
 | `rollback.failed` | 9 | The run failed, and restoring the previous release failed too. The environment is degraded. | Fix the cause and deploy again. `dockflow status` and `dockflow diagnose` show the state. |
-| `run.cancelled` | 130 | The run was cancelled (Ctrl+C or `dockflow cancel`) and rolled back. | Nothing: the previous release is running. |
-| `init.exists` | 2 | `dockflow init` would replace a file that exists. | Run it with `--force`, or move the file. |
-| `run.declined` | 130 | You answered no at the confirmation prompt. | Nothing was changed. |
-| `run.detached` | 130 | A second Ctrl+C detached the CLI while the agent rolls back on the server. | Follow it with `dockflow attach <env> <run>`. |
-| `check.failed` | 9 | `dockflow server check` found a failure on the server. | Each failed check says what to do. |
-| `agent.died` | 1 | The agent stopped before finishing. | The next run finds the unfinished release and restores the environment. |
+| `run.failed` | the run's | The agent's run failed without an error of its own; `run.finished` and the exit code say how it ended. | Read the events above `run.finished`. |
 
 <Aside type="caution">
 Exit code 8 means the deploy failed but your users still see the previous release. Exit code 9 means they may not: the environment is left as the failed run put it. Treat 9 as the one that pages someone.
 </Aside>
 
+### Cancelling
+
+Exit code 130 covers three cases, told apart by the error code.
+
+| Code | Exit | What it means | What to do |
+|---|---|---|---|
+| `run.cancelled` | 130 | The run was cancelled (Ctrl+C or `dockflow cancel`) and rolled back. | Nothing: the previous release is running. |
+| `run.declined` | 130 | You answered no at the confirmation prompt. | Nothing was changed. |
+| `run.detached` | 130 | A second Ctrl+C detached the CLI while the agent rolls back on the server. | Follow it with `dockflow attach <env> <run>`. |
+
+### Checks
+
+| Code | Exit | What it means | What to do |
+|---|---|---|---|
+| `check.failed` | 9 | `dockflow server check` found a failure on the server. | Each failed check says what to do. |
+| `diagnose.findings` | 9 | `dockflow diagnose` found problems; the message says how many. | Each finding is listed above it. |
+
 ### Backups
 
-| Code | Exit | Meaning | What to do |
+| Code | Exit | What it means | What to do |
 |---|---|---|---|
 | `backup.none` | 2 | The service named does not exist in the current release, or declares no backup. | Set `x-dockflow.backup` on it, and deploy. |
 | `backup.failed` | 12 | The backup of a service failed; its reason is in a warning above. A failed dump keeps no snapshot. | Read the dump's error. |
@@ -160,12 +196,39 @@ Exit code 8 means the deploy failed but your users still see the previous releas
 | `backup.restore_failed` | 12 | The restore failed; the message gives the restore command's error. A Postgres restore is one transaction: nothing of it stays. | Read the error, fix the target, and restore again. |
 | `backup.retention` | 12 | `backup prune` could not apply a retention. | Read restic's error in the message. |
 | `backup.check` | 12 | The repository failed `restic check`. | Run `restic check` on the repository to see its errors. |
+
+### Server state
+
+Nothing was changed.
+
+| Code | Exit | What it means | What to do |
+|---|---|---|---|
 | `state.newer` | 13 | A newer Dockflow changed this environment (or this server) and recorded fields this version does not know. It can read the state, not change it. | Upgrade Dockflow to the version the server was last changed with, in CI too. |
 | `state.schema` | 13 | The server's state is in another format version, written by another major release of Dockflow. | Use the Dockflow that wrote it, or a later one of the same major. |
 
+### Unexpected errors
+
+These exit with code 1. Most come from the server's Docker or files, not from your project; when the cause is not clear from the message, report it.
+
+| Code | Exit | What it means | What to do |
+|---|---|---|---|
+| `internal` | 1 | An error Dockflow did not expect. | Report it, with the output of the command run with `-v`. |
+| `agent.died` | 1 | The agent stopped before finishing. | The next run finds the unfinished release and restores the environment. |
+| `agent.protocol` | 1 | The agent's last event cannot be read. | Report it. Check that the agent's output is not cut off on the server (disk full, killed container). |
+| `engine.api` | 1 | The server's Docker refused a request; the message says which, with Docker's error. | Read Docker's error. Check the server's disk and the Docker daemon. |
+| `state.io`, `state.corrupt` | 1 | A file under `/var/lib/dockflow` cannot be read or written, or is not a valid state file. | Check the server's disk. A corrupt file is named in the message. |
+| `state.missing_release` | 1 | The environment's current release record is missing from the server. | Deploy again to write a new release. |
+| `switch.unreachable` | 1 | The switch's admin API does not answer. | Check the `dockflow-switch` container on the server, or run `dockflow server init` again. |
+| `switch.config_refused` | 1 | The switch refused the configuration Dockflow sent it. | Report it, with the message. |
+| `server.start_failed` | 1 | The switch, the registry or the watchdog cannot start. | The hint says what to check, usually a port already in use. |
+| `filter.no_iptables`, `filter.failed` | 1 | The port filter cannot be applied: `iptables` or `ip6tables` is missing on the server, or refused the rules. | Install iptables on the server, or run `dockflow server init --no-port-filter`. |
+| `prune.registry` | 1 | The server-local registry's garbage collection failed. | Read the registry's error in the message. |
+
+Two codes never reach you as errors: `run.abandoned` is recorded in the `error` of a release whose agent died, and shown by `dockflow releases`; `command.exit` carries the exit code of the command `exec`, `run` or `ssh` ran.
+
 ## Warning codes
 
-Warnings never change the exit code. They appear as [`warning` events](/reference/events/#warning) with a `code`:
+Warnings never change the exit code. New codes may appear in a minor release. They appear as [`warning` events](/reference/events/#warning) with a `code`:
 
 | Code | Meaning |
 |---|---|
@@ -181,3 +244,10 @@ Warnings never change the exit code. They appear as [`warning` events](/referenc
 | `agent.signal_failed` | The CLI could not forward Ctrl+C to the agent |
 | `upgrade.pull` | `server upgrade` could not pull an image; the server keeps the one it has |
 | `uninstall.network`, `uninstall.volume`, `uninstall.filter` | `server uninstall` could not remove a network, a volume or the port filter's rules; the message says which |
+| `backup.failed`, `backup.retention` | In `backup run`, the backup or the retention of one service failed (level `error`); the others go on, and the command exits 12 |
+| `secret.copy` | The copy of a secret kept on the server for rollbacks could not be written: a rollback after a reboot will need the value again |
+| `filter.failed` | The port filter could not be applied after the run; the message says why |
+| `cloudflare.ranges` | Cloudflare's IP ranges could not be downloaded; the previous ones, or this version's own list, are used |
+| `plan.no_limits` | The server runs other app environments, and services of this one set no `deploy.resources.limits` |
+| `notify.detached` | `deploy --detach` sends no webhook: the CLI sends them when the run ends |
+| `watchdog.failed` | The watchdog could not check or restart a container; in the watchdog's own output |
