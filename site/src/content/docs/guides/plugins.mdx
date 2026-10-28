@@ -39,7 +39,7 @@ plugins:
 
 1. It renders a vhost for the domains, proxying to the switch at `127.0.0.1:8080`, with the `Host`, `X-Forwarded-For` and `X-Forwarded-Proto` headers and WebSockets.
 2. It uploads it to `/etc/nginx/sites-enabled/<app>-<env>.conf`.
-3. After the deploy, when the vhost changed, it runs `sudo nginx -t && sudo systemctl reload nginx`. A vhost that `nginx -t` refuses rolls the deploy back, which puts the previous vhost back; nginx, never reloaded, kept serving the previous configuration. A deploy that leaves the vhost unchanged does not touch nginx.
+3. After the deploy, when the vhost changed, it runs `sudo nginx -t`, then reloads nginx with `sudo systemctl reload nginx`, or `sudo nginx -s reload` where the first is not allowed. A vhost that `nginx -t` refuses rolls the deploy back, which puts the previous vhost back; nginx, never reloaded, kept serving the previous configuration. A deploy that leaves the vhost unchanged does not touch nginx.
 
 </Steps>
 
@@ -57,11 +57,13 @@ plugins:
 | `name` | `<app>-<env>.conf`, with `-<id>` for an id other than `nginx` | The vhost's file name. |
 | `template` | none | The project's own vhost, a Jinja template that sees these inputs, instead of the plugin's. |
 
-The hook runs as the SSH user of the environment, without a terminal, so `sudo` must not ask a password for these two commands. `server init --nginx` installs nginx and this rule. On a server prepared otherwise, add it with `sudo visudo -f /etc/sudoers.d/dockflow-nginx`, with your SSH user and the paths `command -v nginx systemctl` prints:
+The hook runs as the SSH user of the environment, without a terminal, so `sudo` must not ask a password for `nginx -t` and one of the two reloads. `server init --nginx` installs nginx and this rule. On a server prepared otherwise, add it with `sudo visudo -f /etc/sudoers.d/dockflow-nginx`, with your SSH user and the paths `command -v nginx systemctl` prints:
 
 ```text
 dockflow ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx
 ```
+
+`dockflow ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/sbin/nginx -s reload` works too.
 
 To get the certificate first, without letting certbot edit the vhost: `sudo certbot certonly --nginx -d shop.example.com -d www.shop.example.com`.
 

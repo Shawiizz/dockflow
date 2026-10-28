@@ -45,6 +45,7 @@ uploads:
 hooks:
   after_deploy:
     - name: check and reload nginx
-      host: sudo nginx -t && sudo systemctl reload nginx
+      # systemctl, as server init --nginx allows, else nginx's own signal, as some servers allow instead
+      host: sudo -n nginx -t && { sudo -n systemctl reload nginx 2>/dev/null || sudo -n nginx -s reload; }
       fatal: true
       if_changed: "{{ dir }}/{% if name %}{{ name }}{% elif id == 'nginx' %}{{ DOCKFLOW_STACK }}.conf{% else %}{{ DOCKFLOW_STACK }}-{{ id }}.conf{% endif %}"

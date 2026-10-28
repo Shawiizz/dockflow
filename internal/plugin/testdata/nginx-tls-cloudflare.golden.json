@@ -15,7 +15,7 @@
       "phase": "after_deploy",
       "name": "api: check and reload nginx",
       "kind": "host",
-      "command": "sudo nginx -t \u0026\u0026 sudo systemctl reload nginx",
+      "command": "sudo -n nginx -t \u0026\u0026 { sudo -n systemctl reload nginx 2\u003e/dev/null || sudo -n nginx -s reload; }",
       "timeout": "5m0s",
       "fatal": true,
       "plugin": "api",

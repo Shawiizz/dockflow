@@ -11,11 +11,11 @@ import (
 )
 
 // hostTools stands in for the server's sudo, nginx and systemctl: nginx -t is a real nginx's,
-// in a container, on the server's vhosts; systemctl logs its arguments.
+// in a container, on the server's vhosts; systemctl and nginx -s log their reloads.
 func hostTools() string {
 	return `mkdir -p /etc/nginx/sites-enabled
-printf '#!/bin/sh\nexec "$@"\n' > /usr/local/bin/sudo
-printf '#!/bin/sh\n[ "$1" = -t ] || exit 1\nexec docker run --rm -v /etc/nginx/sites-enabled:/etc/nginx/conf.d:ro --entrypoint nginx ` + nginxImage + ` -t\n' > /usr/local/bin/nginx
+printf '#!/bin/sh\n[ "$1" = -n ] && shift\nexec "$@"\n' > /usr/local/bin/sudo
+printf '#!/bin/sh\nif [ "$1" = -s ]; then echo "nginx -s $2" >> /tmp/systemctl.log; exit 0; fi\n[ "$1" = -t ] || exit 1\nexec docker run --rm -v /etc/nginx/sites-enabled:/etc/nginx/conf.d:ro --entrypoint nginx ` + nginxImage + ` -t\n' > /usr/local/bin/nginx
 printf '#!/bin/sh\necho "$@" >> /tmp/systemctl.log\n' > /usr/local/bin/systemctl
 chmod +x /usr/local/bin/sudo /usr/local/bin/nginx /usr/local/bin/systemctl
 rm -f /tmp/systemctl.log`
@@ -109,6 +109,14 @@ func TestPlugins(t *testing.T) {
 		t.Fatalf("an unchanged upload's hook does not run: %q", got)
 	}
 
+	// a server that allows nginx -s reload but not systemctl: nginx is reloaded with its signal
+	inServer(`printf '#!/bin/sh\nexit 1\n' > /usr/local/bin/systemctl; rm -f /tmp/systemctl.log`)
+	pluginsProject(t, dir, app, "shop.test, www.shop.test", "hello")
+	mustSucceed(t, dockflow(t, dir, "deploy", "--version", "signal"), "deploy without systemctl")
+	if got, _ := inServer("cat /tmp/systemctl.log"); got != "nginx -s reload" {
+		t.Fatalf("nginx is reloaded with its signal: %q", got)
+	}
+
 	// a vhost nginx -t refuses rolls the deploy back, and the rollback restores the vhost
 	pluginsProject(t, dir, app, "shop.test, broken;test", "hello")
 	r = dockflow(t, dir, "deploy", "--version", "broken")
@@ -118,7 +126,7 @@ func TestPlugins(t *testing.T) {
 	if !strings.Contains(r.out, "unknown directive") {
 		t.Fatalf("the hook's output shows nginx's error:\n%s", r.out)
 	}
-	if got, _ := inServer("cat " + vhost); strings.Contains(got, "broken") || !strings.Contains(got, "server_name shop.test;") {
+	if got, _ := inServer("cat " + vhost); strings.Contains(got, "broken") || !strings.Contains(got, "server_name shop.test www.shop.test;") {
 		t.Fatalf("the rollback restores the vhost:\n%s", got)
 	}
 
