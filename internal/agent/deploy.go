@@ -631,7 +631,7 @@ func (r *runner) startNew(ctx context.Context, s *domain.Service, seq int, st *s
 		st.newNames = append(st.newNames, name)
 		r.containerState(s.Name, name, seq, "created", nil)
 		if err := r.Engine.Start(ctx, id); err != nil {
-			if strings.Contains(err.Error(), "address already in use") || strings.Contains(err.Error(), "port is already allocated") {
+			if errs.CodeOf(err) == engine.CodePortInUse {
 				r.ev.Errorf(events.ServiceFailed, s.Name+": a published port is in use", map[string]any{"service": s.Name, "reason": "port_in_use"})
 			}
 			return err

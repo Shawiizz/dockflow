@@ -35,6 +35,10 @@ type Container struct {
 	IPs map[string]string
 }
 
+// CodePortInUse is the error code of Start when a host port the container publishes is already
+// in use.
+const CodePortInUse = "engine.port_in_use"
+
 // Filter selects containers by label; an empty value matches any value of the label.
 type Filter struct {
 	Labels map[string]string

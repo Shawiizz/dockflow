@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/engine"
+	"github.com/Shawiizz/dockflow/internal/errs"
 )
 
 // Contract tests: they run against the Docker Engine of DOCKER_HOST, and are skipped without one.
@@ -161,6 +163,36 @@ func TestWaitHealthyFailures(t *testing.T) {
 	e.Start(ctx, id)
 	if err := e.WaitHealthy(ctx, id, time.Hour, 60*time.Second); err != nil {
 		t.Fatalf("healthy must return before the grace: %v", err)
+	}
+}
+
+// A container that cannot start because its host port is in use fails with its own code.
+func TestPortInUse(t *testing.T) {
+	e := newEngine(t)
+	ctx := context.Background()
+	p := project(t)
+	cleanup(t, e, p)
+	img, err := e.ResolveImage(ctx, testImage, "missing", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := strconv.Itoa(40000 + int(time.Now().UnixNano()%20000))
+	spec := domain.ContainerSpec{Image: img, Command: []string{"sleep", "300"}, Restart: "no",
+		Ports: []domain.Port{{HostIP: "127.0.0.1", HostPort: port, ContainerPort: 80, Protocol: "tcp"}}}
+	labels := map[string]string{domain.LabelProject: p}
+	first, err := e.Create(ctx, p+"-first", spec, labels)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Start(ctx, first); err != nil {
+		t.Skipf("port %s is not free on the Docker host: %v", port, err)
+	}
+	second, err := e.Create(ctx, p+"-second", spec, labels)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Start(ctx, second); errs.CodeOf(err) != engine.CodePortInUse {
+		t.Fatalf("want %s, got %v", engine.CodePortInUse, err)
 	}
 }
 

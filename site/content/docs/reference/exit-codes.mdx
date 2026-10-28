@@ -156,6 +156,7 @@ Nothing was changed on the server.
 | `job.failed`, `job.timeout` | 8 | A job exited with a non-zero code, or did not finish within the deploy timeout. | Its output is in the stream above. If the job needs longer, raise `environments.<env>.deploy.timeout`. |
 | `hook.failed` | 11 or 8 | A fatal hook failed: before anything changed (11), or an `after_deploy` hook once the release went live (8, and the previous release is restored). A non-fatal hook only prints a warning. | Its output is in the stream above. |
 | `upload.failed` | 8 | An upload could not be written on the server. | Check the destination path and its permissions. |
+| `engine.port_in_use` | 8 or 1 | A container cannot start because a host port it publishes is in use, by another container or a process of the server. In a deploy, the previous release was restored (8). | Free the port on the server, or publish another one. |
 | `rollback.failed` | 9 | The run failed, and restoring the previous release failed too. The environment is degraded. | Fix the cause and deploy again. `dockflow status` and `dockflow diagnose` show the state. |
 | `run.failed` | the run's | The agent's run failed without an error of its own; `run.finished` and the exit code say how it ended. | Read the events above `run.finished`. |
 

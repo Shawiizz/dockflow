@@ -195,6 +195,11 @@ func (e *Engine) Create(ctx context.Context, name string, spec domain.ContainerS
 
 func (e *Engine) Start(ctx context.Context, id string) error {
 	if _, err := e.c.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
+		// the Engine API tells a port in use by its message only
+		if msg := err.Error(); strings.Contains(msg, "address already in use") || strings.Contains(msg, "port is already allocated") {
+			return errs.New(engine.CodePortInUse, errs.ExitInternal, "a port that container "+id+" publishes is already in use").WithCause(err).
+				WithHint("free the port on the server, or publish another one")
+		}
 		return apiErr("start container "+id, err)
 	}
 	return nil
