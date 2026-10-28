@@ -27,7 +27,9 @@ func TestBackupDumpTypes(t *testing.T) {
     x-dockflow: { stateful: true, health: { grace: 1s }, backup: { type: redis } }
   mongo:
     image: %s
-    environment: { MONGO_INITDB_ROOT_USERNAME: root, MONGO_INITDB_ROOT_PASSWORD: pw }
+    # GLIBC_TUNABLES: MongoDB 8 refuses to start on Linux 6.19 and newer, as on some CI runners, unless glibc
+    # owns rseq (SERVER-121912)
+    environment: { MONGO_INITDB_ROOT_USERNAME: root, MONGO_INITDB_ROOT_PASSWORD: pw, GLIBC_TUNABLES: glibc.pthread.rseq=1 }
     volumes: [mongo:/data/db]
     healthcheck: { test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"], interval: 2s, retries: 60 }
     x-dockflow: { stateful: true, backup: { type: mongo } }
