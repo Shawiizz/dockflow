@@ -56,6 +56,34 @@ jobs:
           DOCKFLOW_E2E_DIND_IMAGE: mirror.gcr.io/library/docker:${{ matrix.docker }}
         run: go test -tags e2e -count=1 -v -timeout 20m ./test/e2e/
 
+  action:
+    name: GitHub Action
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build the CLI
+        run: |
+          go build -o "$RUNNER_TEMP/bin/dockflow" ./cmd/dockflow
+          echo "$RUNNER_TEMP/bin" >>"$GITHUB_PATH"
+          mkdir -p "$RUNNER_TEMP/shop"
+          printf 'version: 1\napp: shop\nenvironments:\n  production: {}\n' >"$RUNNER_TEMP/shop/dockflow.yml"
+          printf 'services:\n  web:\n    image: nginx:1.27\n' >"$RUNNER_TEMP/shop/compose.yml"
+      - name: the action runs a command
+        uses: ./
+        with:
+          version: none
+          command: validate production
+          working-directory: ${{ runner.temp }}/shop
+      - name: the action installs a release
+        uses: ./
+        with:
+          version: v4.0.0-alpha.9
+          command: version
+          working-directory: ${{ runner.temp }}/shop
+
   site:
     name: docs site
     runs-on: ubuntu-latest

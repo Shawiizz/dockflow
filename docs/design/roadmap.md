@@ -97,7 +97,7 @@ Exit criteria:
 ## M5: Interfaces
 
 - `dockflow mcp`, with gated write tools (done).
-- The GitHub Action: plan comment on pull requests, apply of the reviewed plan.
+- The GitHub Action: plan comment on pull requests, deploy otherwise (done). The merged code is planned again at deploy time: the reviewed plan's commit is gone after a merge.
 
 The local web UI and preview environments per pull request are deferred after v1.0 by decision of the project owner (2026-10-28): none of the eight projects that shaped v2 needs them, and the web UI alone is a frontend stack to build and maintain.
 

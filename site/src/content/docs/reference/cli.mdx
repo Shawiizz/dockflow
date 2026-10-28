@@ -134,6 +134,7 @@ Print what a deploy would change, without changing any container. The plan is co
 
 | Option | Default | Description |
 |---|---|---|
+| `--markdown string` | none | Also write the plan to this file as Markdown, for a pull request's comment. |
 | `--no-build` | `false` | Plan without building: built services show as changed. |
 | `--only strings` | all | Plan these services only, as `deploy --only` would deploy them. |
 | `--out string` | none | Also write the plan to this file, for `dockflow deploy --plan`. Not with `--no-build`. |

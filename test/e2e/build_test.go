@@ -163,9 +163,14 @@ func TestSavedPlanDetachAndBranch(t *testing.T) {
 	}
 	commit("planned")
 	planFile := filepath.Join(dir, "plan.json")
-	mustSucceed(t, dockflow(t, dir, "plan", "--out", planFile), "plan --out")
+	mdFile := filepath.Join(dir, "plan.md")
+	mustSucceed(t, dockflow(t, dir, "plan", "--out", planFile, "--markdown", mdFile), "plan --out")
 	if fi, err := os.Stat(planFile); err != nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("the plan must be written for its owner only: %v %v", fi, err)
+	}
+	// the pull request's comment
+	if md, _ := os.ReadFile(mdFile); !strings.Contains(string(md), "| + | service.create | `web` |") {
+		t.Fatalf("plan --markdown:\n%s", md)
 	}
 
 	applied := dockflow(t, dir, "deploy", "--plan", planFile)

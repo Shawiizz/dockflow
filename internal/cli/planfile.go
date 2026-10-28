@@ -2,8 +2,10 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
@@ -57,6 +59,47 @@ func (s *session) savePlan(path string, p *domain.Plan, only []string) error {
 		return errs.Usage("cannot write the plan to %s: %v", path, err)
 	}
 	return nil
+}
+
+// writeMarkdown writes the plan of s to path as Markdown, for a pull request's comment.
+func (s *session) writeMarkdown(path string, p *domain.Plan) error {
+	l := s.loaded
+	md := planMarkdown(l.Config.App, l.Config.Env, s.target.Server.Name, l.Version, p, l.Warnings)
+	if err := os.WriteFile(path, []byte(s.app.mask(md)), 0o600); err != nil {
+		return errs.Usage("cannot write the plan to %s: %v", path, err)
+	}
+	return nil
+}
+
+// planMarkdown is a plan as Markdown: a table of its actions.
+func planMarkdown(app, env, server, version string, p *domain.Plan, warnings []string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "### Dockflow plan: %s to %s\n\n", app, env)
+	fmt.Fprintf(&b, "Version `%s`, server `%s`.\n\n", version, server)
+	if p == nil || p.Empty() {
+		b.WriteString("Nothing to change.\n")
+	} else {
+		cell := strings.NewReplacer("|", `\|`, "\n", " ")
+		b.WriteString("| | Change | Target | Strategy | Why |\n|---|---|---|---|---|\n")
+		for _, a := range p.Actions {
+			sym := map[string]string{domain.ActionCreateService: "+", domain.ActionUpdateService: "~", domain.ActionRemoveService: "-"}[a.Kind]
+			fmt.Fprintf(&b, "| %s | %s | `%s` | %s | %s |\n", sym, a.Kind, cell.Replace(a.Target), a.Strategy, cell.Replace(a.Reason))
+		}
+		fmt.Fprintf(&b, "\n%d to create, %d to update, %d to remove.\n", p.Summary.Create, p.Summary.Update, p.Summary.Remove)
+		if len(p.Unchanged) > 0 {
+			fmt.Fprintf(&b, "Unchanged: %s.\n", strings.Join(p.Unchanged, ", "))
+		}
+	}
+	if p != nil {
+		warnings = append(slices.Clone(warnings), p.Warnings...)
+	}
+	if len(warnings) > 0 {
+		b.WriteString("\n**Warnings**\n\n")
+		for _, w := range warnings {
+			fmt.Fprintf(&b, "- %s\n", w)
+		}
+	}
+	return b.String()
 }
 
 // readPlan reads a saved plan.

@@ -352,6 +352,61 @@ Bitbucket's Docker service does not run privileged containers. When the default 
 </TabItem>
 </Tabs>
 
+## The GitHub Action
+
+On GitHub, the `Shawiizz/dockflow` action installs the CLI and runs it. On a pull request, it posts the plan of the change as a comment, so a reviewer sees what merging would change on the server; the comment is updated on each push. Elsewhere, it deploys.
+
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy
+
+on:
+  pull_request:
+  push:
+    tags: ["*"]
+
+permissions:
+  contents: read
+  pull-requests: write # the plan's comment
+
+jobs:
+  dockflow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Shawiizz/dockflow@v4.0.0-alpha.9
+        with:
+          env: production # the environment a pull request's plan is for
+          command: ${{ github.event_name == 'push' && 'deploy --wait-lock 10m' || '' }}
+        env:
+          DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
+```
+
+The comment looks like this:
+
+> ### Dockflow plan: shop to production
+>
+> Version `4f2c1a9`, server `main`.
+>
+> | | Change | Target | Strategy | Why |
+> |---|---|---|---|---|
+> | ~ | service.update | `web` | start-first | image changed |
+> |  | upload.apply | `/etc/nginx/sites-enabled/shop.conf` |  | changed |
+
+| Input | Default | Description |
+|---|---|---|
+| `command` | `plan` on a pull request, `deploy` otherwise | The command and its arguments, as `deploy staging` or `backup run`. |
+| `env` | none | The environment a pull request's plan is for. Needed when `dockflow.yml` has several. |
+| `comment` | `true` | On a pull request, post the plan as a comment. It is also written to the job's summary. |
+| `build` | `false` | On a pull request, build the images, so the plan says exactly which services change. Off, the pull request's code is not built, and built services show as changed. |
+| `version` | the action's ref when it is a version, else the newest release | The Dockflow version to install; `none` uses the `dockflow` on the `PATH`. |
+| `working-directory` | `.` | The project's directory. |
+| `github-token` | `github.token` | The token that posts the comment. It needs `pull-requests: write`. |
+
+The plan needs the connection secret, to read the server's state. GitHub gives no secrets to pull requests from forks: their plan fails, and the comment says so. A failed plan fails the job.
+
+The plan is computed again at deploy time: after a merge, the commit, and maybe the server, changed since the review, so the action deploys the merged code rather than the reviewed plan. To apply exactly a reviewed plan, use `dockflow plan --out` and `dockflow deploy --plan` in one workflow.
+
 ## Deploying from a branch
 
 Tags are not required. To deploy every push to `main` to staging, name the environment:

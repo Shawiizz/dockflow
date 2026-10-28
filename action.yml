@@ -1,0 +1,123 @@
+# The Dockflow GitHub Action (ADR-0016): installs the CLI, then on a pull request comments the
+# plan of the change, and otherwise runs a command, deploy by default.
+name: Dockflow
+description: Deploy Docker Compose apps to your own servers, and comment the plan on pull requests
+author: Shawiizz
+branding:
+  icon: upload-cloud
+  color: blue
+
+inputs:
+  command:
+    description: >-
+      The dockflow command and its arguments, as `deploy`, `deploy staging --skip-build` or
+      `backup run`. Default: `plan` on a pull request, `deploy` otherwise.
+    required: false
+  env:
+    description: The environment a pull request's plan is for. Needed when dockflow.yml has several.
+    required: false
+  comment:
+    description: On a pull request, post the plan as a comment, updated on each push.
+    default: "true"
+  build:
+    description: >-
+      On a pull request, build the images to plan them exactly. Off by default: the pull request's
+      code is not built, and built services show as changed.
+    default: "false"
+  version:
+    description: >-
+      The Dockflow version to install. Default: the version of the action's ref when it is one
+      (Shawiizz/dockflow@v4.0.0), else the newest release. `none` installs nothing.
+    required: false
+  working-directory:
+    description: The project's directory.
+    default: "."
+  github-token:
+    description: "The token that posts the comment. It needs `pull-requests: write`."
+    default: ${{ github.token }}
+
+outputs:
+  plan:
+    description: On a pull request, the path of the plan as Markdown.
+    value: ${{ steps.plan.outputs.plan }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Dockflow
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        REF: ${{ github.action_ref }}
+      run: |
+        if [ "$VERSION" = none ]; then exit 0; fi
+        if [ -z "$VERSION" ]; then
+          case "$REF" in v[0-9]*) VERSION=$REF ;; esac
+        fi
+        dir="$RUNNER_TEMP/dockflow-bin"
+        sh "$GITHUB_ACTION_PATH/install.sh" ${VERSION:+--version "$VERSION"} --dir "$dir"
+        echo "$dir" >>"$GITHUB_PATH"
+
+    - name: Plan
+      id: plan
+      if: inputs.command == '' && github.event_name == 'pull_request'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ENV_NAME: ${{ inputs.env }}
+        BUILD: ${{ inputs.build }}
+      run: |
+        md="$RUNNER_TEMP/dockflow-plan.md"
+        echo "plan=$md" >>"$GITHUB_OUTPUT"
+        args=(plan)
+        if [ -n "$ENV_NAME" ]; then args+=("$ENV_NAME"); fi
+        if [ "$BUILD" != true ]; then args+=(--no-build); fi
+        rm -f "$md"
+        status=0
+        dockflow "${args[@]}" --markdown "$md" || status=$?
+        if [ ! -s "$md" ]; then
+          printf '### Dockflow plan%s\n\nThe plan failed (exit code %s): see [the run](%s).\n' \
+            "${ENV_NAME:+: $ENV_NAME}" "$status" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >"$md"
+        fi
+        cat "$md" >>"$GITHUB_STEP_SUMMARY"
+        echo "status=$status" >>"$GITHUB_OUTPUT"
+
+    - name: Comment the plan
+      if: steps.plan.outcome == 'success' && inputs.comment == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR: ${{ github.event.pull_request.number }}
+        ENV_NAME: ${{ inputs.env }}
+        MD: ${{ steps.plan.outputs.plan }}
+      run: |
+        # one comment per environment, found by its marker and updated on each push
+        marker="<!-- dockflow-plan ${ENV_NAME:-default} -->"
+        body="$RUNNER_TEMP/dockflow-comment.md"
+        { echo "$marker"; cat "$MD"; } >"$body"
+        id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+          --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | tail -n 1)
+        if [ -n "$id" ]; then
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F "body=@$body" >/dev/null
+        else
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F "body=@$body" >/dev/null
+        fi
+
+    - name: Fail on a failed plan
+      if: steps.plan.outputs.status != '' && steps.plan.outputs.status != '0'
+      shell: bash
+      env:
+        STATUS: ${{ steps.plan.outputs.status }}
+      run: exit "$STATUS"
+
+    - name: Run
+      if: inputs.command != '' || github.event_name != 'pull_request'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        COMMAND: ${{ inputs.command }}
+      run: |
+        # the command's words, split as a shell would without expanding anything
+        read -r -a args <<<"${COMMAND:-deploy}"
+        dockflow "${args[@]}"

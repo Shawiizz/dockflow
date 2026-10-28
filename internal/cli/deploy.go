@@ -22,7 +22,7 @@ var timeNow = time.Now
 func (a *app) planCmd() *cobra.Command {
 	var render, noBuild bool
 	var only []string
-	var out string
+	var out, markdown string
 	cmd := &cobra.Command{
 		Use:   "plan [<env>]",
 		Short: "Print what a deploy would change",
@@ -60,6 +60,11 @@ func (a *app) planCmd() *cobra.Command {
 					return err
 				}
 			}
+			if markdown != "" {
+				if err := s.writeMarkdown(markdown, res.Plan); err != nil {
+					return err
+				}
+			}
 			if render {
 				// the services as they will be sent to the server, before images are pinned
 				b, _ := json.MarshalIndent(s.loaded.App.Services, "", "  ")
@@ -72,6 +77,7 @@ func (a *app) planCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noBuild, "no-build", false, "plan without building: built services show as changed")
 	cmd.Flags().StringSliceVar(&only, "only", nil, "plan these services only: the others stay as the current release has them")
 	cmd.Flags().StringVar(&out, "out", "", "also write the plan to this file, for `dockflow deploy --plan`")
+	cmd.Flags().StringVar(&markdown, "markdown", "", "also write the plan to this file as Markdown, for a pull request's comment")
 	return cmd
 }
 
