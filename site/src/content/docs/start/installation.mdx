@@ -37,6 +37,17 @@ brew install dockflow
 `brew upgrade dockflow` installs the newest release. Homebrew checks each binary against the checksum written in the formula, which the release workflow writes from the release's `SHA256SUMS`.
 
 </TabItem>
+<TabItem label="npm">
+
+On Linux, macOS and Windows, with Node.js 18 or later:
+
+```sh
+npm install -g @dockflow-tools/cli
+```
+
+The package runs the binary of your platform, installed as an optional dependency (`@dockflow-tools/cli-<os>-<arch>`): no script runs at install time and nothing else is downloaded. Installing with `--omit=optional` leaves the binary out. In a project, `npm install --save-dev @dockflow-tools/cli` pins the version in `package.json`, and `npx dockflow` runs it.
+
+</TabItem>
 <TabItem label="Windows">
 
 In PowerShell:
