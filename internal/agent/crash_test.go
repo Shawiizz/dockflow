@@ -53,6 +53,10 @@ type proc struct {
 	dead  bool
 	died  chan struct{}
 	trail []string
+	// streams are the stdins of the containers and commands it attached to, which Docker closes
+	// when it dies; bg are what those run on their own.
+	streams []io.Closer
+	bg      sync.WaitGroup
 }
 
 func newProc(at int, how string) *proc { return &proc{at: at, how: how, died: make(chan struct{})} }
@@ -102,6 +106,8 @@ type world struct {
 	networks   map[string]string
 	volumes    map[string]bool
 	served     proxy.Config
+	// bk is what backups see of the server; nil in the tests of deploys.
+	bk *backupWorld
 }
 
 func (w *world) find(ref string) *engine.Container {
@@ -205,6 +211,7 @@ func (e *fakeEngine) Create(_ context.Context, name string, spec domain.Containe
 			return errs.New("engine.api", errs.ExitInternal, "Conflict. The container name "+name+" is already in use")
 		}
 		id = e.w.add(name, labels, spec, "created")
+		e.createdLocked(id, spec)
 		return nil
 	})
 	if err != nil {
@@ -237,6 +244,7 @@ func (e *fakeEngine) Start(_ context.Context, id string) error {
 			}
 		}
 		c.State = "running"
+		e.startedLocked(c)
 		return nil
 	})
 }
@@ -246,6 +254,7 @@ func (e *fakeEngine) Stop(_ context.Context, id string, _ *time.Duration) error 
 		e.w.mu.Lock()
 		defer e.w.mu.Unlock()
 		if c := e.w.find(id); c != nil {
+			e.stoppedLocked(c)
 			c.State = "exited"
 		}
 		return nil
@@ -259,6 +268,7 @@ func (e *fakeEngine) Remove(_ context.Context, id string) error {
 		e.w.mu.Lock()
 		defer e.w.mu.Unlock()
 		if c := e.w.find(id); c != nil {
+			e.removedLocked(c)
 			delete(e.w.containers, c.ID)
 		}
 		return nil
@@ -293,6 +303,9 @@ func (e *fakeEngine) WaitHealthy(_ context.Context, id string, _, _ time.Duratio
 
 func (e *fakeEngine) Wait(_ context.Context, id string) (int, error) {
 	e.p.look()
+	if h := e.helperOf(id); h != nil {
+		return h.wait(), nil
+	}
 	e.w.mu.Lock()
 	defer e.w.mu.Unlock()
 	if c := e.w.find(id); c != nil {
@@ -479,8 +492,10 @@ func (h *harness) do(req Request, at int, how string) (*events.RunFinishedData, 
 		h.w.agent(run, "exited")
 		return &res, p
 	case <-p.died:
-		// the kernel ends the process: its container stops, and its locks are released
+		// the kernel ends the process: its container stops, its connections close, and its
+		// locks are released
 		h.w.agent(run, "exited")
+		p.settle(h.t)
 		releaseLocks(h.t, h.root)
 		return nil, p
 	}
