@@ -1,5 +1,5 @@
 # The documentation site: built with Next.js and Fumadocs as a static export, served as plain files by Caddy.
-FROM oven/bun:1.4.2-alpine AS build
+FROM oven/bun:1.4.4-alpine AS build
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /site
 COPY package.json bun.lock ./
