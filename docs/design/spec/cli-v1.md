@@ -55,7 +55,7 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 | `dockflow logs [<env>] [<service>] [-f] [-n <lines>\|all] [--since <time>] [--timestamps] [--all] [--pick] [--no-prefix]` | Service logs; `--all` includes the previous release's and stopped containers |
 | `dockflow exec [<env>] <service> [-e K=V]… [-u <user>] [-w <dir>] [--sh] [-T] [--pick] [-- <cmd…>]` | A command in a running container; a shell by default |
 | `dockflow run [<env>] <service> [-e K=V]… -- <cmd…>` | A one-off job with the service's spec (a console, a script) |
-| `dockflow cp [<env>] <src> <dest> [--pick]` | Copies files between the local machine and a container, in either direction (`service:/path`) |
+| `dockflow cp [<env>] <src> <dest> [--pick]` | Copies files between the local machine and a container, in either direction (`service:/path`). From a container, nothing is written outside the local destination: symlinks whose target is absolute or leaves it are skipped with a `cp.symlink_outside` warning, and a file replaces a symlink in its place instead of writing through it |
 | `dockflow ssh [<env>] [-- <command>…]` | A shell, or a command, on the server |
 | `dockflow restart [<env>] [<service>…]` | Restarts services with their rollout strategy, so routed services restart without downtime |
 | `dockflow stop [<env>] [<service>…]` | Scales services to 0; `deploy` or `restart` brings them back |

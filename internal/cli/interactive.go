@@ -18,6 +18,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/engine"
 	"github.com/Shawiizz/dockflow/internal/errs"
+	"github.com/Shawiizz/dockflow/internal/events"
 	"github.com/Shawiizz/dockflow/internal/launcher"
 )
 
@@ -313,7 +314,12 @@ func (a *app) cpCmd() *cobra.Command {
 			if st, err := os.Stat(dest); err == nil && st.IsDir() {
 				target = filepath.Join(dest, path.Base(srcPath))
 			}
-			return untarTo(r, target)
+			skipped, err := untarTo(r, target)
+			for _, s := range skipped {
+				a.emitter.Warn(events.Warning, "not copied: the symlink "+s+" points outside the destination",
+					map[string]any{"code": "cp.symlink_outside", "detail": s})
+			}
+			return err
 		},
 	}
 	cmd.Flags().BoolVar(&pick, "pick", false, "choose the container, when the service has several")
@@ -375,48 +381,90 @@ func tarPath(w io.Writer, src, name string) error {
 	return tw.Close()
 }
 
-// untarTo extracts a tar whose top entry becomes target.
-func untarTo(r io.Reader, target string) error {
+// untarTo extracts a tar, read from a container, whose top entry becomes target. Every write goes
+// through an os.Root at the destination, so neither a path nor a symlink of the archive reaches
+// outside it. A symlink whose target is absolute or leaves the destination is not created: its
+// path is returned among the skipped. A file replaces a symlink in its place, never writes
+// through it.
+func untarTo(r io.Reader, target string) (skipped []string, err error) {
 	tr := tar.NewReader(r)
-	top := ""
+	var root *os.Root
+	defer func() {
+		if root != nil {
+			root.Close()
+		}
+	}()
+	top, base := "", "."
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
-			return nil
+			return skipped, nil
 		}
 		if err != nil {
-			return errs.Internal("read the archive: %v", err)
+			return skipped, errs.Internal("read the archive: %v", err)
 		}
 		name := path.Clean(hdr.Name)
 		if top == "" {
 			top = strings.SplitN(name, "/", 2)[0]
+			// the destination directory is the root; a file or a link lands next to it, by name
+			dir := target
+			if hdr.Typeflag == tar.TypeDir {
+				if err := os.MkdirAll(target, fs.FileMode(hdr.Mode).Perm()|0o700); err != nil {
+					return skipped, err
+				}
+			} else {
+				dir, base = filepath.Dir(target), filepath.Base(target)
+			}
+			if root, err = os.OpenRoot(dir); err != nil {
+				return skipped, err
+			}
 		}
-		rel := strings.TrimPrefix(strings.TrimPrefix(name, top), "/")
-		if strings.HasPrefix(rel, "..") {
-			return errs.Internal("the archive holds a path outside its root: %s", hdr.Name)
+		var rel string
+		switch {
+		case name == top:
+			rel = base
+		case strings.HasPrefix(name, top+"/") && base == ".":
+			rel = name[len(top)+1:]
+		default:
+			return skipped, errs.Internal("the archive holds a path outside its root: %s", hdr.Name)
 		}
-		dst := filepath.Join(target, filepath.FromSlash(rel))
+		if !filepath.IsLocal(filepath.FromSlash(rel)) {
+			return skipped, errs.Internal("the archive holds a path outside its root: %s", hdr.Name)
+		}
+		dst := filepath.FromSlash(rel)
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(dst, fs.FileMode(hdr.Mode).Perm()|0o700); err != nil {
-				return err
+			if rel != "." {
+				if err := root.MkdirAll(dst, fs.FileMode(hdr.Mode).Perm()|0o700); err != nil {
+					return skipped, err
+				}
 			}
 		case tar.TypeSymlink:
-			_ = os.Remove(dst)
-			if err := os.Symlink(hdr.Linkname, dst); err != nil {
-				return err
+			if path.IsAbs(hdr.Linkname) || !filepath.IsLocal(filepath.FromSlash(path.Join(path.Dir(rel), hdr.Linkname))) {
+				skipped = append(skipped, name+" -> "+hdr.Linkname)
+				continue
+			}
+			_ = root.Remove(dst)
+			if err := root.Symlink(hdr.Linkname, dst); err != nil {
+				return skipped, err
 			}
 		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-				return err
+			if err := root.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+				return skipped, err
 			}
-			f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fs.FileMode(hdr.Mode).Perm())
+			// a symlink of the archive in its place is replaced, not written through
+			if st, err := root.Lstat(dst); err == nil && st.Mode()&fs.ModeSymlink != 0 {
+				if err := root.Remove(dst); err != nil {
+					return skipped, err
+				}
+			}
+			f, err := root.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fs.FileMode(hdr.Mode).Perm())
 			if err != nil {
-				return err
+				return skipped, err
 			}
 			if _, err := io.Copy(f, tr); err != nil {
 				f.Close()
-				return err
+				return skipped, err
 			}
 			f.Close()
 		}

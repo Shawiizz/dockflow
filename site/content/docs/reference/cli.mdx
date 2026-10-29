@@ -342,6 +342,8 @@ dockflow cp production web:/app/storage/logs ./logs
 dockflow cp production ./seed.sql postgres:/tmp/
 ```
 
+Copying from a container writes inside the local destination only. Symlinks whose target is absolute or leaves the destination are not created, and are reported as warnings (`cp.symlink_outside`). A file never writes through a symlink in its place: it replaces it.
+
 | Option | Default | Description |
 |---|---|---|
 | `--pick` | `false` | Choose the container, when the service has several. |
