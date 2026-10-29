@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
@@ -171,13 +172,26 @@ func (r *runner) destroy(ctx context.Context) events.RunFinishedData {
 	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
 }
 
-// details returns the current release in full.
+// details returns the current release in full, but for the values of its services' environment:
+// they may be secrets, rotated since, that no masker knows any more, and the agent's output is
+// kept in its container's log. Their names stay, each with the value ***.
 func (r *runner) details() events.RunFinishedData {
 	cur, err := r.currentRelease()
 	if err != nil {
 		return failed(err)
 	}
-	r.result(cur)
+	rel := *cur
+	rel.Desired.Services = slices.Clone(cur.Desired.Services)
+	for i := range rel.Desired.Services {
+		spec := &rel.Desired.Services[i].Spec
+		env := make([]string, len(spec.Env))
+		for j, kv := range spec.Env {
+			k, _, _ := strings.Cut(kv, "=")
+			env[j] = k + "=***"
+		}
+		spec.Env = env
+	}
+	r.result(rel)
 	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
 }
 

@@ -48,7 +48,7 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 |---|---|
 | `dockflow status [<env>]` | Without `<env>`: every environment. With it: current release, services and container counts, degraded flag, lock, watchdog restarts |
 | `dockflow ps [<env>] [-a]` | The app's containers; `-a` includes stopped ones and jobs |
-| `dockflow details [<env>]` | Full view of services: image, ports, networks, mounts, placement, resources |
+| `dockflow details [<env>]` | Full view of services: image, ports, networks, mounts, placement, resources. Environment variables are named, their values never shown (`KEY=***`, with `--json` too): they may hold secrets |
 | `dockflow diagnose [<env>]` | Why containers don't run: exit codes, crash loops, failed health checks with their last output, OOM kills, ports in use, missing containers, disk space. Exits with code 9 when it finds a problem |
 | `dockflow releases [<env>] [-n <count>] [--stats]` | Release history; `--stats` adds durations and success rate |
 | `dockflow version [<env>]` | The deployed version; without `<env>`, the CLI's |

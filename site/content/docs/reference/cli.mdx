@@ -268,7 +268,7 @@ The app's containers: name, service, release, state and health.
 dockflow details [<env>] [flags]
 ```
 
-Every service of the current release: strategy, replicas, image, routes, ports, networks, mounts, resources and restart policy, and the names of its environment variables (never their values).
+Every service of the current release: strategy, replicas, image, routes, ports, networks, mounts, resources and restart policy, and the names of its environment variables (never their values, with `--json` too, where each reads `KEY=***`: they may hold secrets).
 
 No options besides the global ones.
 
