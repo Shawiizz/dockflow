@@ -126,11 +126,9 @@ func (r *runner) repoPassword(key string, create bool) (string, error) {
 		return "", errs.Internal("generate the repository's password: %v", err)
 	}
 	pw := base64.RawURLEncoding.EncodeToString(buf)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return "", errs.Internal("create %s: %v", filepath.Dir(path), err)
-	}
-	if err := os.WriteFile(path, []byte(pw+"\n"), 0o600); err != nil {
-		return "", errs.Internal("store the repository's password: %v", err)
+	// synced before restic init uses it: a repository whose password was lost is unreadable
+	if err := r.Store.WriteFile(path, []byte(pw+"\n")); err != nil {
+		return "", err
 	}
 	r.warn("backup.password_generated", "the backups' password was generated and stored in "+path+
 		", readable by root: keep a copy elsewhere, the backups cannot be read without it")
@@ -734,8 +732,8 @@ func (r *runner) forgetKeep(ctx context.Context, rp *repo, tags string, keep *do
 		return 0, fmt.Errorf("restic forget exited with code %d: %s", res.code, lastLines(res.stderr, 3))
 	}
 	if prune {
-		_ = os.MkdirAll(filepath.Dir(stamp), 0o700)
-		_ = os.WriteFile(stamp, []byte(r.Now().UTC().Format(time.RFC3339)+"\n"), 0o600)
+		// at worst, a stamp not written prunes again at the next backup
+		_ = r.Store.WriteFile(stamp, []byte(r.Now().UTC().Format(time.RFC3339)+"\n"))
 	}
 	// the first line is the JSON of the groups; --prune's report follows
 	removed := 0
