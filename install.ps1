@@ -1,15 +1,17 @@
 # Installs the dockflow CLI on Windows from a GitHub release (ADR-0020). The binary is checked
 # against the release's SHA256SUMS, and SHA256SUMS against its Sigstore signature when cosign is
-# installed.
+# installed. With -RequireSignature, a missing cosign fails the installation instead.
 #
 #   irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1 | iex
 #   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1))) -Version vX.Y.Z -Dir C:\tools
 #
-# DOCKFLOW_VERSION and DOCKFLOW_INSTALL_DIR do the same as the options. DOCKFLOW_RELEASES_URL
-# replaces https://github.com/Shawiizz/dockflow/releases/download (a mirror).
+# DOCKFLOW_VERSION, DOCKFLOW_INSTALL_DIR and DOCKFLOW_REQUIRE_SIGNATURE=1 do the same as the
+# options. DOCKFLOW_RELEASES_URL replaces https://github.com/Shawiizz/dockflow/releases/download
+# (a mirror).
 param(
     [string]$Version = $env:DOCKFLOW_VERSION,
-    [string]$Dir = $env:DOCKFLOW_INSTALL_DIR
+    [string]$Dir = $env:DOCKFLOW_INSTALL_DIR,
+    [switch]$RequireSignature = ($env:DOCKFLOW_REQUIRE_SIGNATURE -eq '1')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,6 +64,8 @@ try {
             (Join-Path $tmp 'SHA256SUMS') *> $null
         if ($LASTEXITCODE) { Fail 'the signature of SHA256SUMS does not verify' }
         Write-Host 'signature verified'
+    } elseif ($RequireSignature) {
+        Fail 'the signature is required and cosign is not installed: install cosign (https://docs.sigstore.dev/cosign/system_config/installation/)'
     } else {
         Write-Host 'cosign is not installed: checking the checksum only'
     }

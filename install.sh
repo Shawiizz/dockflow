@@ -1,23 +1,27 @@
 #!/bin/sh
 # Installs the dockflow CLI from a GitHub release (ADR-0020). The binary is checked against the
 # release's SHA256SUMS, and SHA256SUMS against its Sigstore signature when cosign is installed.
+# With --require-signature, a missing cosign fails the installation instead.
 #
 #   curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh
 #   curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version vX.Y.Z --dir ~/bin
 #
-# DOCKFLOW_VERSION and DOCKFLOW_INSTALL_DIR do the same as the options. DOCKFLOW_RELEASES_URL
-# replaces https://github.com/Shawiizz/dockflow/releases/download (a mirror).
+# DOCKFLOW_VERSION, DOCKFLOW_INSTALL_DIR and DOCKFLOW_REQUIRE_SIGNATURE=1 do the same as the
+# options. DOCKFLOW_RELEASES_URL replaces https://github.com/Shawiizz/dockflow/releases/download
+# (a mirror).
 set -eu
 
 repo=Shawiizz/dockflow
 version="${DOCKFLOW_VERSION:-}"
 dir="${DOCKFLOW_INSTALL_DIR:-}"
+require_signature="${DOCKFLOW_REQUIRE_SIGNATURE:-}"
 releases="${DOCKFLOW_RELEASES_URL:-https://github.com/$repo/releases/download}"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--version) version="$2"; shift 2 ;;
 	--dir) dir="$2"; shift 2 ;;
+	--require-signature) require_signature=1; shift ;;
 	*) echo "install.sh: unknown option $1" >&2; exit 2 ;;
 	esac
 done
@@ -73,6 +77,8 @@ if command -v cosign >/dev/null 2>&1; then
 		--certificate-oidc-issuer https://token.actions.githubusercontent.com \
 		"$tmp/SHA256SUMS" >/dev/null 2>&1 || fail "the signature of SHA256SUMS does not verify"
 	echo "signature verified"
+elif [ "$require_signature" = 1 ]; then
+	fail "the signature is required and cosign is not installed: install cosign (https://docs.sigstore.dev/cosign/system_config/installation/)"
 else
 	echo "cosign is not installed: checking the checksum only"
 fi

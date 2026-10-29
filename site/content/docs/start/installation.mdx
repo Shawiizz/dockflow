@@ -85,7 +85,7 @@ The binary is `./dockflow`. It is a development build: `dockflow version` prints
 `install.sh` detects your system (Linux or macOS, `amd64` or `arm64`), then:
 
 1. downloads `SHA256SUMS` and the binary `dockflow-<os>-<arch>` from the GitHub release;
-2. if [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) is installed, verifies the Sigstore signature of `SHA256SUMS`, which must come from the repository's release workflow. Without cosign, it says so and checks the checksum only;
+2. if [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) is installed, verifies the Sigstore signature of `SHA256SUMS`, which must come from the repository's release workflow. Without cosign, it says so and checks the checksum only, unless the signature is required (`--require-signature`): it then stops;
 3. checks the binary against `SHA256SUMS`, and stops if it does not match;
 4. installs it as `dockflow` in `/usr/local/bin` if that directory is writable, and in `~/.local/bin` otherwise. It tells you if the directory is not on your `PATH`. In GitHub Actions, it adds the directory to `GITHUB_PATH`.
 
@@ -95,6 +95,7 @@ It needs `curl` or `wget`, and `sha256sum` or `shasum`.
 |---|---|---|---|
 | `--version <tag>` (`-Version`) | `DOCKFLOW_VERSION` | The newest release | The release to install, such as `v{{version}}`; the `v` is optional |
 | `--dir <path>` (`-Dir`) | `DOCKFLOW_INSTALL_DIR` | `/usr/local/bin`, or `~/.local/bin` (`%LOCALAPPDATA%\Programs\dockflow` on Windows) | Where to install `dockflow` |
+| `--require-signature` (`-RequireSignature`) | `DOCKFLOW_REQUIRE_SIGNATURE=1` | Off | Stop when cosign is not installed, instead of checking the checksum only. The [GitHub Action](/guides/ci/#the-github-action) installs cosign and sets it |
 | – | `DOCKFLOW_RELEASES_URL` | `https://github.com/Shawiizz/dockflow/releases/download` | Where releases are downloaded from: a mirror holding `<tag>/<file>` |
 
 For example, to install into `~/bin` without root:

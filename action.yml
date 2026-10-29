@@ -27,7 +27,9 @@ inputs:
   version:
     description: >-
       The Dockflow version to install. Default: the version of the action's ref when it is one
-      (Shawiizz/dockflow@v1.0.0), else the newest release. `none` installs nothing.
+      (Shawiizz/dockflow@v1.0.0), else the newest release. The binary is checked against the
+      release's checksums and the checksums against their Sigstore signature, with cosign
+      installed first; the step fails when either does not verify. `none` installs nothing.
     required: false
   working-directory:
     description: The project's directory.
@@ -44,6 +46,13 @@ outputs:
 runs:
   using: composite
   steps:
+    # cosign, for install.sh to verify the release's signature, which it then requires
+    - name: Install cosign
+      if: inputs.version != 'none'
+      uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+      with:
+        cosign-release: v2.6.1
+
     - name: Install Dockflow
       shell: bash
       env:
@@ -55,7 +64,7 @@ runs:
           case "$REF" in v[0-9]*.[0-9]*.[0-9]*) VERSION=$REF ;; esac
         fi
         dir="$RUNNER_TEMP/dockflow-bin"
-        sh "$GITHUB_ACTION_PATH/install.sh" ${VERSION:+--version "$VERSION"} --dir "$dir"
+        sh "$GITHUB_ACTION_PATH/install.sh" ${VERSION:+--version "$VERSION"} --dir "$dir" --require-signature
         echo "$dir" >>"$GITHUB_PATH"
 
     - name: Plan

@@ -147,7 +147,7 @@ It holds:
 
 ## Verified downloads
 
-- **The installer** (`install.sh`) downloads the binary from the GitHub release and checks it against the release's `SHA256SUMS`. When [cosign](https://docs.sigstore.dev/) is installed, it also checks the Sigstore signature of `SHA256SUMS`, bound to this repository's release workflow. Without cosign, it says that it checked the checksum only. Install cosign to get the signature check.
+- **The installer** (`install.sh`) downloads the binary from the GitHub release and checks it against the release's `SHA256SUMS`. When [cosign](https://docs.sigstore.dev/) is installed, it also checks the Sigstore signature of `SHA256SUMS`, bound to this repository's release workflow. Without cosign, it says that it checked the checksum only, or stops with `--require-signature`. Install cosign to get the signature check. The GitHub Action installs cosign and requires the signature.
 - **The other installers.**
   - `install.ps1` checks the binary as `install.sh` does.
   - Homebrew checks it against the checksum in the formula, written by the release workflow from `SHA256SUMS`.

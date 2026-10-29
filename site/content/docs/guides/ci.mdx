@@ -400,9 +400,11 @@ The comment looks like this:
 | `env` | none | The environment a pull request's plan is for. Needed when `dockflow.yml` has several. |
 | `comment` | `true` | On a pull request, post the plan as a comment. It is also written to the job's summary. |
 | `build` | `false` | On a pull request, build the images, so the plan says exactly which services change. Off, the pull request's code is not built, and built services show as changed. |
-| `version` | the action's ref when it is a version, else the newest release | The Dockflow version to install; `none` uses the `dockflow` on the `PATH`. |
+| `version` | the action's ref when it is a version, else the newest release | The Dockflow version to install; `none` installs nothing and uses the `dockflow` on the `PATH`. |
 | `working-directory` | `.` | The project's directory. |
 | `github-token` | `github.token` | The token that posts the comment. It needs `pull-requests: write`. |
+
+The action installs [cosign](https://docs.sigstore.dev/) first, then the CLI with `install.sh --require-signature`: the binary is checked against the release's `SHA256SUMS`, and `SHA256SUMS` against its Sigstore signature from the repository's release workflow. If either does not verify, the step fails and nothing runs. With `version: none`, it installs neither.
 
 The plan needs the connection secret to read the server's state. GitHub gives no secrets to pull requests from forks: their plan fails, and the comment says so. A failed plan fails the job.
 
