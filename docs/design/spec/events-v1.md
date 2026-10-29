@@ -34,7 +34,7 @@ Durations in `data` are integers of milliseconds, named `*_ms`; sizes are intege
 
 ## Secrets
 
-No event carries a secret value. Text fields (`msg`, `line`, `error.message`) are masked by the emitter before they are written: every occurrence of a secret's value becomes `***`.
+No event carries a secret value. Text fields (`msg`, `line`, `error.message`) are masked by the emitter before they are written: every occurrence of a secret's value becomes `***`. Output is reported one line per event, so each line of a multi-line value (a PEM key), trimmed, is masked on its own too when it has at least 8 characters.
 
 ## Compatibility rules
 

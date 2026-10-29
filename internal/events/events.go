@@ -116,6 +116,7 @@ func (e *Emitter) Forward(ev Event) {
 type Masker struct {
 	mu     sync.RWMutex
 	values []string
+	known  map[string]bool
 }
 
 // NewMasker returns a masker for the given values.
@@ -128,24 +129,52 @@ func NewMasker(values ...string) *Masker {
 // minMasked is the shortest value masked: shorter ones would mask ordinary words.
 const minMasked = 4
 
-// Add adds values to mask. Values shorter than 4 characters are ignored.
+// minLine is the shortest line of a multi-line value masked on its own. Output is reported one
+// line per event, so a PEM key printed by a hook never appears whole: each of its lines must be
+// masked by itself. Shorter lines (a closing brace, a blank line) would mask ordinary text.
+const minLine = 8
+
+// Add adds values to mask. Values shorter than 4 characters are ignored. A multi-line value is
+// also masked line by line, each line trimmed of the indentation YAML or a tool may give it,
+// when it has at least 8 characters.
 func (m *Masker) Add(values ...string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.known == nil {
+		m.known = map[string]bool{}
+	}
 	for _, v := range values {
 		if len(v) < minMasked {
 			continue
 		}
-		m.values = append(m.values, v)
-		// the JSON-escaped form too, since events carry data as JSON
-		if b, err := json.Marshal(v); err == nil {
-			if esc := string(b[1 : len(b)-1]); esc != v {
-				m.values = append(m.values, esc)
+		m.add(v)
+		if !strings.ContainsAny(v, "\r\n") {
+			continue
+		}
+		for _, line := range strings.FieldsFunc(v, func(r rune) bool { return r == '\n' || r == '\r' }) {
+			if line = strings.TrimSpace(line); len(line) >= minLine {
+				m.add(line)
 			}
 		}
 	}
 	// longest first, so a value containing another is masked whole
 	sort.Slice(m.values, func(i, j int) bool { return len(m.values[i]) > len(m.values[j]) })
+}
+
+// add records v and its JSON-escaped form, since events carry data as JSON.
+func (m *Masker) add(v string) {
+	forms := []string{v}
+	if b, err := json.Marshal(v); err == nil {
+		if esc := string(b[1 : len(b)-1]); esc != v {
+			forms = append(forms, esc)
+		}
+	}
+	for _, f := range forms {
+		if !m.known[f] {
+			m.known[f] = true
+			m.values = append(m.values, f)
+		}
+	}
 }
 
 // Mask returns s with every known value replaced by ***.

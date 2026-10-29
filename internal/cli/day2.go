@@ -426,6 +426,9 @@ func (a *app) configCmd() *cobra.Command {
 				if err := json.Unmarshal(b, &v); err != nil {
 					return errs.Internal("encode the configuration: %v", err)
 				}
+				// masked before encoding: YAML may quote, fold or re-indent a value, and would no
+				// longer hold it as written
+				v = maskStrings(v, a.mask)
 				var buf bytes.Buffer
 				enc := yaml.NewEncoder(&buf)
 				enc.SetIndent(2)
@@ -439,6 +442,23 @@ func (a *app) configCmd() *cobra.Command {
 		},
 	})
 	return cmd
+}
+
+// maskStrings masks every string of a decoded JSON document.
+func maskStrings(v any, mask func(string) string) any {
+	switch x := v.(type) {
+	case string:
+		return mask(x)
+	case []any:
+		for i := range x {
+			x[i] = maskStrings(x[i], mask)
+		}
+	case map[string]any:
+		for k := range x {
+			x[k] = maskStrings(x[k], mask)
+		}
+	}
+	return v
 }
 
 func (a *app) serverCmd() *cobra.Command {
