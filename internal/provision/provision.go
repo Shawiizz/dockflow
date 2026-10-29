@@ -179,7 +179,7 @@ Wants=network-pre.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c 'for f in 4 6; do t=iptables; r=/etc/dockflow/filter.rules; [ $f = 6 ] && t=ip6tables && r=/etc/dockflow/filter6.rules; [ -f $r ] && command -v $t >/dev/null || continue; $t -w -n -L DOCKER-USER >/dev/null 2>&1 || $t -w -N DOCKER-USER; $t -w -n -L DOCKFLOW-FILTER >/dev/null 2>&1 || $t -w -N DOCKFLOW-FILTER; $t-restore -w --noflush <$r; $t -w -C DOCKER-USER -j DOCKFLOW-FILTER 2>/dev/null || $t -w -I DOCKER-USER -j DOCKFLOW-FILTER; done'
+ExecStart=/bin/sh -c 'for f in 4 6; do t=iptables; r=/etc/dockflow/filter.rules; [ $f = 6 ] && t=ip6tables && r=/etc/dockflow/filter6.rules; [ -f $r ] && command -v $t >/dev/null || continue; $t -w -n -L DOCKER-USER >/dev/null 2>&1 || $t -w -N DOCKER-USER; $t -w -n -L DOCKFLOW-FILTER >/dev/null 2>&1 || $t -w -N DOCKFLOW-FILTER; $t -w -n -L DOCKFLOW-INPUT >/dev/null 2>&1 || $t -w -N DOCKFLOW-INPUT; $t-restore -w --noflush <$r; $t -w -C DOCKER-USER -j DOCKFLOW-FILTER 2>/dev/null || $t -w -I DOCKER-USER -j DOCKFLOW-FILTER; $t -w -C INPUT -j DOCKFLOW-INPUT 2>/dev/null || $t -w -I INPUT -j DOCKFLOW-INPUT; done'
 
 [Install]
 WantedBy=multi-user.target

@@ -86,14 +86,21 @@ To opt out, run `server init --no-port-filter`. `server init --no-port-filter=fa
 
 ### How the filter works
 
-The filter is an iptables chain, `DOCKFLOW-FILTER`, that Docker's `DOCKER-USER` chain jumps to.
+The filter is two iptables chains, for IPv4 and IPv6:
 
-- It matches the port a connection was sent to, before Docker translated it.
-- It leaves alone the traffic of Docker's bridges, loopback, and the ports the host itself listens on (your own nginx or sshd).
+- `DOCKFLOW-FILTER`, that Docker's `DOCKER-USER` chain jumps to, sees the connections Docker translates to a container. It matches the port a connection was sent to, before Docker translated it. It also drops new connections routed from outside straight to a container's address, which only a neighbour on the server's network could send: containers are reached through their published ports.
+- `DOCKFLOW-INPUT`, that `INPUT` jumps to, sees the connections Docker's `docker-proxy` receives on the host itself. That is how a port published without an address, `5432:5432`, is reached over IPv6 when the app's network has no IPv6: such connections never go through `DOCKER-USER`. The chain drops those to the ports your apps and the switch publish, unless allowed. So a port closed over IPv4 is closed over IPv6 too, and the `cloudflare` edge holds over IPv6.
+- A port published without an address and without a host port (`ports: ["3000"]`, a random port) is bound to IPv4 only: the filter cannot know that port in advance.
+- They leave alone the traffic of Docker's bridges, loopback, and the ports the host itself listens on (your own nginx or sshd).
 - A deploy, a rollback or a `destroy` that changes the ports applies the new rules through a short helper container on the host's network. It writes them to `/etc/dockflow/filter.rules` and `filter6.rules`.
 - The `dockflow-filter` systemd unit loads the rules again at boot, before Docker.
 
-The helper container runs the host's own `iptables` (legacy or nft) with `NET_ADMIN`, `NET_RAW` and `SYS_CHROOT`. It replaces only the `DOCKFLOW-FILTER` chain, atomically, and leaves Docker's rules and your own alone. IPv6 failures are warnings.
+The helper container runs the host's own `iptables` (legacy or nft) with `NET_ADMIN`, `NET_RAW` and `SYS_CHROOT`. It replaces only the filter's chains, atomically, and leaves Docker's rules and your own alone.
+
+- When Docker does not send forwarded traffic through `DOCKER-USER`, the filter fails with `filter.inert` rather than doing nothing. That is the case with Docker's `nftables` firewall backend, or with `"iptables": false`. Use Docker's default iptables backend, or `--no-port-filter` and your own rules.
+- When the IPv6 rules cannot be applied, the filter fails if the server has an IPv6 address, and warns otherwise.
+- Over IPv6, the filter knows only the ports of Dockflow's apps and of the switch: containers Dockflow did not deploy are filtered over IPv4 only.
+- With the filter, a Compose network with routed addresses (`gateway_mode_ipv4: routed`) is not reachable from outside, since its containers are reached by their own address.
 
 ### Cloudflare's ranges
 

@@ -28,8 +28,9 @@ type FilterRequest struct {
 }
 
 // allowed lists what the filter lets in: SSH, the switch's public ports, and the public ports of
-// the current release of every app environment on the server.
-func (r *runner) allowed(srv *state.Server) ([]filter.Allow, error) {
+// the current release of every app environment on the server. published lists the host ports the
+// switch and those releases publish.
+func (r *runner) allowed(srv *state.Server) (allowed []filter.Allow, published []domain.Port, err error) {
 	ssh := srv.SSHPort
 	if ssh == 0 {
 		ssh = 22
@@ -52,14 +53,17 @@ func (r *runner) allowed(srv *state.Server) ([]filter.Allow, error) {
 			filter.Allow{PublicPort: domain.PublicPort{Port: 80, Protocol: "tcp"}, Why: "the switch"},
 			filter.Allow{PublicPort: domain.PublicPort{Port: 443}, Why: "the switch"})
 	}
+	if srv.Edge != proxy.EdgeNone {
+		published = append(published, switchSpec("", srv.Edge, srv.SwitchListen).Ports...)
+	}
 	stacks, err := r.Store.Stacks()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, stack := range stacks {
 		app, err := r.Store.App(stack)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		env, err := app.Env()
 		if err != nil || env == nil || env.Current == 0 {
@@ -72,8 +76,11 @@ func (r *runner) allowed(srv *state.Server) ([]filter.Allow, error) {
 		for _, p := range rel.Desired.PublicPorts {
 			out = append(out, filter.Allow{PublicPort: p, Why: stack})
 		}
+		for _, s := range rel.Desired.Services {
+			published = append(published, s.Spec.Ports...)
+		}
 	}
-	return out, nil
+	return out, published, nil
 }
 
 // syncFilter applies the filter when what it lets in changed (ADR-0014): a helper container on
@@ -83,15 +90,15 @@ func (r *runner) syncFilter(ctx context.Context) error {
 	if err != nil || srv == nil || srv.NoPortFilter {
 		return err
 	}
-	allowed, err := r.allowed(srv)
+	allowed, published, err := r.allowed(srv)
 	if err != nil {
 		return err
 	}
 	var fr FilterRequest
-	if fr.Rules4, err = filter.Rules(allowed, 4); err != nil {
+	if fr.Rules4, err = filter.Rules(allowed, published, 4); err != nil {
 		return err
 	}
-	if fr.Rules6, err = filter.Rules(allowed, 6); err != nil {
+	if fr.Rules6, err = filter.Rules(allowed, published, 6); err != nil {
 		return err
 	}
 	sum := sha256.Sum256([]byte(fr.Rules4 + fr.Rules6))
@@ -111,9 +118,18 @@ func (r *runner) syncFilter(ctx context.Context) error {
 	return r.Store.WriteServer(*srv)
 }
 
-// clearFilter empties the filter's chain: nothing is dropped any more.
+// filtered is the spec a service's container is created with: with the port filter, a port
+// published on a random host port is bound to IPv4 only (filter.IPv4Only).
+func (r *runner) filtered(spec domain.ContainerSpec) domain.ContainerSpec {
+	if srv, err := r.Store.Server(); err == nil && srv != nil && !srv.NoPortFilter {
+		spec.Ports = filter.IPv4Only(spec.Ports)
+	}
+	return spec
+}
+
+// clearFilter empties the filter's chains: nothing is dropped any more.
 func (r *runner) clearFilter(ctx context.Context) error {
-	empty := "*filter\n:" + filter.Chain + " - [0:0]\nCOMMIT\n"
+	empty := "*filter\n:" + filter.Chain + " - [0:0]\n:" + filter.InputChain + " - [0:0]\nCOMMIT\n"
 	return r.runFilter(ctx, FilterRequest{Rules4: empty, Rules6: empty})
 }
 

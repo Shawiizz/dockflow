@@ -654,7 +654,7 @@ func containerLabels(stack string, s *domain.Service, seq, n int) map[string]str
 func (r *runner) startNew(ctx context.Context, s *domain.Service, seq int, st *step) error {
 	for n := 1; n <= s.Count(); n++ {
 		name := containerName(r.stack, s, seq, n)
-		id, err := r.Engine.Create(ctx, name, s.Spec, containerLabels(r.stack, s, seq, n))
+		id, err := r.Engine.Create(ctx, name, r.filtered(s.Spec), containerLabels(r.stack, s, seq, n))
 		if err != nil {
 			// a create that failed may have created it all the same: undo removes it
 			if c, ierr := r.Engine.Inspect(ctx, name); ierr == nil && c.Release == seq && c.Labels[domain.LabelProject] == r.stack {

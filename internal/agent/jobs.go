@@ -31,7 +31,7 @@ func (r *runner) runJob(ctx context.Context, s *domain.Service, seq int) error {
 	labels[domain.LabelOneOff] = "True"
 	labels[domain.LabelKind] = domain.KindJob
 	name := domain.JobName(r.stack, s.Name, seq)
-	id, err := r.Engine.Create(ctx, name, s.Spec, labels)
+	id, err := r.Engine.Create(ctx, name, r.filtered(s.Spec), labels)
 	if err != nil {
 		return err
 	}

@@ -38,4 +38,7 @@ func TestUninstall(t *testing.T) {
 	if _, err := inServer("iptables -n -L DOCKFLOW-FILTER"); err == nil {
 		t.Fatal("the filter's chain is removed")
 	}
+	if _, err := inServer("iptables -n -L DOCKFLOW-INPUT || ip6tables -n -L DOCKFLOW-INPUT"); err == nil {
+		t.Fatal("the filter's INPUT chain is removed")
+	}
 }

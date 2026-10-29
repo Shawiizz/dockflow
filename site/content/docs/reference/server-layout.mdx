@@ -281,6 +281,8 @@ To do the same by hand:
    sudo rm -rf /etc/dockflow
    sudo iptables -D DOCKER-USER -j DOCKFLOW-FILTER && sudo iptables -F DOCKFLOW-FILTER && sudo iptables -X DOCKFLOW-FILTER
    sudo ip6tables -D DOCKER-USER -j DOCKFLOW-FILTER && sudo ip6tables -F DOCKFLOW-FILTER && sudo ip6tables -X DOCKFLOW-FILTER
+   sudo iptables -D INPUT -j DOCKFLOW-INPUT && sudo iptables -F DOCKFLOW-INPUT && sudo iptables -X DOCKFLOW-INPUT
+   sudo ip6tables -D INPUT -j DOCKFLOW-INPUT && sudo ip6tables -F DOCKFLOW-INPUT && sudo ip6tables -X DOCKFLOW-INPUT
    ```
 
 8. Remove the Cloudflare refresh and the files of `server init` you no longer want (see [above](#files-server-init-writes-outside-the-state)):
