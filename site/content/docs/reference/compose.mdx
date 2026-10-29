@@ -188,7 +188,7 @@ Each route sends HTTP traffic from the server's switch to the service's containe
 | `max_body` | size | none | The largest request body: `25MB`, `512k`, or a number of bytes, in powers of 1024. A larger one gets a 413. |
 | `timeouts` | map | Caddy's | `read`, `write` and `dial`: durations for the switch's connection to the containers. |
 | `auth` | map | none | HTTP basic authentication: `user`, without a colon, and `password`, from a secret: `password: ${PANEL_PASSWORD}`. Both are required. The switch keeps only a bcrypt hash. |
-| `caddy` | string | none | Raw Caddyfile directives, run before the request reaches the service. `{upstream}` is the name of the service's first container. They are checked by the switch when the plan is computed. |
+| `caddy` | string | none | Raw Caddyfile directives, run before the request reaches the service. `{upstream}` is the name of the service's first container. They are checked by the switch when the plan is computed. They run with the switch's access: see [Raw Caddy directives](/project/security/#raw-caddy-directives). |
 | `error_pages` | map | none | Statuses from 400 to 599, separated by commas (`"502,503,504"`), mapped to `{ route: <name> }`, a named [route of dockflow.yml](/reference/dockflow-yml/#routes) whose root is shown, or `{ body: "<html>…" }`, an inline page. They replace the service's answers with these statuses, and the switch's own when no container can be reached, as while a `stop-first` service restarts. |
 
 ```yaml
