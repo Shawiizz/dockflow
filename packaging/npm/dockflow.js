@@ -25,7 +25,9 @@ let bin;
 try {
   bin = require.resolve(`${pkg}/bin/dockflow${process.platform === 'win32' ? '.exe' : ''}`);
 } catch {
-  console.error(`dockflow: the package ${pkg} is not installed; reinstall @dockflow-tools/cli without --omit=optional`);
+  console.error(`dockflow: the package ${pkg} is not installed; reinstall @dockflow-tools/cli without --omit=optional.`);
+  // npx keeps an install made while a new release's packages were still being published
+  console.error('With npx, clear its cache (`npx clear-npx-cache`, or remove the _npx folder of `npm config get cache`) and run it again, or pin the version: npx @dockflow-tools/cli@<version>.');
   process.exit(1);
 }
 
