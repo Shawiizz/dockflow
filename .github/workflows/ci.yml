@@ -17,8 +17,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: gofmt
@@ -35,8 +35,8 @@ jobs:
     name: unit and contract tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: go test
@@ -52,8 +52,8 @@ jobs:
       matrix:
         docker: ["27-dind", "dind"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: go test -tags e2e
@@ -65,8 +65,8 @@ jobs:
     name: GitHub Action
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: build the CLI
@@ -99,7 +99,7 @@ jobs:
     name: Windows installer
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: is there a release
         id: release
         shell: bash
@@ -118,7 +118,7 @@ jobs:
     name: docs site
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the tags, for the current release
       - name: build the image
@@ -142,8 +142,8 @@ jobs:
     needs: [lint, test, e2e]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: build
@@ -160,7 +160,7 @@ jobs:
         run: |
           sh packaging/homebrew.sh 0.0.0-ci dist/SHA256SUMS >"$RUNNER_TEMP/dockflow.rb"
           ruby -c "$RUNNER_TEMP/dockflow.rb"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dockflow-snapshot
           path: dist/
