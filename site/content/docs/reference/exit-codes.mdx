@@ -120,7 +120,8 @@ Nothing was changed on the server.
 | `plan.image_missing` | 6 | The server cannot pull an image, or it is absent with `pull_policy: never`. | Check the image name, and that the server can reach the registry and is logged in to it. |
 | `plan.pull_policy` | 6 | A service's `pull_policy` is one the server cannot apply. | Use `missing`, `always` or `never`. |
 | `plan.caddy` | 6 | A route's raw `caddy` directives do not parse. | Fix them: they are Caddyfile directives, as inside a site block. |
-| `plan.domain_conflict` | 6 | A domain and path is routed twice on the server, by two services or two apps. | Routes are unique per domain and path on a server: change one of them. |
+| `plan.domain_conflict` | 6 | A domain is routed by two app environments, at any paths, or a domain and path by two services. Domains are compared lower-cased without a trailing dot, paths without a trailing slash. | A domain belongs to one app environment, and a domain and path to one service: change one of them. |
+| `plan.domain_invalid` | 6 | A route stored on the server has a domain that is not a host name. | Deploy the app that owns it again, with a valid domain. |
 | `plan.no_switch` | 6 | The app declares routes, and the server has no switch. | Run `dockflow server init`. |
 | `plan.routes_without_switch` | 6 | The server was set up with `--edge none`, and the app declares routes. | Publish ports instead, or run `dockflow server init --edge builtin`. |
 | `server.routes_in_use` | 6 | `--edge none` was asked for, and routes still go through the switch. | Remove the routes of the apps on this server first. |

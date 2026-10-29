@@ -119,4 +119,11 @@ reverse_proxy /via-upstream {upstream}:80`), "whoami-e2e:v1", "whoami-e2e:v2", 1
 	if r.code == 0 || !strings.Contains(r.out, "plan.domain_conflict") || r.has("release.created") {
 		t.Fatalf("a domain another app routes must fail at plan time, got %d:\n%s", r.code, r.out)
 	}
+	// at another path, written in capitals with a trailing dot: the domain is still the other app's
+	sneaky := strings.Replace(webApp("journey35b", "whoami-e2e:v1", ""), `["journey35b.test"]`, `["`+strings.ToUpper(host)+`."]`+"\n          path: /login/", 1)
+	writeProject(t, other, "journey35b", sneaky)
+	r = dockflow(t, other, "deploy")
+	if r.code == 0 || !strings.Contains(r.out, "plan.domain_conflict") || r.has("release.created") {
+		t.Fatalf("a path of a domain another app routes must fail at plan time, got %d:\n%s", r.code, r.out)
+	}
 }

@@ -51,14 +51,27 @@ type Route struct {
 // {upstream} by the user.
 const UpstreamMarker = "DOCKFLOW_UPSTREAM"
 
-// Unique refuses two routes of one (domain, path) on the server (ADR-0011).
+// Unique refuses a domain routed by two app environments, at any paths, and two routes of one
+// (domain, path) (ADR-0011). Domains and paths are compared in their canonical forms: Example.com.
+// is example.com, /api/ is /api.
 func Unique(routes []Route) error {
 	seen := map[string]string{}
+	owner := map[string]string{}
 	for _, r := range routes {
+		p := domain.CanonicalPath(r.Path)
 		for _, d := range r.Domains {
-			k := d + r.Path
-			if owner, ok := seen[k]; ok {
-				return errs.Plan("plan.domain_conflict", "%s%s is routed twice: by %s and by %s/%s", d, r.Path, owner, r.Stack, r.Service).
+			h, err := domain.CanonicalHost(d)
+			if err != nil {
+				return errs.Plan("plan.domain_invalid", "%s/%s: %v", r.Stack, r.Service, err)
+			}
+			if o, ok := owner[h]; ok && o != r.Stack {
+				return errs.Plan("plan.domain_conflict", "%s is routed by %s and by %s: a domain belongs to one app environment", h, o, r.Stack).
+					WithHint("each app environment routes its own domains; serve the other paths from the app that owns %s, or use another domain", h)
+			}
+			owner[h] = r.Stack
+			k := h + p
+			if prev, ok := seen[k]; ok {
+				return errs.Plan("plan.domain_conflict", "%s%s is routed twice: by %s and by %s/%s", h, p, prev, r.Stack, r.Service).
 					WithHint("routes are unique per domain and path on a server")
 			}
 			seen[k] = r.Stack + "/" + r.Service

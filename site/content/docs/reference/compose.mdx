@@ -215,7 +215,7 @@ services:
 
 The switch applies these options with every edge, behind nginx too. Changing them reloads the switch's configuration once; an ordinary deploy does not reload it.
 
-A domain and path pair can be routed only once per server. When a second app or service claims it, the plan fails with `plan.domain_conflict`, before anything changes. Routes need a switch on the server, installed by [`dockflow server init`](/reference/cli/#server-init).
+A domain belongs to one app environment on a server, and a domain and path pair can be routed by one service only. When a second app claims a domain another app routes, at any path, or a service claims a pair already routed, the plan fails with `plan.domain_conflict`, before anything changes. Domains are compared lower-cased and without a trailing dot, and paths without a trailing slash: `/api/` is `/api`. Routes need a switch on the server, installed by [`dockflow server init`](/reference/cli/#server-init).
 
 Routes that do not target a service (redirects, proxies and files) go in [`routes:` of dockflow.yml](/reference/dockflow-yml/#routes).
 

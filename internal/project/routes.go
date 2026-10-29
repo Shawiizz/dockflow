@@ -56,6 +56,9 @@ func appRoutes(entries []config.RouteEntry, app *domain.App) error {
 		if len(rt.Domains) == 0 || !strings.HasPrefix(rt.Path, "/") {
 			return errs.Config("%s: a route needs domains, and a path starting with /", at)
 		}
+		if err := rt.Canonicalize(); err != nil {
+			return errs.Config("%s: %v", at, err)
+		}
 		ext := compose.RouteOptionsExt{Headers: e.Headers, Encode: e.Encode, MaxBody: compose.SizeExt(e.MaxBody), Caddy: e.Caddy}
 		if e.Timeouts != nil {
 			ext.Timeouts = &struct {

@@ -111,7 +111,7 @@ These options are applied by the switch, so they work in every edge mode, behind
 - The options become handlers of the route, in this order: `authentication` (basic, bcrypt), `request_body`, `headers` (deferred, so `-Server` removes Caddy's own), `encode`, the prefix rewrite, the raw directives in a `subroute`, then `reverse_proxy`, whose transport takes the `timeouts`.
 - The agent hashes a route's password with bcrypt, and adapts its raw directives through the switch's `/adapt` endpoint; both are kept in `switch/routes/<stack>.json` and reused while the password and the directives are unchanged, so a deploy that changes neither leaves the configuration, and Caddy, alone. The password itself never reaches the switch.
 - `{upstream}` in raw directives is the service's first container, from an upstream file (`<route>/h0`).
-- The plan refuses directives that do not adapt (`plan.caddy`) and a (domain, path) another app routes (`plan.domain_conflict`), before anything changes.
+- The plan refuses directives that do not adapt (`plan.caddy`), a domain another app environment routes at any path, and a (domain, path) routed twice (`plan.domain_conflict`), before anything changes. Domains are compared lower-cased and without a trailing dot, and must be host names, `*.` wildcards or IP addresses (`config.invalid` in the project, `plan.domain_invalid` for a route already stored); paths are cleaned, so `/api` and `/api/` are one route. Otherwise a second app could take a path of another's domain (its `/login`), or the same route under `Shop.example.com.`.
 
 ## Implementation of the routes of dockflow.yml and error pages (M3)
 

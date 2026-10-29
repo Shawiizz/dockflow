@@ -658,6 +658,9 @@ func convertService(p *types.Project, dir, stack string, s types.ServiceConfig) 
 		if !strings.HasPrefix(route.Path, "/") {
 			return nil, nil, errs.Config("%s: route path %q must start with /", at, route.Path)
 		}
+		if err := route.Canonicalize(); err != nil {
+			return nil, nil, errs.Config("%s: route: %v", at, err)
+		}
 		opts, err := RouteOptions(at, rt.RouteOptionsExt)
 		if err != nil {
 			return nil, nil, err

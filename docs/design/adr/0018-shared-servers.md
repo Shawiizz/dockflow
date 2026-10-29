@@ -26,7 +26,7 @@ Some apps need host-level storage: one backend mounts S3 with rclone and a remot
 | **App environment** | Whoever deploys the app | One Compose project `<app>-<env>`: its containers, networks, volumes, secrets, releases, routes, uploads and lock |
 
 - **An app deploy never changes server-scoped objects** beyond its own routes. Routes are merged with every other app's into the switch's configuration ([ADR-0011](0011-switch-and-edge.md)).
-- **Names are unique per server:** the plan refuses an `<app>-<env>` project that belongs to another app, and a (domain, path) route claimed by another project.
+- **Names are unique per server:** the plan refuses an `<app>-<env>` project that belongs to another app, and a domain another project routes, at any path.
 
 ### Shared networks
 

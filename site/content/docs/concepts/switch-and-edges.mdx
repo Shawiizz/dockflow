@@ -72,7 +72,8 @@ services:
 
 - **Several replicas** share the traffic in turn (round robin).
 - **Longest path wins.** `shop.example.com/api` goes to `api`, everything else on `shop.example.com` to `web`.
-- **Unique per server.** A (domain, path) pair can be routed by one service of one app only. Two apps may share a domain on different paths. A second claim fails the deploy with `plan.domain_conflict`.
+- **Unique per server.** A domain belongs to one app environment, and a (domain, path) pair to one service. Another app cannot route a path of a domain an app routes. `Shop.example.com.` is `shop.example.com`, and `/api/` is `/api`. A second claim fails the deploy with `plan.domain_conflict`.
+- **Host names only.** A domain is a host name, a wildcard (`*.example.com`) or an IP address, in ASCII: write internationalised names in punycode.
 - **Unknown host names are refused.** With the `builtin` edge, a request for a host no route declares is dropped; with the `external` edge, it gets a 404.
 - **WebSockets** work without configuration.
 - **Not for TCP or UDP.** A service that is not HTTP, such as a game server, publishes its ports with Compose `ports:` instead, and uses `stop-first`.
