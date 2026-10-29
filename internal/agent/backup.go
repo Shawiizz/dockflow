@@ -495,12 +495,13 @@ const (
 	// mysqlCredentials writes the client's credentials, from the image's variables, to a file
 	// only this command reads.
 	mysqlCredentials = `set -e
-db="$1"; shift
+` + escapeQuoted + `db="$1"; shift
 [ -n "$db" ] || db="${MYSQL_DATABASE:-${MARIADB_DATABASE:-}}"
 user=root; pass="${MYSQL_ROOT_PASSWORD:-${MARIADB_ROOT_PASSWORD:-}}"
 if [ -z "$pass" ]; then user="${MYSQL_USER:-${MARIADB_USER:-root}}"; pass="${MYSQL_PASSWORD:-${MARIADB_PASSWORD:-}}"; fi
 cnf=$(mktemp); trap 'rm -f "$cnf"' EXIT
-printf '[client]\nuser=%s\npassword="%s"\n' "$user" "$pass" > "$cnf"
+escape "$user"; user="$q"; escape "$pass"
+printf '[client]\nuser="%s"\npassword="%s"\n' "$user" "$q" > "$cnf"
 `
 	mysqlDump = `dump=$(command -v mariadb-dump || command -v mysqldump)
 if [ -n "$db" ]; then set -- "$@" --databases "$db"; else set -- "$@" --all-databases; fi
@@ -511,12 +512,52 @@ if [ -n "$db" ]; then set -- "$@" --databases "$db"; else set -- "$@" --all-data
 `
 	// mongoCredentials adds the root user of the image's variables, its password in a file.
 	mongoCredentials = `set -e
-db="$1"; shift
+` + escapeQuoted + `db="$1"; shift
 if [ -n "${MONGO_INITDB_ROOT_USERNAME:-}" ]; then
 	cnf=$(mktemp); trap 'rm -f "$cnf"' EXIT
-	printf 'password: "%s"\n' "$MONGO_INITDB_ROOT_PASSWORD" > "$cnf"
+	escape "${MONGO_INITDB_ROOT_PASSWORD:-}" yaml
+	printf 'password: "%s"\n' "$q" > "$cnf"
 	set -- --config="$cnf" --username="$MONGO_INITDB_ROOT_USERNAME" --authenticationDatabase=admin "$@"
 fi
+`
+	// escapeQuoted defines escape, which sets q to $1 written for the inside of a double-quoted
+	// value, as a MySQL option file and YAML both read one: a backslash before \ and ", and \n,
+	// \r and \t for those characters. With $2 = yaml, the other control characters become \xHH
+	// or \uHHHH, and the separators NEL, LS and PS \N, \L and \P, which YAML would otherwise
+	// fold as line breaks. A password is then written as it is, whatever it holds.
+	escapeQuoted = `escape() {
+	s="$1"; q=
+	nl='
+'
+	cr=$(printf '\r'); tab=$(printf '\t')
+	nel=$(printf '\302\205'); lsep=$(printf '\342\200\250'); psep=$(printf '\342\200\251')
+	while [ -n "$s" ]; do
+		if [ "${2:-}" = yaml ]; then
+			case "$s" in
+			"$nel"*) q="$q\\N"; s="${s#"$nel"}"; continue ;;
+			"$lsep"*) q="$q\\L"; s="${s#"$lsep"}"; continue ;;
+			"$psep"*) q="$q\\P"; s="${s#"$psep"}"; continue ;;
+			esac
+		fi
+		r="${s#?}"
+		if [ "$r" = "$s" ]; then q="$q$s"; break; fi
+		c="${s%"$r"}"; s="$r"
+		case "$c" in
+		\\ | \") q="$q\\$c" ;;
+		"$nl") q="$q\\n" ;;
+		"$cr") q="$q\\r" ;;
+		"$tab") q="$q\\t" ;;
+		[[:cntrl:]])
+			if [ "${2:-}" = yaml ]; then
+				n=$(printf %d "'$c")
+				if [ "$n" -gt 255 ]; then q="$q$(printf '\\u%04x' "$n")"; else q="$q$(printf '\\x%02x' "$n")"; fi
+			else
+				q="$q$c"
+			fi ;;
+		*) q="$q$c" ;;
+		esac
+	done
+}
 `
 	// stdinCommand is restic's command for a dump: it copies the stdin of restic, its parent,
 	// and succeeds only when the file $1 exists.

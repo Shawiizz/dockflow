@@ -17,7 +17,8 @@ func TestBackupDumpTypes(t *testing.T) {
 	writeProject(t, dir, app, fmt.Sprintf(`services:
   maria:
     image: %s
-    environment: { MARIADB_ROOT_PASSWORD: "r00t'pw", MARIADB_DATABASE: shop }
+    # passwords with quotes, a backslash, a space and a #: the dump's credential files carry them as they are
+    environment: { MARIADB_ROOT_PASSWORD: "r00t'pw \"q\\b #x", MARIADB_DATABASE: shop }
     volumes: [maria:/var/lib/mysql]
     healthcheck: { test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"], interval: 1s, retries: 90 }
     x-dockflow: { stateful: true, backup: { type: mysql } }
@@ -29,7 +30,7 @@ func TestBackupDumpTypes(t *testing.T) {
     image: %s
     # GLIBC_TUNABLES: MongoDB 8 refuses to start on Linux 6.19 and newer, as on some CI runners, unless glibc
     # owns rseq (SERVER-121912)
-    environment: { MONGO_INITDB_ROOT_USERNAME: root, MONGO_INITDB_ROOT_PASSWORD: pw, GLIBC_TUNABLES: glibc.pthread.rseq=1 }
+    environment: { MONGO_INITDB_ROOT_USERNAME: root, MONGO_INITDB_ROOT_PASSWORD: "m0ngo\"pw\\x #y 'z", GLIBC_TUNABLES: glibc.pthread.rseq=1 }
     volumes: [mongo:/data/db]
     healthcheck: { test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"], interval: 2s, retries: 60 }
     x-dockflow: { stateful: true, backup: { type: mongo } }
@@ -59,7 +60,7 @@ volumes: { maria: {}, cache: {}, mongo: {} }
 		return in("maria", `sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" shop -N -e "`+sql+`"'`)
 	}
 	mongo := func(js string) string {
-		return in("mongo", `mongosh -u root -p pw --quiet --eval '`+js+`'`)
+		return in("mongo", `sh -c 'exec mongosh -u root -p "$MONGO_INITDB_ROOT_PASSWORD" --quiet --eval "$0"' '`+js+`'`)
 	}
 	maria("create table t (x int); insert into t values (1)")
 	in("cache", "redis-cli set k v1")
@@ -70,7 +71,7 @@ volumes: { maria: {}, cache: {}, mongo: {} }
 	if n := strings.Count(r.out, `"type":"backup.finished"`); n != 3 {
 		t.Fatalf("three services backed up, got %d:\n%s", n, r.out)
 	}
-	if strings.Contains(r.out, "r00t") {
+	if strings.Contains(r.out, "r00t") || strings.Contains(r.out, "m0ngo") {
 		t.Fatalf("a credential reached the output:\n%s", r.out)
 	}
 
