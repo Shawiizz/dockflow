@@ -328,8 +328,6 @@ const (
 	SwitchAdminVolume  = "dockflow-switch-admin"
 	switchDataVolume   = "dockflow-switch-data"
 	switchConfigVolume = "dockflow-switch-config"
-	// DefaultSwitchImage is the official Caddy image; it is pinned by digest when installed.
-	DefaultSwitchImage = "caddy:2"
 )
 
 // SwitchAdminDir is where the switch's shared volume is mounted, in the switch and in the agent.
@@ -435,7 +433,7 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 		if image == "" {
 			image = DefaultRegistryImage
 		}
-		image = r.upgraded(image, r.req.RegistryImage)
+		image = r.upgraded(ctx, image, r.req.RegistryImage, DefaultRegistryImage)
 		pinned, err := r.ensure(ctx, RegistryContainer, domain.KindRegistry, image, registrySpec,
 			"port 5959 must be free on the server's loopback")
 		if err != nil {
@@ -463,7 +461,7 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 		if image == "" {
 			image = DefaultSwitchImage
 		}
-		image = r.upgraded(image, r.req.SwitchImage)
+		image = r.upgraded(ctx, image, r.req.SwitchImage, DefaultSwitchImage)
 		hint := "ports 80 and 443 must be free on the server"
 		if edge == proxy.EdgeExternal {
 			hint = listen + " must be free on the server"
@@ -520,11 +518,23 @@ func (r *runner) serverInit(ctx context.Context) events.RunFinishedData {
 	return events.RunFinishedData{Outcome: events.OutcomeSuccess}
 }
 
-// upgraded is the image to run: with server upgrade, the server's image is pulled again by its
-// name, unless the run names an image.
-func (r *runner) upgraded(image, given string) string {
+// upgraded is the image to run. With server upgrade, an image of the default's repository moves
+// to def, the image this version pins; another one, chosen with --switch-image or
+// --registry-image, is pulled again by its tag. An image the run names stays, and so does the
+// server's when def cannot be pulled.
+func (r *runner) upgraded(ctx context.Context, image, given, def string) string {
 	if !r.req.Upgrade || given != "" {
 		return image
+	}
+	if sameRepository(image, def) {
+		if image == def {
+			return image
+		}
+		if _, err := r.Engine.ResolveImage(ctx, def, "missing", nil); err != nil {
+			r.warn("upgrade.pull", "cannot pull "+def+", the server's image stays: "+err.Error())
+			return image
+		}
+		return def
 	}
 	if i := strings.Index(image, "@sha256:"); i > 0 {
 		return image[:i] + "#pull"
@@ -600,8 +610,7 @@ func (r *runner) removeKind(ctx context.Context, kind string) error {
 
 // The server-local registry (ADR-0009): loopback only, reached by the CLI through an SSH tunnel.
 const (
-	RegistryContainer    = "dockflow-registry"
-	DefaultRegistryImage = "registry:3"
+	RegistryContainer = "dockflow-registry"
 	// RegistryAddr is where it listens, on the server; images are named after it.
 	RegistryAddr   = "127.0.0.1:5959"
 	registryVolume = "dockflow-registry-data"

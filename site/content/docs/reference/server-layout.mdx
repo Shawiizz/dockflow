@@ -77,10 +77,10 @@ Written by `dockflow server init`:
   "schema": 1,
   "name": "main",
   "edge": "external",
-  "switch_image": "caddy:2@sha256:…",
+  "switch_image": "caddy:2.11.7@sha256:…",
   "switch_listen": "127.0.0.1:8080",
   "trusted_proxies": ["10.0.0.0/8"],
-  "registry_image": "registry:3@sha256:…",
+  "registry_image": "registry:3.1.2@sha256:…",
   "dockflow_version": "{{version}}",
   "watchdog_image": "sha256:…",
   "ssh_port": 22,
@@ -147,8 +147,9 @@ The release number in a container's name is not padded: `shop-production-web-42-
 | Image | Use |
 |---|---|
 | `dockflow/agent:<version>` | The agent, built on the server from the dockflow Linux binary of the CLI's version. Development builds use `dockflow/agent:dev-<hash>` |
-| `caddy:2` | The switch, pinned by digest when `server init` installs it (`--switch-image` changes it) |
-| `registry:3` | The registry, pinned by digest (`--registry-image` changes it) |
+| `caddy:2.x.y` | The switch and the servers of files routes: the release this version of Dockflow pins, by digest (`--switch-image` changes it) |
+| `registry:3.x.y` | The registry: the release this version pins, by digest (`--registry-image` changes it) |
+| `restic/restic:0.x.y` | Backups: the release this version pins, by digest |
 | `127.0.0.1:5959/<app>/<service>:<version>` | Images built by Dockflow and pushed to the server's registry. Services run them pinned by digest |
 | `localhost/<app>/<service>:<tag>` | Images built on the server (`build.builder: remote`) when no external registry is configured |
 | Your public or external-registry images | Pulled by the agent and pinned by digest |

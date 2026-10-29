@@ -24,7 +24,7 @@ The project owner asked how proxies should be handled. There are three options:
 
 ### The switch
 
-- It is installed by `server init` and upgraded by `dockflow server upgrade`.
+- It is installed by `server init` and upgraded by `dockflow server upgrade`. Both install the Caddy release that the CLI's version pins by digest ([ADR-0020](0020-releasing-dockflow.md)), never a floating tag, so two servers on the same version of Dockflow run the same Caddy.
 - It runs on bridge networks. The agent connects it live (`docker network connect`, no restart) to the network of each app that has routes.
 - Upstreams are the current release's container names, which Docker's DNS resolves inside those networks, so a container restarted by Docker keeps working.
 - Its admin API listens only on a unix socket, in the volume `dockflow-switch-admin`, which only agents mount. Containers of apps share networks with the switch, so an admin API on a network would be reachable by them.

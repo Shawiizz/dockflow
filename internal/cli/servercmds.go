@@ -162,8 +162,13 @@ func (a *app) serverEdgeCmd() *cobra.Command {
 func (a *app) serverUpgradeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "upgrade [<env>]",
-		Short: "Pull the switch's and the registry's images again, and run the watchdog of this version",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Move the switch and the registry to this version's images, and run the watchdog of this version",
+		Long: "Installs the switch's and the registry's images that this version of Dockflow pins (" +
+			tagOf(agent.DefaultSwitchImage) + " and " + tagOf(agent.DefaultRegistryImage) + "), and replaces their " +
+			"containers when the image changed. An image chosen with --switch-image or --registry-image, from " +
+			"another repository, is pulled again by its tag. A server that cannot pull keeps its images, with a " +
+			"warning. The watchdog runs this CLI's agent. Every setting stays.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			res, err := a.serverChange(cmd, envArg(args), func(r *agent.Request) { r.Op, r.Upgrade = agent.OpServerInit, true })
 			if err == nil && !a.json {

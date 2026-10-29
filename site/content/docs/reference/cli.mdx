@@ -621,8 +621,8 @@ The deploy user is then checked through the SSH server on `127.0.0.1`, as the CI
 | `--acme-email string` | the server's, or none | The address Let's Encrypt writes to about the switch's certificates (expiry, revocation). `--acme-email ""` removes it. |
 | `--acme-ca string` | the server's, or Let's Encrypt then ZeroSSL | The ACME directory the switch gets its certificates from, such as Let's Encrypt's staging, `https://acme-staging-v02.api.letsencrypt.org/directory`, for a test server. `--acme-ca ""` goes back to the default. |
 | `--no-registry` | `false` | No server-local registry: every built image goes to `registry.url`. |
-| `--registry-image string` | `registry:3`, pinned by digest | The image of the server-local registry. |
-| `--switch-image string` | `caddy:2`, pinned by digest | The Caddy image of the switch. |
+| `--registry-image string` | the `registry:3.x.y` this version pins, by digest | The image of the server-local registry. |
+| `--switch-image string` | the `caddy:2.x.y` this version pins, by digest | The Caddy image of the switch. |
 | `--no-watchdog` | `false` | No [watchdog](/guides/health-checks/#after-the-deploy-the-watchdog): unhealthy containers are not restarted, and apps with Compose secrets wait for a deploy after a reboot. |
 | `--no-port-filter` | `false` | No [port filter](/project/security/#the-port-filter): every port Docker publishes on a public address is open. |
 | `--switch-listen string` | `127.0.0.1:8080` | With `--edge external`: the address the switch listens on. |
@@ -697,9 +697,9 @@ Changes how traffic reaches the server's switch, and keeps every other setting. 
 dockflow server upgrade [<env>]
 ```
 
-Pulls the images of the switch and of the registry again, and replaces their containers when the image changed. The tags pulled are the ones `server init` installed: `caddy:2` and `registry:3` unless you chose others. The watchdog runs this CLI's agent. Every setting stays.
+Moves the switch and the registry to the images this version of Dockflow pins, and replaces their containers when the image changed. Each release of Dockflow pins one release of Caddy and of the registry, by digest, so every server upgraded with the same version runs the same images; `dockflow server upgrade --help` names them. An image you chose with `--switch-image` or `--registry-image`, from another repository, is pulled again by its tag instead. The watchdog runs this CLI's agent. Every setting stays.
 
-When the server cannot pull an image, it keeps the one it has and warns (`upgrade.pull`). Run it after installing a new Dockflow, or to get Caddy's fixes.
+When the server cannot pull an image, it keeps the one it has and warns (`upgrade.pull`). Run it after installing a new Dockflow: Caddy's fixes come with Dockflow's releases.
 
 ### server uninstall
 

@@ -1,7 +1,7 @@
 # ADR-0020: Releasing Dockflow itself: signed binaries, version-pinned agent
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 and 2026-10-28 (version numbers)
+- Date: 2026-10-25, revised 2026-10-26, 2026-10-28 (version numbers) and 2026-10-29 (third-party images)
 
 ## Context
 
@@ -26,6 +26,12 @@ The CLI ships its own Linux binary to servers ([ADR-0004](0004-ephemeral-agent.m
 - A `curl | sh` installer and a PowerShell one, both verifying the signature when cosign is installed, the checksum always.
 - Homebrew, from a formula committed in this repository by the release workflow: the repository is its own tap.
 - An npm package built on per-platform `optionalDependencies`, as esbuild and Biome do, so it needs no postinstall script and works behind proxies.
+
+### Third-party images
+
+- The images Dockflow runs on servers by default (Caddy for the switch and files routes, the registry, restic) are pinned in `internal/agent/images.go` to a release and to the digest of its multi-platform index: `caddy:2.x.y@sha256:…`. A version of Dockflow therefore always installs the same images, and `server upgrade` moves a server to the ones of the CLI's version instead of pulling a floating tag again.
+- `scripts/bump-images.sh` moves each image to the newest release of its major version. A weekly workflow (`.github/workflows/bump-images.yml`) runs it and opens a pull request when something changed; the e2e suite validates the new images before they ship in a release.
+- Dependabot watches the Go modules, the site's npm packages, the workflows' actions and the site's base image; the CI runs `govulncheck` and fails on a reachable vulnerability.
 
 ### Versioning
 

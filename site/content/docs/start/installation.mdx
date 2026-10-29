@@ -214,7 +214,7 @@ See the [Quickstart](/start/quickstart/). The server needs:
 | A known SSH host key | Every connection verifies it: pinned in the configuration or the connection string, or present in your `~/.ssh/known_hosts`. Nothing is trusted on first use |
 | Ports 80 and 443 free, for the `builtin` edge | The switch publishes them and obtains TLS certificates. With the `external` edge, behind your own proxy, the switch listens on `127.0.0.1:8080` instead. See [The switch and edges](/concepts/switch-and-edges/) |
 | Port 5959 free on loopback | The server-local registry listens on `127.0.0.1:5959`, unless you use `--no-registry` |
-| Access to Docker Hub | To pull the switch (`caddy:2`) and registry (`registry:3`) images, and the public images of your apps |
+| Access to Docker Hub | To pull the switch (`caddy`), registry (`registry`) and backup (`restic/restic`) images, at the versions Dockflow pins, and the public images of your apps |
 
 <Callout type="warn">
 A user that can use Docker is root on the server: anyone holding its SSH key can start a privileged container. Use a dedicated user and key per environment. See [Security](/project/security/).

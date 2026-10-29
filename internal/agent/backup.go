@@ -28,8 +28,6 @@ import (
 )
 
 const (
-	// DefaultResticImage is restic's official image; it is pinned by digest when pulled.
-	DefaultResticImage = "restic/restic:0.18.0"
 	// BackupsVolume holds the restic repository on the server, and BackupsCacheVolume restic's
 	// cache.
 	BackupsVolume      = "dockflow-backups"

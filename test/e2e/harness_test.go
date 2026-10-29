@@ -46,11 +46,12 @@ func env(k, def string) string {
 }
 
 var (
-	dindImage     = env("DOCKFLOW_E2E_DIND_IMAGE", "mirror.gcr.io/library/docker:dind")
-	whoamiImage   = env("DOCKFLOW_E2E_WHOAMI_IMAGE", "traefik/whoami:latest")
-	caddyImage    = env("DOCKFLOW_E2E_CADDY_IMAGE", "mirror.gcr.io/library/caddy:2")
+	dindImage   = env("DOCKFLOW_E2E_DIND_IMAGE", "mirror.gcr.io/library/docker:dind")
+	whoamiImage = env("DOCKFLOW_E2E_WHOAMI_IMAGE", "traefik/whoami:latest")
+	// the switch and the registry are the images this version pins, from Docker Hub's mirror
+	caddyImage    = env("DOCKFLOW_E2E_CADDY_IMAGE", "mirror.gcr.io/library/"+agent.DefaultSwitchImage)
 	alpineImage   = env("DOCKFLOW_E2E_ALPINE_IMAGE", "mirror.gcr.io/library/alpine:3")
-	registryImage = env("DOCKFLOW_E2E_REGISTRY_IMAGE", "mirror.gcr.io/library/registry:3")
+	registryImage = env("DOCKFLOW_E2E_REGISTRY_IMAGE", "mirror.gcr.io/library/"+agent.DefaultRegistryImage)
 	nginxImage    = env("DOCKFLOW_E2E_NGINX_IMAGE", "mirror.gcr.io/library/nginx:alpine")
 	postgresImage = env("DOCKFLOW_E2E_POSTGRES_IMAGE", "mirror.gcr.io/library/postgres:17-alpine")
 	mariadbImage  = env("DOCKFLOW_E2E_MARIADB_IMAGE", "mirror.gcr.io/library/mariadb:11")

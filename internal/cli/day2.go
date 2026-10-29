@@ -525,9 +525,9 @@ func (a *app) serverCmd() *cobra.Command {
 	initCmd.Flags().StringSliceVar(&trusted, "trusted-proxy", nil, "with --edge external: CIDRs whose X-Forwarded-For is trusted (default: private ranges)")
 	initCmd.Flags().StringVar(&acmeEmail, "acme-email", "", "the address Let's Encrypt writes to about the switch's certificates (\"\" removes it)")
 	initCmd.Flags().StringVar(&acmeCA, "acme-ca", "", "the ACME directory of the switch's certificates, such as Let's Encrypt's staging (\"\" goes back to Let's Encrypt, then ZeroSSL)")
-	initCmd.Flags().StringVar(&switchImage, "switch-image", "", "the Caddy image of the switch (default caddy:2, pinned by digest)")
+	initCmd.Flags().StringVar(&switchImage, "switch-image", "", "the Caddy image of the switch (default "+tagOf(agent.DefaultSwitchImage)+", pinned by digest)")
 	initCmd.Flags().BoolVar(&noRegistry, "no-registry", false, "no server-local registry: every built image goes to registry.url")
-	initCmd.Flags().StringVar(&registryImage, "registry-image", "", "the image of the server-local registry (default registry:3, pinned by digest)")
+	initCmd.Flags().StringVar(&registryImage, "registry-image", "", "the image of the server-local registry (default "+tagOf(agent.DefaultRegistryImage)+", pinned by digest)")
 	initCmd.Flags().BoolVar(&noFilter, "no-port-filter", false, "no published-port filter: every port Docker publishes on a public address is open")
 	initCmd.Flags().BoolVar(&noWatchdog, "no-watchdog", false, "no watchdog: unhealthy containers are not restarted, and apps with Compose secrets wait for a deploy after a reboot")
 	f := initCmd.Flags()
@@ -546,6 +546,12 @@ func (a *app) serverCmd() *cobra.Command {
 	cmd.AddCommand(initCmd, a.connectionCmd(), a.networkCmd(), a.volumePluginCmd(), a.cloudInitCmd(),
 		a.serverStatusCmd(), a.serverCheckCmd(), a.serverEdgeCmd(), a.serverUpgradeCmd(), a.serverUninstallCmd())
 	return cmd
+}
+
+// tagOf is an image reference without its digest.
+func tagOf(ref string) string {
+	ref, _, _ = strings.Cut(ref, "@")
+	return ref
 }
 
 // describeServer sums up the settings server init left on a server.
