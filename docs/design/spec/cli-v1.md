@@ -20,7 +20,7 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
   | `-v, --verbose` | Show `debug` events |
   | `--no-color` | No colours |
   | `-y, --yes` | Never prompt |
-  | `--connection <string>` | Use this connection string instead of the environment's secret |
+  | `--connection <string>\|@<file>\|-` | Use this connection string instead of the environment's secret. `@<file>` reads it from a file, `-` from the first line of standard input (not with `mcp`): both keep the private key out of the process list. A string given as is works, with a warning on stderr. The string and the key or password it holds are masked |
 
 - **What is read:** `deploy`, `plan`, `build`, `rollback`, `run`, `validate`, `config show` and `list services` load `dockflow.yml` and the Compose files, and need every variable they use. Every other command that reaches a server acts on what it runs: it loads `dockflow.yml` alone (the environment, its server, the connection secret), never the Compose files or plugins.
 - **Prompts:** a command that changes a server shows its plan and asks for confirmation on a terminal. Without a terminal it never prompts.

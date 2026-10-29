@@ -48,8 +48,14 @@ func TestServerConnection(t *testing.T) {
 	app := "journey18"
 	dir := filepath.Join(workDir, app)
 	writeProject(t, dir, app, webApp(app, "whoami-e2e:v1", ""))
-	if out, code := run("--json", "-y", "-C", dir, "--connection", out, "deploy"); code != 0 {
-		t.Fatalf("deploy with the printed connection string: exit %d: %s", code, out)
+	// on standard input, kept out of the process list
+	deploy := exec.Command(binary, "--json", "-y", "-C", dir, "--connection", "-", "deploy")
+	deploy.Env = append(os.Environ(), "HOME="+workDir)
+	deploy.Stdin = strings.NewReader(out + "\n")
+	if b, err := deploy.CombinedOutput(); err != nil {
+		t.Fatalf("deploy with the printed connection string: %v: %s", err, b)
+	} else if strings.Contains(string(b), "command line") {
+		t.Fatalf("a string read from standard input is not on the command line: %s", b)
 	}
 
 	out, code = run("server", "connection", "root@"+serverIP+":2222", "-k", key)

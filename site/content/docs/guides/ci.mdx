@@ -77,6 +77,8 @@ Every secret of an environment is a CI variable prefixed with the environment's 
 | `PRODUCTION_CONNECTION` | The connection string of the server: its address, its host key and the deploy key. `dockflow server init <admin>@<host>` prints it when it prepares the server; `dockflow server connection <user@host[:port]> -k <key>` prints one for an existing user and key |
 | `PRODUCTION_DB_PASSWORD` | The value of `${DB_PASSWORD}` in your Compose files and `dockflow.yml`, for production |
 
+Give the connection string as this variable, not as `--connection "$PRODUCTION_CONNECTION"`: an argument is visible in the process list to every user of the runner, which matters on shared or self-hosted runners. When a step must pass it explicitly, use `--connection @<file>` or `--connection -` with the string on standard input.
+
 Among the process variables, Dockflow reads only those that start with the environment's prefix. A CI variable named `DB_PASSWORD` alone is ignored, so a variable meant for staging never reaches production by accident.
 
 You can also pass a set of secrets as one JSON object in `DOCKFLOW_SECRETS`. On GitHub Actions, this gives Dockflow every secret of the repository:

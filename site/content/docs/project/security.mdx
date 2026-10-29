@@ -52,7 +52,8 @@ A connection string is the base64 of a small JSON document. It holds the server'
 Base64 is an encoding, not encryption. Anyone who has the string can log in to the server as the deploy user, which means root.
 
 - Store it as a CI secret, `<ENV>_CONNECTION` (`PRODUCTION_CONNECTION`), or in `.env.dockflow`, which must stay out of git. Never commit it or paste it in an issue.
-- Dockflow reads it like any other secret and masks it, and the key and password it holds, in its output.
+- Dockflow reads it like any other secret and masks it, and the key and password it holds (each line of a key), in its output.
+- Do not pass it as `--connection <string>`: arguments are visible to every user of the machine in the process list. `--connection @<file>` and `--connection -` (standard input) read it without putting it on the command line, and Dockflow warns when it is given as is.
 - Prefer a key to a password.
 
 If you would rather not keep the key in a secret, describe the server under `server:` in `dockflow.yml` and give the key through `DOCKFLOW_SSH_KEY` or ssh-agent instead. See [Environment variables](/reference/environment-variables/#connecting-to-the-server).

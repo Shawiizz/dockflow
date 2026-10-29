@@ -257,9 +257,8 @@ func (m *mcpServer) run(ctx context.Context, req *mcp.CallToolRequest, args ...s
 
 	root := a.root()
 	global := []string{"--json", "--yes", "--no-color", "--dir", m.app.dir}
-	if m.app.connection != "" {
-		global = append(global, "--connection", m.app.connection)
-	}
+	// the string the server's --connection read, handed over in memory: never as an argument
+	a.connection, a.connectionRead = m.app.connection, true
 	root.SetArgs(append(global, args...))
 	code := a.exitCode(root.ExecuteContext(inner))
 	s := out.all.String()

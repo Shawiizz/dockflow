@@ -21,7 +21,7 @@ This page lists every command of `dockflow` {{version}}, with the options its `-
 
 | Option | Default | Description |
 |---|---|---|
-| `--connection string` | none | Use this connection string instead of the environment's secret. |
+| `--connection string` | none | Use this connection string instead of the environment's secret. `@<file>` reads it from a file and `-` from the first line of standard input (not with `mcp`). Prefer these, or the `<ENV>_CONNECTION` variable: a string given as is sits on the command line, where other users of the machine can read it, and Dockflow warns about it. |
 | `-C, --dir string` | `"."` | The project directory. |
 | `--json` | `false` | Machine-readable output. |
 | `--no-color` | `false` | No colours. The `NO_COLOR` environment variable has the same effect. |

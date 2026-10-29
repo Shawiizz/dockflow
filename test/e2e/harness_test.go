@@ -285,8 +285,16 @@ func dockflowEnv(t *testing.T, dir string, env []string, args ...string) result 
 	return parse(cmd, out.String(), err)
 }
 
+var connFileOnce sync.Once
+
 func dockflowCmd(dir string, args ...string) *exec.Cmd {
-	full := append([]string{"--json", "-y", "-C", dir, "--connection", connString}, args...)
+	// from a file: a string on the command line is readable by every user of the machine
+	connFileOnce.Do(func() {
+		if err := os.WriteFile(filepath.Join(workDir, "connection"), []byte(connString+"\n"), 0o600); err != nil {
+			panic(err)
+		}
+	})
+	full := append([]string{"--json", "-y", "-C", dir, "--connection", "@" + filepath.Join(workDir, "connection")}, args...)
 	cmd := exec.Command(binary, full...)
 	cmd.Env = append(os.Environ(), "HOME="+workDir)
 	return cmd

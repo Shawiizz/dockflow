@@ -9,11 +9,13 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"sync/atomic"
 	"syscall"
 
 	"github.com/spf13/cobra"
 
+	"github.com/Shawiizz/dockflow/internal/connection"
 	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/events"
 	"github.com/Shawiizz/dockflow/internal/launcher"
@@ -27,6 +29,9 @@ type app struct {
 	noColor    bool
 	yes        bool
 	connection string
+	// connectionRead is set once connection holds the string itself, read from where
+	// --connection pointed (readConnection).
+	connectionRead bool
 	// branch replaces the branch git or the CI reports (deploy --branch).
 	branch string
 
@@ -111,8 +116,13 @@ func (a *app) root() *cobra.Command {
 		Short:         "Deploy Docker Compose apps to your own servers, with zero downtime",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			a.setup()
+			if a.connection == "-" && cmd.Name() == "mcp" {
+				return errs.Usage("--connection - cannot be used with mcp, whose standard input is the client's").
+					WithHint("use --connection @<file>, or the <ENV>_CONNECTION variable")
+			}
+			return a.readConnection()
 		},
 	}
 	f := root.PersistentFlags()
@@ -121,7 +131,7 @@ func (a *app) root() *cobra.Command {
 	f.BoolVarP(&a.verbose, "verbose", "v", false, "show debug events")
 	f.BoolVar(&a.noColor, "no-color", false, "no colours")
 	f.BoolVarP(&a.yes, "yes", "y", false, "never prompt")
-	f.StringVar(&a.connection, "connection", "", "use this connection string instead of the environment's secret")
+	f.StringVar(&a.connection, "connection", "", "use this connection string instead of the environment's secret: @<file> reads it from a file, - from the first line of standard input")
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return errs.Usage("%v", err) })
 
 	root.AddCommand(
@@ -146,6 +156,72 @@ func (a *app) setup() {
 		sink = events.NewJSONSink(a.stdout)
 	}
 	a.emitter = events.NewEmitter(launcher.NewRunID(timeNow()), sink, nil)
+}
+
+// readConnection reads the connection string --connection points to: @<file> reads a file, - the
+// first line of standard input, which keep the private key out of the process list; a string
+// given as is still works, with a warning. The string, and the key or password it holds, line by
+// line, are masked from then on.
+func (a *app) readConnection() error {
+	if a.connection == "" {
+		return nil
+	}
+	v := a.connection
+	switch {
+	case a.connectionRead:
+	case v == "-":
+		line, err := readLine(a.stdin)
+		if err != nil {
+			return errs.Usage("--connection -: cannot read the connection string from standard input: %v", err)
+		}
+		v = line
+	case strings.HasPrefix(v, "@"):
+		b, err := os.ReadFile(v[1:])
+		if err != nil {
+			return errs.Usage("--connection: cannot read %s: %v", v[1:], err)
+		}
+		v = string(b)
+	default:
+		a.emitter.Masker().Add(v)
+		// on stderr: with --json, stdout holds the command's document alone
+		fmt.Fprintln(a.stderr, "warning: --connection puts the private key on the command line, where other users of this machine can read it; "+
+			"use --connection @<file>, --connection - (standard input), or the <ENV>_CONNECTION variable")
+	}
+	v = strings.TrimSpace(v)
+	a.connection, a.connectionRead = v, true
+	a.emitter.Masker().Add(v)
+	if c, err := connection.ParseConnString(v); err == nil {
+		a.emitter.Masker().Add(c.PrivateKey, c.Password)
+	}
+	return nil
+}
+
+// readLine reads one line of f, byte by byte, so nothing after it is consumed.
+func readLine(f *os.File) (string, error) {
+	if f == nil {
+		return "", errors.New("no standard input")
+	}
+	var b []byte
+	one := make([]byte, 1)
+	for len(b) < 1<<20 {
+		n, err := f.Read(one)
+		if n == 1 {
+			if one[0] == '\n' {
+				break
+			}
+			b = append(b, one[0])
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	if len(strings.TrimSpace(string(b))) == 0 {
+		return "", errors.New("it is empty")
+	}
+	return string(b), nil
 }
 
 func isTerminal(f *os.File) bool {
