@@ -1,6 +1,6 @@
 # Design
 
-The design of Dockflow v2, written before any code ([roadmap, M0](roadmap.md#m0-design-this-branch-now)).
+The design of Dockflow v2, written before any code ([roadmap, M0](roadmap.md#m0-design)), and kept up to date since. Milestones M1 to M5 are implemented; the current release is 1.0.0-alpha.5.
 
 | Document | Contents |
 |---|---|

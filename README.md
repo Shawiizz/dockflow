@@ -1,71 +1,117 @@
 # Dockflow
 
-Dockflow deploys your Docker Compose applications, as written, to your own server: zero downtime, a plan before every change, a rollback that always finishes. From your laptop or your CI.
+Dockflow deploys a Docker Compose app to your own server over SSH. You keep your `compose.yml`, add a short `dockflow.yml`, and run `dockflow deploy` from your laptop or from CI. Dockflow shows a plan, starts the new containers next to the old ones, moves the traffic once they are healthy, and rolls back on its own when something fails. There is no orchestrator and no daemon on the server: only Docker, and a few containers Dockflow runs there.
 
-Documentation: [dockflow.shawiizz.dev](https://dockflow.shawiizz.dev).
+Documentation: [dockflow.shawiizz.dev](https://dockflow.shawiizz.dev)
 
-## Status
+## What it does
 
-Milestones M1 (walking skeleton) and M2 (shipping real apps) are implemented: a Compose app deploys to one server with zero downtime, a plan, releases and rollbacks; its images are built (buildx bake, Podman, or on the server) and sent through an SSH tunnel to a registry on the server; jobs, health checks, hooks, templates, uploads and the day-2 commands work, from a laptop or any CI. Not for general production use yet: secrets files, server provisioning and backups come in the next milestones ([roadmap](docs/design/roadmap.md)).
+- Deploys standard Compose files to one Linux server per environment, with zero-downtime rollouts and automatic rollback.
+- Shows a plan of every change, computed from what the server runs, before applying it.
+- Keeps releases on the server: `dockflow rollback` restores the previous one in one command.
+- Serves HTTPS through a proxy on the server (Caddy) with automatic certificates, or sits behind your own nginx or Cloudflare.
+- Builds images locally or on the server and sends them to a registry on the server.
+- Prepares a server in one command: Docker, a deploy user, the proxy and the registry.
+- Reads secrets from CI variables or SOPS files, runs jobs and hooks, uploads files, and backs up databases and volumes with restic.
+- Works the same from a laptop and from any CI. Comes with a GitHub Action and an MCP server for AI assistants.
 
-## Try it
+## Install
 
-You need a Linux server with Docker 27 or later, reachable over SSH by a user that may use Docker, with ports 80 and 443 free (or another web server in front: see the `external` edge in the [configuration](docs/design/spec/config-v1.md)).
+Linux and macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh # from a release
-make build                                                                            # or from source: ./dockflow
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh
 ```
 
-`dockflow.yml`, next to your `compose.yml`:
+Homebrew:
+
+```sh
+brew tap shawiizz/dockflow https://github.com/Shawiizz/dockflow
+brew install dockflow
+```
+
+npm:
+
+```sh
+npm install -g @dockflow-tools/cli
+```
+
+Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.ps1 | iex
+```
+
+Options, version pinning and server requirements are in the [installation guide](https://dockflow.shawiizz.dev/start/installation/).
+
+## Example
+
+Prepare a server (Linux, reachable over SSH as root or as a user with passwordless sudo, ports 80 and 443 free; Dockflow installs Docker on Debian and Ubuntu):
+
+```sh
+dockflow server init root@203.0.113.10
+```
+
+It prints a connection string. Store it as `PRODUCTION_CONNECTION` in a `.env.dockflow` file kept out of git, or as a CI secret.
+
+In your project, write `dockflow.yml`:
 
 ```yaml
 version: 1
-app: shop
+app: hello
+
 environments:
   production:
-    server:
-      host: 203.0.113.10
-      user: deploy
-      host_key: SHA256:…                # ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub, on the server
+    vars:
+      DOMAIN: hello.example.com
 ```
 
-Route a service through the switch in `compose.yml`:
+and `compose.yml`:
 
 ```yaml
 services:
   web:
-    image: ghcr.io/acme/web:1.4
-    deploy:
-      replicas: 2
+    image: nginx:1.27-alpine
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
     x-dockflow:
       routes:
-        - domains: [shop.example.com]
-          port: 3000
+        - domains: ["${DOMAIN}"]
+          port: 80
 ```
 
-Then:
+Then deploy:
 
 ```sh
-dockflow server init production         # installs the switch (Caddy) on the server
-dockflow plan production
 dockflow deploy production
-dockflow status production
-dockflow releases production
-dockflow rollback production
 ```
 
-The SSH key comes from `DOCKFLOW_SSH_KEY`, ssh-agent or `~/.ssh`. In CI, a single `PRODUCTION_CONNECTION` secret replaces the `server` block.
+The [quickstart](https://dockflow.shawiizz.dev/start/quickstart/) walks through the same example, then a second deploy and a rollback.
 
-## Design
+## Status
 
-Start with:
+Dockflow is in alpha. The current release is **1.0.0-alpha.5**.
 
-- [Vision](docs/design/vision.md): what Dockflow is, who it is for, what it will not do
+Deploys, builds, secrets, server provisioning, backups, the MCP server and the GitHub Action work today. The configuration (`version: 1`), server state and event formats are specified and stable. They are frozen at 1.0.0; after that, they change only by additions.
+
+What is left before 1.0.0 is on the [roadmap](https://dockflow.shawiizz.dev/project/roadmap/).
+
+This version is a rewrite in Go. It shares nothing with the earlier Dockflow built on Docker Swarm: see [migrating](https://dockflow.shawiizz.dev/start/migrating/).
+
+## Contributing
+
+The design is written down before the code. Start with:
+
+- [Vision](docs/design/vision.md): goals, non-goals and the code budget
 - [Architecture decisions](docs/design/adr/README.md): one record per decision
 - [Specifications](docs/design/README.md#specifications): configuration, server state, events, CLI
 - [Roadmap](docs/design/roadmap.md): milestones and their exit criteria
-- [Parity with 1.x](docs/design/parity.md): every 1.x feature and its v2 equivalent
+- [CLAUDE.md](CLAUDE.md): the working rules (vertical slices, architecture, tests)
+
+Build with `make build` and run the unit tests with `make test`.
 
 ## License
 

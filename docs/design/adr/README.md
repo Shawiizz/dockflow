@@ -2,7 +2,7 @@
 
 Each record states one decision, why it was taken and what it costs. A record is never edited to change its decision: a new record supersedes it, and the old one is marked `Superseded by ADR-NNNN`.
 
-Until M1 starts, records are still edited in place when the project owner changes a decision during the design review; each revised record says so in its date line.
+Before M1 started, records were edited in place when a decision changed during the design review; each revised record says so in its date line.
 
 Records use this layout: Status, Context, Decision, Consequences, Alternatives considered, Open questions. An open question is answered in the milestone named next to it, by amending the record (an answer is not a change of decision) or, when the answer changes the decision, by a new record.
 

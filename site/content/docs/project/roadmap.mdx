@@ -1,15 +1,15 @@
 ---
 title: Roadmap
-description: What the current alpha of Dockflow does, what each coming milestone adds up to 1.0.0, and how releases are numbered.
+description: What the current alpha of Dockflow does, what is left before 1.0.0, and how releases are numbered.
 ---
 
-Dockflow is built in milestones. Each one ends with a tool you can use, and is done only when real projects run on it in production and its exit criteria pass as automated tests. Milestones have no dates.
-
-The current release is **1.0.0-alpha.5**, which delivers milestones M1 to M5.
+The current release is **1.0.0-alpha.5**. It delivers milestones M1 to M5, listed under [available now](#available-now). What is left is listed under [before 1.0.0](#before-100).
 
 <Callout type="warn">
 Until 1.0.0, releases are alphas. The configuration (`version: 1`), the server state (`schema: 1`) and the event stream (`v: 1`) are designed to stay, but they are frozen only at 1.0.0.
 </Callout>
+
+Dockflow is built in milestones. A milestone is done when its exit criteria pass as automated tests and real deployments run on it in production. Milestones have no dates.
 
 ## Available now
 
@@ -25,7 +25,7 @@ Deploy a Compose app that uses public images to one server, with zero downtime.
 - The switch, with the `builtin` edge, installed by `dockflow server init`.
 - `plan`, `deploy`, `rollback`, `status`, `releases`, `version`, `lock`, `validate`, `config show`, `completion` and `--json`.
 
-Its exit criteria, run as end-to-end tests on Docker 27 and on the latest Docker: a client sending requests in a loop during a deploy and a rollback sees no failed request; two concurrent deploys get exit code 5 for one of them; killing the agent mid-run leaves the previous release serving.
+Exit criteria, run as end-to-end tests on Docker 27 and on the latest Docker: a client sending requests in a loop during a deploy and a rollback sees no failed request; two concurrent deploys get exit code 5 for one of them; killing the agent mid-run leaves the previous release serving.
 
 ### M2: Shipping real apps
 
@@ -38,66 +38,63 @@ Everything a web app needs to go to production from CI.
 - **Day-2 commands:** `logs`, `exec`, `run`, `cp`, `ssh`, `ps`, `details`, `diagnose`, `restart`, `stop`, `scale`, `prune`, `list`, `destroy`, `releases --stats` and `cancel`.
 - **CI:** the environment and version derived from tags, on GitHub Actions, GitLab CI, Jenkins, Buildkite and Bitbucket Pipelines; signed webhooks.
 - **Cleanup:** release retention, and pruning of images and the registry.
-- `dockflow server init <admin>@<host>`, or `sudo dockflow server init` on the server itself: Docker installed on Debian and Ubuntu, the deploy user with a key that is never written to disk, the switch and the registry, and the connection string printed at the end; `dockflow server connection`; the release workflow, the installer, and the download of the agent binary checked against the release's checksums.
+- **Server setup:** `dockflow server init <admin>@<host>`, or `sudo dockflow server init` on the server itself: Docker installed on Debian and Ubuntu, the deploy user with a key that is never written to disk, the switch and the registry, and the connection string printed at the end; `dockflow server connection`.
+- **Distribution:** the release workflow, the installer, and the download of the agent binary checked against the release's checksums.
 
-## Coming next
+Validated on real deployments: two websites, this documentation site among them, deploy from GitHub Actions behind the host's nginx.
 
 ### M3: Production-ready
 
-<Badge text="Done" variant="success" />
+Take a blank server to a production host, and cover the needs of larger apps.
+
+- **Provisioning:** the rest of `server init` (interactive questions, SSH hardening, `from=` restrictions on the deploy key, `--nginx`, `--acme-email`), `server cloud-init`, `server check`, `server status`, `server edge`, `server upgrade` and `server uninstall`.
+- **Edges and routes:** the `cloudflare` edge, route options, error pages, `redirect`, `proxy` and `files` routes, raw Caddy blocks.
+- **Plugins:** project plugins and the built-in `nginx` and `systemd` plugins, with `plugins list`.
+- **Firewall:** the published-port filter, with `firewall.public_ports` and per-port source ranges. Cloudflare's ranges, refreshed every week, come with the `cloudflare` edge.
+- **Secrets:** Compose `secrets:` and `configs:` delivered as files on a tmpfs, build secrets, encrypted secrets files with SOPS, and the `secrets` commands.
+- **Self-healing:** the watchdog, which restarts a container that stays unhealthy for too long (`x-dockflow.health.restart_after`), and brings apps with Compose secrets back after a reboot.
+- **Shared servers:** networks shared between apps, Docker volume plugins, and a warning about services without limits.
+- **`dockflow init`**, which writes a starting configuration and CI workflows.
+- **Real-server tests:** fresh DigitalOcean droplets for provisioning, cloud-init, Let's Encrypt staging certificates, the `cloudflare` edge, nginx in front of the switch and the port filter, run by hand before a release.
+
+Exit criteria: a fresh cloud server goes from blank to serving an app over HTTPS with `server init` and `deploy` only, tested on real servers.
 
 Validated on a real deployment: a website, its API and Postgres, and a game server on fixed TCP and UDP ports, behind Cloudflare, on one server.
 
-Take a blank server to a hardened production host, and cover the needs of larger apps.
-
-- **Provisioning:** the rest of `server init` <Badge text="Done" variant="success" /> (interactive questions, SSH hardening, `from=` restrictions on the deploy key, `--nginx`) and `server cloud-init` <Badge text="Done" variant="success" />, `--acme-email`, `server check`, `server status`, `server edge`, `server upgrade` and `server uninstall` <Badge text="Done" variant="success" />.
-- **Edges and routes** <Badge text="Done" variant="success" />: the `cloudflare` edge, route options, error pages, `redirect`, `proxy` and `files` routes, raw Caddy blocks.
-- **Plugins** <Badge text="Done" variant="success" />: project plugins and the built-in `nginx` and `systemd` plugins, with `plugins list`. `server init --nginx`, which installs nginx and the plugins' sudo rules, arrives with provisioning.
-- **Firewall** <Badge text="Done" variant="success" />: the published-port filter, with `firewall.public_ports` and per-port source ranges. Cloudflare's ranges, refreshed every week, come with the `cloudflare` edge.
-- **Secrets** <Badge text="Done" variant="success" />: Compose `secrets:` and `configs:` delivered as files on a tmpfs, build secrets, encrypted secrets files with SOPS, and the `secrets` commands.
-- **Self-healing** <Badge text="Done" variant="success" />: the watchdog, which restarts a container that stays unhealthy for too long (`x-dockflow.health.restart_after`), and brings apps with Compose secrets back after a reboot.
-- **Shared servers** <Badge text="Done" variant="success" />: networks shared between apps, Docker volume plugins, and a warning about services without limits.
-- **`dockflow init`** <Badge text="Done" variant="success" />, which writes a starting configuration and CI workflows.
-
-- **Real-server tests** <Badge text="Done" variant="success" />: fresh DigitalOcean droplets for provisioning, cloud-init, Let's Encrypt staging certificates, the `cloudflare` edge, nginx in front of the switch and the port filter, run by hand before a release.
-
-Exit criteria include a fresh cloud server going from blank to serving an app over HTTPS with `server init` and `deploy` only, tested on real servers.
-
 ### M4: Data
 
-<Badge text="Done" variant="success" />
-
-- **Stateful services** <Badge text="Done" variant="success" />: the full rules for services that hold data.
-- **Backups with restic** <Badge text="Done" variant="success" />: Postgres, MySQL, MongoDB and Redis dumps, volumes and bind mounts, and custom dump commands; a local repository by default and off-site repositories (S3-compatible and others), application-aware quiesce (a database dump, a game server's save), retention and `check`, and the backup of `/var/lib/dockflow` itself.
-- **Commands** <Badge text="Done" variant="success" />: `backup run`, `backup list`, `backup restore` (including from another environment, to restore production data into staging) and `backup prune`, plus scheduled backups in the generated CI workflows.
+- **Stateful services:** the full rules for services that hold data.
+- **Backups with restic:** Postgres, MySQL, MongoDB and Redis dumps, volumes and bind mounts, and custom dump commands; a local repository by default and off-site repositories (S3-compatible and others); application-aware quiesce (a database dump, a game server's save); retention and `check`; and the backup of `/var/lib/dockflow` itself.
+- **Commands:** `backup run`, `backup list`, `backup restore` (including from another environment, to restore production data into staging) and `backup prune`, plus scheduled backups in the generated CI workflows.
 
 Validated on real deployments: a 14 GB game world backed up every 6 hours while the server runs, and a website, an API and a 2.7 GB file repository, where a deploy sends only the files that changed.
 
 ### M5: Interfaces
 
-<Badge text="Done" variant="success" />
+- **`dockflow mcp`**, an MCP server for AI assistants: status, releases, logs and plans, and, with `--allow-apply`, deploys of a reviewed plan and rollbacks. See [AI agents](/guides/ai-agents/).
+- **A GitHub Action** that comments the plan on pull requests and deploys. See [the GitHub Action](/guides/ci/#the-github-action).
 
-- **`dockflow mcp`** <Badge text="Done" variant="success" />, an MCP server for AI assistants: status, releases, logs and plans, and, with `--allow-apply`, deploys of a reviewed plan and rollbacks. See [AI agents](/guides/ai-agents/).
-- **A GitHub Action** <Badge text="Done" variant="success" /> that comments the plan on pull requests and deploys. See [the GitHub Action](/guides/ci/#the-github-action).
+## Before 1.0.0
 
-### 1.0.0
+1.0.0 ships when:
 
-- Every capability planned for 1.0.0 is provided, or explicitly deferred.
-- The configuration, state and event formats are frozen <Badge text="Done" variant="success" />: from 1.0.0, they change only by additions in a minor release.
-- Signed releases, an agent checked by the CLI against its own build <Badge text="Done" variant="success" />, a PowerShell installer, Homebrew and an npm package <Badge text="Done" variant="success" />.
-- Complete user documentation: every command, every key, recipes and the security model.
+- every capability planned for 1.0.0 is provided, or explicitly deferred;
+- the configuration, state and event formats are frozen <Badge text="Done" variant="success" />: from 1.0.0, they change only by additions in a minor release;
+- the CLI checks the agent against its own build <Badge text="Done" variant="success" />, and a PowerShell installer, a Homebrew formula and an npm package exist <Badge text="Done" variant="success" />;
+- releases are signed;
+- the user documentation is complete: every command, every key, recipes and the security model.
 
-### After 1.0.0
+## After 1.0.0
 
 Considered, not committed: a local web UI (`dockflow ui`), preview environments per pull request, several servers per environment, Podman as the server's engine (rootless), DNS-01 certificates through Cloudflare with wildcard domains, Postgres point-in-time recovery, and a native nftables backend for the port filter.
 
 ## Versioning
 
 - Releases follow [semantic versioning](https://semver.org/), with tags `v<semver>`.
-- Until the v1.0 milestone, every release is a pre-release, `1.0.0-alpha.N`: one or more per milestone. The v1.0 milestone ships as 1.0.0. Tags carry a `v` (`v1.0.0`), as Go and GitHub Actions expect.
+- Until 1.0.0, every release is a pre-release, `1.0.0-alpha.N`, one or more per milestone. Tags carry a `v` (`v1.0.0`), as Go and GitHub Actions expect.
 - Pre-releases are marked as such on GitHub. The installer takes the newest release, pre-releases included, unless you pass `--version`.
-- The CLI and the agent it runs on your server are always the same version: after you upgrade the CLI, its next run installs the matching agent on the server by itself.
-- The formats carry their own version numbers (`version: 1` in `dockflow.yml`, `schema: 1` in the server state, `v: 1` in events), which change only in a major release.
+- The CLI and the agent it runs on your server are always the same version. After you upgrade the CLI, its next run installs the matching agent on the server.
+- The formats carry their own version numbers (`version: 1` in `dockflow.yml`, `schema: 1` in the server state, `v: 1` in events). They change only in a major release.
 
 To pin the version your CI installs:
 

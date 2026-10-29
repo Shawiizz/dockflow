@@ -2,14 +2,17 @@
 
 Each milestone ends with a usable tool and **one or more real projects migrated to it**, by hand ([ADR-0001](adr/0001-clean-break.md)). Exit criteria are checked by tests, not by reading code. Dates are not fixed. v1.0 ships when every row of [parity.md](parity.md) is provided, deferred or dropped by decision.
 
-## M0: Design (this branch, now)
+**Current state:** milestones M0 to M5 are done. The current release is 1.0.0-alpha.5. The work left is the v1.0 milestone below.
+
+## M0: Design
+
+**Status: done.**
 
 - [x] Vision, non-goals, principles
 - [x] ADR-0001 to ADR-0023
 - [x] Specifications: configuration, server state, events, CLI
-- [x] Parity table with 1.x, from its CLI reference, its schema, its e2e fixtures and eight real projects
+- [x] Parity table with 1.x, from its CLI reference, its schema, its e2e fixtures and the real projects it deployed
 - [x] Single-server design, without an orchestrator (2026-10-26)
-- [ ] Review by the project owner. Any change of mind becomes an edit before M1 starts, while nothing depends on it yet.
 
 ## M1: Walking skeleton
 
@@ -43,9 +46,9 @@ Also answered in M1:
 - the `authorized_keys` options: moved to M3, with provisioning ([ADR-0013](adr/0013-servers-access-security.md));
 - embedding or downloading the agent binary: downloading ([ADR-0020](adr/0020-releasing-dockflow.md)).
 
-## M2: Shipping real apps — shawiizz.dev and Dockflow's docs
+## M2: Shipping real apps
 
-**Status: done (2026-10-26).** The exit criterion is met: shawiizz.dev and the documentation site (dockflow.shawiizz.dev) deploy with v4.0.0-alpha.5 from GitHub Actions, behind the host's nginx (`--edge external`). The items below are covered by e2e journeys (`test/e2e/`), run in CI on Docker 27 and on the latest Docker (Podman builds where Podman is installed), except CI detection, covered by unit tests, and pushes to an external registry, which no test exercises yet. Also delivered: `server connection` and the first part of provisioning, `server init <admin>@<host>` and `server init` run on the server itself (Docker, the deploy user and its key, the connection string), moved here from M3 so that preparing a server takes one command; the release workflow, the install script and the download of the agent binary, checked against the release's checksums ([ADR-0020](adr/0020-releasing-dockflow.md)); the CLI's check of the signature waits for v1.0.
+**Status: done (2026-10-26).** The exit criterion is met, validated on real deployments: a personal website and the documentation site (dockflow.shawiizz.dev) deploy with v4.0.0-alpha.5 from GitHub Actions, behind the host's nginx (`--edge external`). The items below are covered by e2e journeys (`test/e2e/`), run in CI on Docker 27 and on the latest Docker (Podman builds where Podman is installed), except CI detection, covered by unit tests, and pushes to an external registry, which no test exercises yet. Also delivered: `server connection` and the first part of provisioning, `server init <admin>@<host>` and `server init` run on the server itself (Docker, the deploy user and its key, the connection string), moved here from M3 so that preparing a server takes one command; the release workflow, the install script and the download of the agent binary, checked against the release's checksums ([ADR-0020](adr/0020-releasing-dockflow.md)); the CLI's check of the signature waits for v1.0.
 
 - **The `external` edge**, moved here from M3: both projects of this milestone sit behind the host's nginx, which keeps ports 80 and 443.
 - **Images:** `build`; builds with buildx bake or Podman; the server-local registry and the push through an SSH tunnel; external registries and additional tags; remote builds.
@@ -56,11 +59,11 @@ Also answered in M1:
 - **Cleanup:** retention and pruning.
 - **Tests:** the e2e suite on a Docker-in-Docker server reached over SSH.
 
-Exit criteria: **shawiizz.dev and Dockflow's docs site deploy with v2 in production**, from their CI.
+Exit criteria: **two websites, one of them Dockflow's docs site, deploy with v2 in production** from their CI, behind an existing nginx.
 
-## M3: Production-ready — ValientRP
+## M3: Production-ready
 
-**Status: done (2026-10-27).** The exit criteria are met: a blank DigitalOcean droplet serves an app over HTTPS with `server init` and `deploy` only (`test/real/`), and ValientRP's frontend, backend with its Postgres, Minecraft server and RCON panel run on one server with v4.0.0-alpha.6, deployed from GitHub Actions: the shared network `valientrp`, ports 25565 TCP and UDP open by the filter and every other port closed, the graceful stop through an `exec` hook, Cloudflare in front with the `cloudflare` edge. The server was moved in place from Dockflow 1.x, its Postgres volume and world directory reused. Cloudflare stays in its Flexible SSL mode, so the routes are served over HTTP (`tls: false`).
+**Status: done (2026-10-27).** The exit criteria are met: a blank DigitalOcean droplet serves an app over HTTPS with `server init` and `deploy` only (`test/real/`), and, validated on a real deployment, a frontend, a backend with its Postgres, a game server and its RCON panel run on one server with v4.0.0-alpha.6, deployed from GitHub Actions: a shared network to Postgres, the game's port open in TCP and UDP by the filter and every other port closed, the graceful stop through an `exec` hook, Cloudflare in front with the `cloudflare` edge. The server was moved in place from Dockflow 1.x, its Postgres volume and world directory reused. Cloudflare stays in its Flexible SSL mode, so the routes are served over HTTP (`tls: false`).
 
 - **Provisioning:** the full `server init` (interactive, hardening, `--nginx`, `--acme-email`) and `server cloud-init`; `check`, `connection`, `status`, `edge`, `upgrade`, `uninstall` (done).
 - **Edges:** `cloudflare`, route options, `redirect`, `proxy` and `files` routes, raw Caddy blocks, (domain, path) uniqueness (done; `none` shipped with M2).
@@ -74,11 +77,11 @@ Exit criteria: **shawiizz.dev and Dockflow's docs site deploy with v2 in product
 
 Exit criteria:
 - a new DigitalOcean droplet goes from blank to serving an app over HTTPS with `server init` and `deploy` only (met: `TestProvisionAndDeploy`, with Let's Encrypt's staging);
-- **ValientRP's frontend, backend and Minecraft server run on one server with v2**: the shared network to Postgres, TCP and UDP ports, the graceful stop through an `exec` hook, Cloudflare in front.
+- **a frontend, a backend and a game server run on one server with v2**: the shared network to Postgres, TCP and UDP ports, the graceful stop through an `exec` hook, Cloudflare in front.
 
-## M4: Data — MohistMC
+## M4: Data
 
-**Status: done (2026-10-28).** The items below are done and covered by e2e journeys (`test/e2e/backup*_test.go`) and unit tests. The first exit criterion is an e2e test, against `rclone serve s3` as the S3-compatible storage (`TestOffsiteBackup`). The second is met: ValientRP's 14 GB world is backed up by v4.0.0-alpha.8 from a scheduled GitHub Actions workflow, with `save-off`/`save-all flush` before the copy and `save-on` after, while the server runs (2026-10-28). The third is met: MohistMC's website, API with its Postgres, and Maven repository run with v4.0.0-alpha.8 on the server they share with other apps, behind its nginx, deployed from GitHub Actions. The second deploy of the 2.7 GB Maven repository sent 0 of its 1,961 files. The SSHFS mount of the builds stays the host's, set up outside Dockflow ([ADR-0024](adr/0024-provisioning-scope.md)). The rclone mount of the archives has no reader left: nginx proxies `/builds-raw` to the S3 bucket, and a host timer lists the bucket with rclone to write its index.
+**Status: done (2026-10-28).** The items below are done and covered by e2e journeys (`test/e2e/backup*_test.go`) and unit tests. The first exit criterion is an e2e test, against `rclone serve s3` as the S3-compatible storage (`TestOffsiteBackup`). The second is met on a real deployment: a 14 GB game world is backed up by v4.0.0-alpha.8 from a scheduled GitHub Actions workflow, with `save-off`/`save-all flush` before the copy and `save-on` after, while the server runs (2026-10-28). The third is met on a real deployment: a website, an API with its Postgres, and a 2.7 GB Maven repository run with v4.0.0-alpha.8 on a server they share with other apps, behind its nginx, deployed from GitHub Actions. The second deploy of the Maven repository sent 0 of its 1,961 files. The SSHFS mount of the builds stays the host's, set up outside Dockflow ([ADR-0024](adr/0024-provisioning-scope.md)). The rclone mount of the archives has no reader left: nginx proxies `/builds-raw` to the S3 bucket, and a host timer lists the bucket with rclone to write its index.
 
 - **Stateful services:** their rules: one container, `stop-first`, updated before the other services, the only ones backed up (done).
 - **Backups with restic:**
@@ -91,15 +94,17 @@ Exit criteria:
 
 Exit criteria:
 - a Postgres app is backed up to S3-compatible storage, restored into staging from production, and a failing restore stops at the first error;
-- a Minecraft world is backed up with `save-off`/`save-on` without stopping the server;
-- **MohistMC's three projects run with v2**: the 2.7 GB Maven upload, where the second deploy sends only changed files, and the API's Postgres kept on its volume.
+- a game world is backed up with `save-off`/`save-on` without stopping the server;
+- **a website, an API and a file repository run with v2**: the 2.7 GB Maven upload, where the second deploy sends only changed files, and the API's Postgres kept on its volume.
 
 ## M5: Interfaces
+
+**Status: done.**
 
 - `dockflow mcp`, with gated write tools (done).
 - The GitHub Action: plan comment on pull requests, deploy otherwise (done). The merged code is planned again at deploy time: the reviewed plan's commit is gone after a merge.
 
-The local web UI and preview environments per pull request are deferred after v1.0 by decision of the project owner (2026-10-28): none of the eight projects that shaped v2 needs them, and the web UI alone is a frontend stack to build and maintain.
+The local web UI and preview environments per pull request are deferred after v1.0 (decided 2026-10-28): none of the real projects that shaped v2 needs them, and the web UI alone is a frontend stack to build and maintain.
 
 ## v1.0 (released as 1.0.0)
 
