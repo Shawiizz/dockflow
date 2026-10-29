@@ -224,6 +224,8 @@ These exit with code 1. Most come from the server's Docker or files, not from yo
 | `switch.config_refused` | 1 | The switch refused the configuration Dockflow sent it. | Report it, with the message. |
 | `server.start_failed` | 1 | The switch, the registry or the watchdog cannot start. | The hint says what to check, usually a port already in use. |
 | `filter.no_iptables`, `filter.failed` | 1 | The port filter cannot be applied: `iptables` or `ip6tables` is missing on the server, or refused the rules. | Install iptables on the server, or run `dockflow server init --no-port-filter`. |
+| `filter.inert` | 1 | Docker does not send forwarded traffic through `DOCKER-USER`: with its `nftables` firewall backend, or `"iptables": false`, the port filter would let everything in. | Use Docker's iptables backend, or run `dockflow server init --no-port-filter` and filter the ports yourself. |
+| `filter.ipv6` | 1 | The server has an IPv6 address, but the port filter's IPv6 rules cannot be applied: published ports would stay open over IPv6. | Install `ip6tables` on the server, or turn IPv6 off. |
 | `prune.registry` | 1 | The server-local registry's garbage collection failed. | Read the registry's error in the message. |
 
 Two codes never reach you as errors:
