@@ -5,7 +5,7 @@
 
 ## Context
 
-[ADR-0013](0013-servers-access-security.md) had provisioning harden the server the way ValientRP's `harden.sh` did: an SSH drop-in, fail2ban for SSH, unattended security updates and time synchronisation. Built and run on real servers, the last three proved to be the administration of the server rather than what Dockflow needs:
+[ADR-0013](0013-servers-access-security.md) had provisioning harden the server the way real projects' hardening scripts did: an SSH drop-in, fail2ban for SSH, unattended security updates and time synchronisation. Built and run on real servers, the last three proved to be the administration of the server rather than what Dockflow needs:
 
 - **fail2ban adds little once passwords are off**, which the SSH drop-in does: a brute force against keys does not succeed. It costs, though. The first real-server run was banned by it: a client that tried the deploy user while the first boot was still creating it. A CI pipeline with a wrong key would be locked out the same way, and a CI runner shares its address with other people's jobs.
 - **Unattended security updates and time synchronisation are already on** in the images Dockflow installs Docker on (Ubuntu's, and Debian's cloud images): the steps did nothing on most servers.

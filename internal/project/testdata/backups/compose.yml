@@ -5,7 +5,7 @@ services:
     x-dockflow:
       stateful: true
       backup: { type: postgres, dump_options: "--no-owner --no-acl", keep: { daily: 14 } }
-  minecraft:
+  game:
     image: itzg/minecraft-server
     volumes:
       - world:/data

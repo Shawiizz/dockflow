@@ -7,8 +7,8 @@
 
 Dockflow 1.x sends files to every node of the cluster (`uploads:`), with permissions, owner, excludes and per-service targeting, and backs them up for rollback. Real projects use it for:
 
-- **a 2.7 GB static Maven repository** (`MohistMC/maven`), served by the host's nginx, with a hook that empties the destination before each upload so deleted files disappear;
-- **systemd units** (`mohistmc-backend`: an rclone S3 mount and an SSHFS mount).
+- **a 2.7 GB static Maven repository**, served by the host's nginx, with a hook that empties the destination before each upload so deleted files disappear;
+- **systemd units** (a backend's rclone S3 mount and SSHFS mount).
 
 1.x tars the whole source on every deploy, merges it into the destination (deleted files stay), and has two data-loss bugs in its rollback. Putting 2.7 GB in an image on every deploy is not an option.
 

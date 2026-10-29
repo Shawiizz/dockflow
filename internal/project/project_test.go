@@ -128,9 +128,9 @@ func TestBackups(t *testing.T) {
 	if db.Backup == nil || db.Backup.Type != "postgres" || strings.Join(db.Backup.DumpOptions, " ") != "--no-owner --no-acl" || db.Backup.Keep.Daily != 14 {
 		t.Fatalf("db: %+v", db.Backup)
 	}
-	mc, _ := l.App.Service("minecraft")
+	mc, _ := l.App.Service("game")
 	if b := mc.Backup; b == nil || b.Quiesce.Mode != "exec" || strings.Join(b.Quiesce.Pre, " ") != "rcon-cli save-off" || strings.Join(b.Volumes, ",") != "/data" {
-		t.Fatalf("minecraft: %+v", mc.Backup)
+		t.Fatalf("game: %+v", mc.Backup)
 	}
 }
 

@@ -1,21 +1,21 @@
 version: 1
-app: mohist
+app: shop
 routes:
   - name: maintenance
-    domains: [mohist.example.com]
+    domains: [shop.example.com]
     path: /maintenance
     files: { host_path: /srv/maintenance }
-  - domains: [mohist.example.com]
+  - domains: [shop.example.com]
     path: /maven
-    redirect: "https://maven.mohist.example.com{uri}"
+    redirect: "https://maven.shop.example.com{uri}"
     status: 301
   - name: archives
-    domains: [archives.mohist.example.com]
+    domains: [archives.shop.example.com]
     files: { volume: archives, browse: true }
     auth: { user: team, password: "${ARCHIVES_PASSWORD}" }
-  - domains: [api.mohist.example.com]
-    proxy: http://mohist-api:8080
-    network: mohist
+  - domains: [api.shop.example.com]
+    proxy: http://shop-api:8080
+    network: shop
     error_pages:
       "502": { body: "<h1>The API is down</h1>" }
 environments:

@@ -7,7 +7,7 @@
 
 Dockflow 1.x backs up databases (`pg_dump`, `mysqldump`, `mongodump`, Redis), volumes and bind mounts, or runs custom dump and restore commands. It writes them to the same disk as the data, compressed with gzip, with a count-based retention and `backup prune`. It has no off-site copy, no encryption, no deduplication and no scheduling. It archives live database volumes, swaps volumes under a running service on restore, and runs `psql` without stopping on errors.
 
-The Minecraft project shows what an application-aware backup needs. The server must stop writing during the copy (`save-off`, `save-all flush`, then `save-on`), not stop altogether. Its restic repository sits on the same disk as the world.
+A game server (a Minecraft server, here) shows what an application-aware backup needs. The server must stop writing during the copy (`save-off`, `save-all flush`, then `save-on`), not stop altogether. Its restic repository sits on the same disk as the world.
 
 restic stores encrypted, deduplicated snapshots locally or in S3, B2, SFTP and other backends, with retention policies and integrity checks.
 
@@ -38,7 +38,7 @@ Options:
 | Option | Effect |
 |---|---|
 | `dump_options`, `restore_options` | Extra arguments for the dump types, as in 1.x |
-| `quiesce` | For `volume`, how writes stop during the copy: `stop` (default: stop the containers, then start them again), `none`, or `exec` with `pre` and `post` commands run in the running container ([ADR-0022](0022-hooks.md)). `exec` is how a Minecraft world is backed up without stopping the server |
+| `quiesce` | For `volume`, how writes stop during the copy: `stop` (default: stop the containers, then start them again), `none`, or `exec` with `pre` and `post` commands run in the running container ([ADR-0022](0022-hooks.md)). `exec` is how a game world is backed up without stopping the server |
 | `keep` | Retention: `{ last, hourly, daily, weekly, monthly }`, applied by `restic forget` after each backup. `--prune` reclaims space at most once a day |
 
 ### How it runs
@@ -62,7 +62,7 @@ Options:
 
 ### Scheduling
 
-There is no scheduler on the server in v1. Backups are triggered by the user's CI on a schedule (the generated workflow includes one) or by any cron that runs the CLI. A container that schedules its own backups, as the Minecraft server does, keeps doing so. A cluster scheduler may come with a permanent agent, behind its own ADR.
+There is no scheduler on the server in v1. Backups are triggered by the user's CI on a schedule (the generated workflow includes one) or by any cron that runs the CLI. A container that schedules its own backups, as some game servers do, keeps doing so. A cluster scheduler may come with a permanent agent, behind its own ADR.
 
 ### Implementation (M4)
 

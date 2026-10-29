@@ -16,7 +16,7 @@ All three are first-class. A feature that only one of them needs must not make t
 
 ## Why it exists
 
-The author uses it for eight real projects, and it should be good enough for others to adopt.
+It was designed from real projects deployed with Dockflow 1.x, and it should be good enough for others to adopt.
 
 **Why one server.** Every one of those projects runs on one server, and so do most self-hosted apps. Scaling usually means a bigger server first. When one server is no longer enough, the next step is several independent servers ([ADR-0023](adr/0023-several-servers-later.md)), not a cluster orchestrator:
 - Docker Swarm is in maintenance;

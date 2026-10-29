@@ -1,6 +1,6 @@
 # Parity with Dockflow 1.x
 
-v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no feature ([vision, goal 9](vision.md#goals)). This table maps every feature of 1.x (its last release, 2.5.x) to its v2 equivalent. It was built from 1.x's CLI reference, its configuration schema, its e2e fixtures and eight real projects: MohistMC (maven, frontend, backend), ValientRP (frontend, backend, minecraft-server), shawiizz.dev and Dockflow's own docs.
+v2 is a clean break ([ADR-0001](adr/0001-clean-break.md)), but it loses no feature ([vision, goal 9](vision.md#goals)). This table maps every feature of 1.x (its last release, 2.5.x) to its v2 equivalent. It was built from 1.x's CLI reference, its configuration schema, its e2e fixtures and eight real projects deployed with it: websites, APIs with Postgres, a game server, a large file repository and Dockflow's own docs.
 
 **Status** says how v2 provides it:
 

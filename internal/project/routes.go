@@ -101,7 +101,7 @@ func appRoutes(entries []config.RouteEntry, app *domain.App) error {
 		case e.Proxy != "":
 			u, err := url.Parse(e.Proxy)
 			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" {
-				return errs.Config("%s: proxy %q must be an http or https URL without a path, like http://valientrp-api:8080", at, e.Proxy)
+				return errs.Config("%s: proxy %q must be an http or https URL without a path, like http://billing-api:8080", at, e.Proxy)
 			}
 			if e.Status != 0 {
 				return errs.Config("%s: status goes with redirect", at)

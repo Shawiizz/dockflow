@@ -3,7 +3,7 @@ services:
     image: nginx:alpine
     x-dockflow:
       routes:
-        - domains: [mohist.example.com]
+        - domains: [shop.example.com]
           port: 80
           error_pages:
             "502,503": { route: maintenance }

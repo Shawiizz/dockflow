@@ -10,7 +10,7 @@ Dockflow 1.x has these weaknesses:
 - **Sudo rules contain nothing.** It adds the deploy user to the `docker` group, which already gives root, and then writes narrow sudo rules on top.
 - **A private key stays on the server.** Setup generates the deploy user's private key on the server and leaves it there.
 - **Host keys are not checked unless pinned.**
-- **Provisioning is incomplete:** it installs Docker but leaves out log rotation, SSH hardening, security updates and time sync. Real projects fill the gap with their own scripts (ValientRP's `harden.sh`: SSH by key only, fail2ban, ufw, log rotation).
+- **Provisioning is incomplete:** it installs Docker but leaves out log rotation, SSH hardening, security updates and time sync. Real projects fill the gap with their own hardening scripts (SSH by key only, fail2ban, ufw, log rotation).
 
 Its connection string is practical, and the project owner wants it kept:
 

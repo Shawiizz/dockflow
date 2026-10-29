@@ -109,7 +109,7 @@ A service with `container_name` keeps that name and uses the `stop-first` strate
 - **Acquiring.** A run takes `apps/<stack>/lock` with `flock(LOCK_EX | LOCK_NB)` and holds it until it exits. Then it writes `lock.json`:
 
   ```json
-  { "schema": 1, "run": "01jbx6k3…", "op": "deploy", "by": "shawiizz@laptop", "ci": null, "since": "2026-10-26T14:03:11Z" }
+  { "schema": 1, "run": "01jbx6k3…", "op": "deploy", "by": "alice@laptop", "ci": null, "since": "2026-10-26T14:03:11Z" }
   ```
 
 - **When it is held.** A run that cannot take it reads `lock.json` and fails with `lock.held`, exit code 5. With `--wait-lock`, it retries until the lock is free or the given duration has passed. A lock the watchdog holds (`"op": "watchdog"`) is waited for in any case, up to 3 minutes: the watchdog holds it only to restart a container or to recover a run that died.
@@ -182,7 +182,7 @@ It deletes the other release files, then the images, registry manifests, secret 
   "run": "01jbx6k3m8w0v7c9q2r5t4y6z8",
   "created_at": "2026-10-26T14:03:11Z",
   "finished_at": "2026-10-26T14:04:02Z",
-  "created_by": { "user": "shawiizz", "machine": "laptop", "ci": "github" },
+  "created_by": { "user": "alice", "machine": "laptop", "ci": "github" },
   "source": { "git_sha": "a1b2c3d4e5…", "branch": "main", "dirty": false },
   "dockflow_version": "2.0.0",
   "rollback_of": 40,

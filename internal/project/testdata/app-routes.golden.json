@@ -8,7 +8,7 @@
         "image": "nginx:alpine",
         "networks": [
           {
-            "network": "mohist-production_default",
+            "network": "shop-production_default",
             "aliases": [
               "web"
             ]
@@ -21,7 +21,7 @@
       "routes": [
         {
           "domains": [
-            "mohist.example.com"
+            "shop.example.com"
           ],
           "path": "/",
           "port": 80,
@@ -64,7 +64,7 @@
         ],
         "networks": [
           {
-            "network": "mohist-production_default",
+            "network": "shop-production_default",
             "aliases": [
               "files-maintenance"
             ]
@@ -78,7 +78,7 @@
         {
           "name": "maintenance",
           "domains": [
-            "mohist.example.com"
+            "shop.example.com"
           ],
           "path": "/maintenance",
           "port": 80,
@@ -107,14 +107,14 @@
         "mounts": [
           {
             "type": "volume",
-            "source": "mohist-production_archives",
+            "source": "shop-production_archives",
             "target": "/srv",
             "read_only": true
           }
         ],
         "networks": [
           {
-            "network": "mohist-production_default",
+            "network": "shop-production_default",
             "aliases": [
               "files-archives"
             ]
@@ -128,7 +128,7 @@
         {
           "name": "archives",
           "domains": [
-            "archives.mohist.example.com"
+            "archives.shop.example.com"
           ],
           "path": "/",
           "port": 80,
@@ -146,17 +146,17 @@
   "Routes": [
     {
       "domains": [
-        "mohist.example.com"
+        "shop.example.com"
       ],
       "path": "/maven",
       "port": 0,
       "tls": true,
-      "redirect": "https://maven.mohist.example.com{uri}",
+      "redirect": "https://maven.shop.example.com{uri}",
       "status": 301
     },
     {
       "domains": [
-        "api.mohist.example.com"
+        "api.shop.example.com"
       ],
       "path": "/",
       "port": 0,
@@ -169,14 +169,14 @@
           "body": "\u003ch1\u003eThe API is down\u003c/h1\u003e"
         }
       ],
-      "proxy": "http://mohist-api:8080",
-      "network": "mohist"
+      "proxy": "http://shop-api:8080",
+      "network": "shop"
     }
   ],
   "Networks": [
     {
       "key": "default",
-      "name": "mohist-production_default"
+      "name": "shop-production_default"
     }
   ]
 }

@@ -43,7 +43,7 @@
                     },
                     "upstreams": [
                       {
-                        "dial": "{file./run/dockflow-switch/up/mohist-production.files-maintenance.0/0}"
+                        "dial": "{file./run/dockflow-switch/up/shop-production.files-maintenance.0/0}"
                       }
                     ]
                   }
@@ -52,7 +52,7 @@
                   {
                     "expression": "{http.error.status_code} in [502, 503]",
                     "host": [
-                      "mohist.example.com"
+                      "shop.example.com"
                     ]
                   }
                 ],
@@ -75,7 +75,7 @@
                   {
                     "expression": "{http.error.status_code} in [404]",
                     "host": [
-                      "mohist.example.com"
+                      "shop.example.com"
                     ]
                   }
                 ],
@@ -88,7 +88,7 @@
           ],
           "routes": [
             {
-              "@id": "dockflow.mohist-production.files-maintenance.0",
+              "@id": "dockflow.shop-production.files-maintenance.0",
               "handle": [
                 {
                   "handler": "rewrite",
@@ -104,7 +104,7 @@
                   },
                   "upstreams": [
                     {
-                      "dial": "{file./run/dockflow-switch/up/mohist-production.files-maintenance.0/0}"
+                      "dial": "{file./run/dockflow-switch/up/shop-production.files-maintenance.0/0}"
                     }
                   ]
                 }
@@ -112,7 +112,7 @@
               "match": [
                 {
                   "host": [
-                    "mohist.example.com"
+                    "shop.example.com"
                   ],
                   "path": [
                     "/maintenance",
@@ -123,7 +123,7 @@
               "terminal": true
             },
             {
-              "@id": "dockflow.mohist-production.routes.maven.0",
+              "@id": "dockflow.shop-production.routes.maven.0",
               "handle": [
                 {
                   "handler": "static_response",
@@ -138,7 +138,7 @@
               "match": [
                 {
                   "host": [
-                    "mohist.example.com"
+                    "shop.example.com"
                   ],
                   "path": [
                     "/maven",
@@ -149,7 +149,7 @@
               "terminal": true
             },
             {
-              "@id": "dockflow.mohist-production.routes.1.0",
+              "@id": "dockflow.shop-production.routes.1.0",
               "handle": [
                 {
                   "handler": "reverse_proxy",
@@ -178,14 +178,14 @@
               "match": [
                 {
                   "host": [
-                    "api.mohist.example.com"
+                    "api.shop.example.com"
                   ]
                 }
               ],
               "terminal": true
             },
             {
-              "@id": "dockflow.mohist-production.web.0",
+              "@id": "dockflow.shop-production.web.0",
               "handle": [
                 {
                   "handle_response": [
@@ -217,7 +217,7 @@
                               },
                               "upstreams": [
                                 {
-                                  "dial": "{file./run/dockflow-switch/up/mohist-production.files-maintenance.0/0}"
+                                  "dial": "{file./run/dockflow-switch/up/shop-production.files-maintenance.0/0}"
                                 }
                               ]
                             }
@@ -258,7 +258,7 @@
                   },
                   "upstreams": [
                     {
-                      "dial": "{file./run/dockflow-switch/up/mohist-production.web.0/0}"
+                      "dial": "{file./run/dockflow-switch/up/shop-production.web.0/0}"
                     }
                   ]
                 }
@@ -266,7 +266,7 @@
               "match": [
                 {
                   "host": [
-                    "mohist.example.com"
+                    "shop.example.com"
                   ]
                 }
               ],

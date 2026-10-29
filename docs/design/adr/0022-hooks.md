@@ -7,9 +7,9 @@
 
 Dockflow 1.x runs hooks at seven moments (pre and post build, upload, deploy, and on failure), locally or on the Swarm manager over SSH. Real projects use them to:
 
-- **generate files from secrets before the build**: a JWT key pair (`valientrp-backend`);
-- **write a key on the host and run `sudo systemctl`** to enable FUSE mounts (`mohistmc-backend`);
-- **stop a game server gracefully before a deploy** (`minecraft-server`): warn players over RCON, back the world up inside the running container, save, stop. Its script calls `docker exec` by hand and finds the container by name;
+- **generate files from secrets before the build**: a JWT key pair (a backend);
+- **write a key on the host and run `sudo systemctl`** to enable FUSE mounts (a backend that mounts S3 and SSHFS);
+- **stop a game server gracefully before a deploy**: warn players over RCON, back the world up inside the running container, save, stop. Its script calls `docker exec` by hand and finds the container by name;
 - **truncate a container's log file after the deploy.** Log rotation in provisioning makes this unnecessary ([ADR-0013](0013-servers-access-security.md)).
 
 ## Decision
@@ -56,7 +56,7 @@ A fatal `before_*` hook exits with code 11, before any release is created; a fat
 
 ## Consequences
 
-- The Minecraft sequence (warn, back up, stop) becomes an `exec` hook in `before_deploy`, with no container name to look up.
+- The game-server sequence (warn, back up, stop) becomes an `exec` hook in `before_deploy`, with no container name to look up.
 - Host-level actions remain possible, explicitly, through `host` hooks.
 - `host` hooks use the environment's SSH access ([ADR-0013](0013-servers-access-security.md)).
 - `exec` hooks are run by the agent, so they survive a lost CLI.

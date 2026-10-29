@@ -5,7 +5,7 @@
 
 ## Context
 
-Dockflow 1.x has a plugin system: a manifest (`plugin.yml`) with inputs, uploads and hooks, expanded by about 530 lines with strict templating rules. It ships two built-in plugins: `nginx`, a vhost in `sites-enabled` reloaded after `nginx -t`, and `systemd`, a unit installed and enabled. Projects can also write their own. Real projects use `nginx` everywhere (ValientRP, MohistMC, Dockflow's docs) with their own vhost templates.
+Dockflow 1.x has a plugin system: a manifest (`plugin.yml`) with inputs, uploads and hooks, expanded by about 530 lines with strict templating rules. It ships two built-in plugins: `nginx`, a vhost in `sites-enabled` reloaded after `nginx -t`, and `systemd`, a unit installed and enabled. Projects can also write their own. Every real project studied, Dockflow's docs included, uses `nginx` with its own vhost templates.
 
 The project owner wants the host's nginx to remain a choice next to the built-in proxy, done with hooks and uploads as plugins do.
 

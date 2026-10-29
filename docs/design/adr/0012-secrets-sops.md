@@ -11,7 +11,7 @@ Dockflow 1.x reads secrets from three places:
 - a local `.env.dockflow`;
 - a JSON variable.
 
-A secret named `PRODUCTION_X` overrides the value `X` of the production environment. Its values can be used anywhere a template can, in particular in the `environment:` of a Compose service. Real projects rely on this (ValientRP, MohistMC), and the project owner wants it kept.
+A secret named `PRODUCTION_X` overrides the value `X` of the production environment. Its values can be used anywhere a template can, in particular in the `environment:` of a Compose service. Real projects rely on this, so it is kept.
 
 Its weak points:
 

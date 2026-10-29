@@ -11,7 +11,7 @@ Under Swarm this was severe: Swarm cannot bind a port to `127.0.0.1`, so every p
 
 Without Swarm, Compose's `127.0.0.1:5432:5432` works and solves the problem at its source. Mistakes remain possible: `5432:5432`, written out of habit, still binds every interface.
 
-Real projects also restrict HTTP to Cloudflare's ranges, refreshed weekly (ValientRP's `ufw-cloudflare-sync`).
+Real projects also restrict HTTP to Cloudflare's ranges, refreshed weekly by a script of their own.
 
 ## Decision
 

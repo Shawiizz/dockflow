@@ -112,12 +112,12 @@ routes:                             # routes that don't target a service of this
                                     # (an http(s) URL without a path; network: a shared network to
                                     # join) and files (host_path or volume, browse; the path is
                                     # stripped); name: for error_pages; and every route option
-  - domains: [mohistmc.com]
+  - domains: [example.com]
     path: /maven
-    redirect: https://maven.mohistmc.com/
-  - domains: [mohistmc.com]
+    redirect: https://maven.example.com/
+  - domains: [example.com]
     path: /builds-raw
-    files: { host_path: /mnt/mohist-archives, browse: true }
+    files: { host_path: /mnt/archives, browse: true }
 
 uploads:                            # ADR-0021
   - src: .
@@ -133,14 +133,14 @@ plugins:                            # ADR-0017
     with: { domain: "${DOMAIN}", cloudflare: true }   # proxies to the switch; or template: deploy/nginx/api.conf
   - use: ./deploy/plugins/rclone    # the project's own
     id: archives
-    with: { remote: "ovhs3:archives" }
+    with: { remote: "s3:archives" }
 
 hooks:                              # ADR-0022; commands (run, host, exec) are not interpolated
   before_build:
     - run: ./scripts/generate-keys.sh   # gets JWT_PRIVATE_KEY as an environment variable
       secrets: [JWT_PRIVATE_KEY]
   before_deploy:
-    - service: minecraft
+    - service: game
       exec: ["/server/backup.sh", "deploy"]
       timeout: 10m
     - host: sudo systemctl daemon-reload
@@ -354,7 +354,7 @@ Docker runs Compose on one host, and so does Dockflow ([ADR-0003](../adr/0003-si
 
 ## A complete example
 
-The ValientRP backend in v2:
+A backend with Postgres, joined by another app through a shared network, in v2:
 
 ```yaml
 # compose.yml
@@ -362,18 +362,18 @@ services:
   backend:
     build: .
     environment:
-      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/valientrp
-      QUARKUS_DATASOURCE_USERNAME: valientrp
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/app
+      QUARKUS_DATASOURCE_USERNAME: app
       QUARKUS_DATASOURCE_PASSWORD: ${DB_PASSWORD}
       GAME_SERVER_API_KEY: ${GAME_SERVER_API_KEY}
-      BLUEMAP_URL: http://valientrp-minecraft:8100
-    networks: [default, valientrp]
+      MAP_URL: http://game-server:8100
+    networks: [default, shared]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/q/health"]
       start_period: 40s
     x-dockflow:
       routes:
-        - domains: [api-valientrp.shawiizz.dev]
+        - domains: [api.example.com]
           port: 8081
           max_body: 25MB
           headers: { X-Frame-Options: DENY, X-Content-Type-Options: nosniff }
@@ -381,21 +381,21 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: valientrp
+      POSTGRES_USER: app
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: valientrp
+      POSTGRES_DB: app
     volumes: [postgres_data:/var/lib/postgresql/data]
     networks:
       default: {}
-      valientrp: { aliases: [valientrp-db] }
+      shared: { aliases: [backend-db] }
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U valientrp -d valientrp"]
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
     x-dockflow:
       stateful: true
       backup: { type: postgres, keep: { daily: 14, weekly: 8 } }
 
 networks:
-  valientrp: { external: true }   # dockflow server network create valientrp
+  shared: { external: true }   # dockflow server network create shared
 
 volumes:
   postgres_data: {}
@@ -404,7 +404,7 @@ volumes:
 ```yaml
 # dockflow.yml
 version: 1
-app: valientrp-backend
+app: backend
 hooks:
   before_build:
     - script: .dockflow/hooks/pre-build.sh

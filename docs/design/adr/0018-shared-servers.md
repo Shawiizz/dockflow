@@ -5,16 +5,16 @@
 
 ## Context
 
-Agencies, and many solo developers, run several apps on the same server. ValientRP runs its frontend, backend and Minecraft server on one machine. MohistMC runs its frontend, backend and Maven repository side by side. They share ports 80 and 443, the switch, the local registry and the port filter.
+Agencies, and many solo developers, run several apps on the same server. One real deployment runs a frontend, a backend and a game server on one machine; another runs a frontend, a backend and a large file repository side by side. They share ports 80 and 443, the switch, the local registry and the port filter.
 
 Their apps also talk to each other:
-- the Minecraft server writes to the backend's Postgres;
-- the backend reads the Minecraft server's map;
-- the RCON panel reaches the game server.
+- the game server writes to the backend's Postgres;
+- the backend reads the game server's map;
+- an admin panel reaches the game server over RCON.
 
-In 1.x they do it by joining networks that belong to another project, by their internal names (`valientrp-backend-production-accessories_default`), or through external networks created by hand (`mohistmc-shared`).
+In 1.x they do it by joining networks that belong to another project, by their internal names (`backend-production-accessories_default`), or through external networks created by hand.
 
-Some apps need host-level storage: the MohistMC backend mounts S3 with rclone and a remote directory with SSHFS, through systemd units written by hand.
+Some apps need host-level storage: one backend mounts S3 with rclone and a remote directory with SSHFS, through systemd units written by hand.
 
 ## Decision
 
@@ -39,18 +39,18 @@ Some apps need host-level storage: the MohistMC backend mounts S3 with rclone an
     postgres:
       networks:
         default: {}
-        valientrp: { aliases: [valientrp-db] }
+        shared: { aliases: [backend-db] }
   networks:
-    valientrp: { external: true }
+    shared: { external: true }
   ```
 
-  The Minecraft server reaches `valientrp-db:5432` on `valientrp`, without knowing the backend's project name.
+  The game server reaches `backend-db:5432` on `shared`, without knowing the backend's project name.
 - **A plan that needs one which doesn't exist** fails with the command that creates it.
 
 ### Volume plugins
 
 - **Installing one:** `dockflow server plugin install <plugin> [--alias <name>] [<key>=<value>…]` installs a Docker managed plugin, such as rclone's, which mounts S3, SFTP and dozens of other backends as volumes. `server plugin list` and `remove` complete it.
-- **Using one:** apps use it with Compose's `driver` and `driver_opts` on a volume. The MohistMC mounts become volumes, with no systemd unit. Their credentials come from secrets through interpolation.
+- **Using one:** apps use it with Compose's `driver` and `driver_opts` on a volume. The rclone and SSHFS mounts become volumes, with no systemd unit. Their credentials come from secrets through interpolation.
 
 ### Isolation between apps
 
