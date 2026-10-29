@@ -1,0 +1,53 @@
+name: Bump images
+
+# Moves the third-party images Dockflow pins (internal/agent/images.go) to their newest releases,
+# in a pull request whose CI runs the e2e suite on them.
+on:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the branch
+      pull-requests: write # the pull request
+      actions: write # its CI
+    env:
+      BRANCH: chore/bump-images
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: resolve the newest releases
+        run: sh scripts/bump-images.sh | tee "$RUNNER_TEMP/changes"
+      - name: open or update the pull request
+        run: |
+          if git diff --quiet; then
+            echo "the pinned images are the newest"
+            exit 0
+          fi
+          git switch -C "$BRANCH"
+          git add internal/agent/images.go
+          git -c user.name=Shawiiz_z -c user.email=shaweereso@gmail.com \
+            commit -m "chore(images): bump the pinned server images" -m "$(cat "$RUNNER_TEMP/changes")"
+          git push --force origin "$BRANCH"
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            {
+              echo 'The newest releases of the images Dockflow installs on servers, by `scripts/bump-images.sh`:'
+              echo
+              echo '```'
+              cat "$RUNNER_TEMP/changes"
+              echo '```'
+            } >"$RUNNER_TEMP/body"
+            gh pr create --base main --head "$BRANCH" \
+              --title "chore(images): bump the pinned server images" --body-file "$RUNNER_TEMP/body"
+          fi
+          # a push made with GITHUB_TOKEN starts no workflow: start the CI, e2e included
+          gh workflow run ci.yml --ref "$BRANCH"

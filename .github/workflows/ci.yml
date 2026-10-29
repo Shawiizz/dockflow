@@ -7,6 +7,8 @@ on:
     branches: [main]
   # the release workflow runs the whole CI on the tagged commit first
   workflow_call:
+  # the image bumps' pull requests, which the GITHUB_TOKEN that opens them cannot start
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,6 +27,9 @@ jobs:
         run: |
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
           golangci-lint run --build-tags e2e,real ./...
+      - name: govulncheck
+        # fails on a known vulnerability that the code can reach
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   test:
     name: unit and contract tests
