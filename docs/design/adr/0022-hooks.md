@@ -39,6 +39,7 @@ Entry options: `name`, `timeout` (default 5 minutes), and `fatal` (default `true
 - Hook commands are not interpolated: their `$` belongs to the shell.
 - Every hook gets, as environment variables, the built-in `DOCKFLOW_*` values, the environment's `vars`, and the secrets it lists under `secrets:`.
 - A script that needs a real template is listed under `templates:` and rendered with Jinja ([ADR-0006](0006-compose-as-written.md)).
+- A local hook also inherits, from the CLI's environment, only what a shell and the usual tools need and the CI's description of the run, never a credential (implementation notes below).
 
 ### Who runs them
 
@@ -53,6 +54,16 @@ A fatal `before_*` hook exits with code 11, before any release is created; a fat
 ### Running inside containers
 
 `exec` hooks use the Engine API's exec on the server's containers, as `docker exec` does: the agent finds the service's current containers by their Compose labels. `dockflow exec` uses the same path.
+
+### Implementation notes: what a local hook inherits
+
+A local hook runs on the CLI's machine, whose environment holds the secrets of every environment (`<ENV>_*`, `DOCKFLOW_SECRETS`), the SOPS age key and the CI's tokens. It starts from an allowlist of that environment, then its own variables (`internal/hooks`, `Environ`):
+
+- the variables a shell and the usual tools need: `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, the locale (`LANG`, `LANGUAGE`, `LC_*`), `TZ`, the terminal (`TERM`, `COLORTERM`, `NO_COLOR`), the temporary and XDG directories, `SSH_AUTH_SOCK`, the proxies, the local Docker's `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`, `DOCKER_CERT_PATH`, `DOCKER_TLS_VERIFY`, and Windows' system variables;
+- the CI's description of the run: `CI`, the families `GITHUB_`, `RUNNER_`, `CI_`, `GITLAB_`, `BUILDKITE_`, `BITBUCKET_`, and Jenkins' `BUILD_ID`, `BUILD_NUMBER`, `BUILD_URL`, `JOB_NAME`, `BRANCH_NAME`, `TAG_NAME`, `GIT_COMMIT`, `GIT_BRANCH`, `WORKSPACE`, `JENKINS_URL`; a name of these families that holds `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `JWT`, `KEY`, `CREDENTIAL` or `AUTH`, and `CI_REPOSITORY_URL` (GitLab writes its job token into it), is left out;
+- a variable that starts with the prefix of any environment of `dockflow.yml` (`PRODUCTION_`, `STAGING_`) is left out, even when it belongs to a family above (an environment named `ci`).
+
+Names are matched without regard to case, as Windows does. Anything else a hook needs, it lists under `secrets:`.
 
 ## Consequences
 

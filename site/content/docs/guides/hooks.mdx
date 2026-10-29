@@ -125,7 +125,16 @@ Every hook gets these environment variables:
 - the environment's `vars`;
 - the secrets listed in the hook's `secrets:`, by their unprefixed name (`JWT_PRIVATE_KEY`, read from `PRODUCTION_JWT_PRIVATE_KEY` for `production`). Other secrets are not passed.
 
-Local hooks also inherit the environment of the CLI process itself. `host` hooks get the variables above on top of the SSH session's own environment, and `exec` hooks on top of the container's.
+Local hooks also inherit part of the CLI's environment, what a shell and the usual tools need:
+
+- `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `TERM`, `COLORTERM`, `NO_COLOR`, `TZ`, `LANG`, `LANGUAGE` and `LC_*`, `TMPDIR`, `TMP`, `TEMP`, the `XDG_*_HOME` and `XDG_RUNTIME_DIR` directories;
+- `SSH_AUTH_SOCK`, the proxies (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `ALL_PROXY`, in either case), and the local Docker's `DOCKER_HOST`, `DOCKER_CONTEXT`, `DOCKER_CONFIG`, `DOCKER_CERT_PATH`, `DOCKER_TLS_VERIFY`;
+- on Windows, the system's own (`SYSTEMROOT`, `COMSPEC`, `PATHEXT`, `USERPROFILE`, `APPDATA`, …);
+- the CI's description of the run: `CI`, `GITHUB_*`, `RUNNER_*`, `CI_*`, `GITLAB_*`, `BUILDKITE_*`, `BITBUCKET_*`, and Jenkins' `BUILD_ID`, `BUILD_NUMBER`, `BUILD_URL`, `JOB_NAME`, `BRANCH_NAME`, `TAG_NAME`, `GIT_COMMIT`, `GIT_BRANCH`, `WORKSPACE`, `JENKINS_URL`. A name holding `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `JWT`, `KEY`, `CREDENTIAL` or `AUTH` is left out (`GITHUB_TOKEN`, `CI_JOB_TOKEN`), and so is `CI_REPOSITORY_URL`, which holds GitLab's job token.
+
+Nothing else is inherited: not the variables of any environment's secrets (`PRODUCTION_*`, `STAGING_*`, even when one of them would match a family above), nor `DOCKFLOW_SECRETS`, `DOCKFLOW_SSH_KEY*`, `SOPS_AGE_KEY*`, or a token your CI sets (`NPM_TOKEN`, `AWS_*`). A hook that needs one of these values lists it under `secrets:`, which reads it from `PRODUCTION_NPM_TOKEN`, `DOCKFLOW_SECRETS` or `.env.dockflow`, as any secret.
+
+`host` hooks get the variables above on top of the SSH session's own environment, and `exec` hooks on top of the container's.
 
 ### `$` in hook commands
 

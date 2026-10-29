@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -46,6 +47,73 @@ func Env(h domain.Hook, builtins, vars map[string]string, secret func(string) (s
 	return out, nil
 }
 
+// inherited are the variables of the CLI's environment a local hook inherits: what a shell and
+// the usual tools need to run (the paths, the user, the locale, the terminal, temporary
+// directories, ssh-agent, proxies, the local Docker), on Unix and on Windows. Matched without
+// regard to case, as Windows does.
+var inherited = map[string]bool{
+	"PATH": true, "HOME": true, "USER": true, "LOGNAME": true, "SHELL": true, "LANG": true, "LANGUAGE": true,
+	"TZ": true, "TERM": true, "COLORTERM": true, "NO_COLOR": true, "TMPDIR": true, "TMP": true, "TEMP": true,
+	"SSH_AUTH_SOCK": true, "HTTP_PROXY": true, "HTTPS_PROXY": true, "NO_PROXY": true, "ALL_PROXY": true,
+	"DOCKER_HOST": true, "DOCKER_CONTEXT": true, "DOCKER_CONFIG": true, "DOCKER_CERT_PATH": true, "DOCKER_TLS_VERIFY": true,
+	"XDG_RUNTIME_DIR": true, "XDG_CONFIG_HOME": true, "XDG_CACHE_HOME": true, "XDG_DATA_HOME": true,
+	"SYSTEMROOT": true, "SYSTEMDRIVE": true, "WINDIR": true, "COMSPEC": true, "PATHEXT": true, "USERPROFILE": true,
+	"USERNAME": true, "HOMEDRIVE": true, "HOMEPATH": true, "APPDATA": true, "LOCALAPPDATA": true, "PROGRAMDATA": true,
+	"PROGRAMFILES": true, "PROCESSOR_ARCHITECTURE": true, "NUMBER_OF_PROCESSORS": true,
+	// the CI's description of the run: GitHub, GitLab, Buildkite, Bitbucket, Jenkins
+	"CI": true, "BUILD_ID": true, "BUILD_NUMBER": true, "BUILD_URL": true, "JOB_NAME": true, "BRANCH_NAME": true,
+	"TAG_NAME": true, "GIT_COMMIT": true, "GIT_BRANCH": true, "WORKSPACE": true, "JENKINS_URL": true,
+}
+
+// inheritedPrefixes are the families of variables a local hook inherits: the locale's, and the
+// CI's description of the run, but for credentials (credential).
+var inheritedPrefixes = []string{"LC_", "GITHUB_", "RUNNER_", "CI_", "GITLAB_", "BUILDKITE_", "BITBUCKET_"}
+
+// credential tells a variable of the CI's families that holds a credential: a token (GITHUB_TOKEN,
+// CI_JOB_TOKEN), a password, a key, or the repository's URL, which GitLab writes with its token.
+func credential(name string) bool {
+	for _, s := range []string{"TOKEN", "SECRET", "PASSWORD", "PASSWD", "JWT", "KEY", "CREDENTIAL", "AUTH"} {
+		if strings.Contains(name, s) {
+			return true
+		}
+	}
+	return name == "CI_REPOSITORY_URL"
+}
+
+// Environ returns the part of the CLI's environment a local hook inherits (ADR-0022): the
+// variables of inherited and inheritedPrefixes, none of which is a credential, and none of which
+// starts with the prefix of one of envs (PRODUCTION_ for production), where an environment's
+// secrets live. DOCKFLOW_SECRETS, the SOPS keys and everything else stay out: a hook gets a
+// secret by listing it under secrets:.
+func Environ(environ, envs []string) []string {
+	var out []string
+	for _, kv := range environ {
+		k, _, ok := strings.Cut(kv, "=")
+		if !ok || k == "" {
+			continue
+		}
+		name := strings.ToUpper(k)
+		allowed := inherited[name]
+		if !allowed {
+			for _, p := range inheritedPrefixes {
+				if strings.HasPrefix(name, p) && !credential(name) {
+					allowed = true
+					break
+				}
+			}
+		}
+		for _, env := range envs {
+			if strings.HasPrefix(name, strings.ToUpper(env)+"_") {
+				allowed = false
+			}
+		}
+		if allowed {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
 // Host runs script on the server, feeding it to `sh -s` on stdin, and returns its exit code.
 type Host func(ctx context.Context, script string, out io.Writer) (int, error)
 
@@ -54,6 +122,9 @@ type Runner struct {
 	Dir    string
 	Events *events.Emitter
 	Host   Host
+	// Environ is what local hooks inherit of the CLI's environment, before their own variables
+	// (Environ); nil inherits Environ(os.Environ(), nil).
+	Environ []string
 	// Render returns a script listed under templates:, rendered now so it sees what earlier
 	// hooks wrote, and the mode of its template; ok is false for a script that is no template.
 	Render func(script string) (content []byte, mode os.FileMode, ok bool, err error)
@@ -148,7 +219,11 @@ func (r *Runner) local(ctx context.Context, h domain.Hook, out io.Writer) (int, 
 		cmd = exec.CommandContext(ctx, "sh", "-c", h.Command)
 	}
 	cmd.Dir = r.Dir
-	cmd.Env = append(os.Environ(), h.Env...)
+	base := r.Environ
+	if base == nil {
+		base = Environ(os.Environ(), nil)
+	}
+	cmd.Env = append(slices.Clone(base), h.Env...)
 	cmd.Stdout, cmd.Stderr = out, out
 	err := cmd.Run()
 	var exit *exec.ExitError

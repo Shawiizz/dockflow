@@ -450,7 +450,8 @@ func (s *session) hooks() ([]domain.Hook, error) {
 }
 
 func (s *session) hookRunner() *hooks.Runner {
-	return &hooks.Runner{Dir: s.loaded.Config.Dir, Events: s.app.emitter, Host: s.hostScript, Render: s.renderScript}
+	return &hooks.Runner{Dir: s.loaded.Config.Dir, Events: s.app.emitter, Host: s.hostScript, Render: s.renderScript,
+		Environ: hooks.Environ(os.Environ(), s.loaded.Raw.EnvNames())}
 }
 
 // renderScript renders a hook script that templates: lists (ADR-0022).
