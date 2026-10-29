@@ -69,7 +69,7 @@ fetch "$base/$name" "$tmp/$name" || fail "cannot download $base/$name"
 if command -v cosign >/dev/null 2>&1; then
 	fetch "$base/SHA256SUMS.sigstore.json" "$tmp/SHA256SUMS.sigstore.json" || fail "cannot download the signature of SHA256SUMS"
 	cosign verify-blob --bundle "$tmp/SHA256SUMS.sigstore.json" \
-		--certificate-identity-regexp "^https://github.com/$repo/.github/workflows/release.yml@refs/(tags/v|heads/main$)" \
+		--certificate-identity-regexp "^https://github.com/$repo/.github/workflows/release.yml@refs/tags/v" \
 		--certificate-oidc-issuer https://token.actions.githubusercontent.com \
 		"$tmp/SHA256SUMS" >/dev/null 2>&1 || fail "the signature of SHA256SUMS does not verify"
 	echo "signature verified"

@@ -48,7 +48,7 @@ The CLI ships its own Linux binary to servers ([ADR-0004](0004-ephemeral-agent.m
 
 ## Implementation status (M2)
 
-- `.github/workflows/release.yml` runs on a tag `v*` pushed, or on a run started by hand on `main` with the version (the release then creates the tag on that commit): the whole CI on the released commit, then the binaries, `SHA256SUMS` signed keyless with cosign (`SHA256SUMS.sigstore.json`), and a GitHub release. Releases are never marked as the repository's latest; a tag with a pre-release suffix makes a pre-release.
+- `.github/workflows/release.yml` runs on a tag `v*` pushed, and only then, so that the signature names the tag (the installers accept no other identity): the whole CI on the released commit, then the binaries, `SHA256SUMS` signed keyless with cosign (`SHA256SUMS.sigstore.json`), and a GitHub release. Releases are never marked as the repository's latest; a tag with a pre-release suffix makes a pre-release.
 - `install.sh` checks the binary against `SHA256SUMS`, and `SHA256SUMS` against its signature when cosign is installed (identity: this repository's release workflow, at a `v` tag or on `main`).
 - The CLI downloads the agent binary over HTTPS and checks it against `SHA256SUMS`.
 

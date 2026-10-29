@@ -57,7 +57,7 @@ try {
             Fail 'cannot download the signature of SHA256SUMS'
         }
         & cosign verify-blob --bundle (Join-Path $tmp 'SHA256SUMS.sigstore.json') `
-            --certificate-identity-regexp "^https://github.com/$repo/.github/workflows/release.yml@refs/(tags/v|heads/main$)" `
+            --certificate-identity-regexp "^https://github.com/$repo/.github/workflows/release.yml@refs/tags/v" `
             --certificate-oidc-issuer https://token.actions.githubusercontent.com `
             (Join-Path $tmp 'SHA256SUMS') *> $null
         if ($LASTEXITCODE) { Fail 'the signature of SHA256SUMS does not verify' }
