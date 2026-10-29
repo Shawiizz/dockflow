@@ -9,9 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Shawiizz/dockflow/internal/errs"
+	"github.com/Shawiizz/dockflow/internal/events"
+	"github.com/Shawiizz/dockflow/internal/version"
 )
 
 func release(t *testing.T, bin, sums string) *httptest.Server {
@@ -33,6 +38,57 @@ func release(t *testing.T, bin, sums string) *httptest.Server {
 func sum(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
+}
+
+// The cached agent binary is checked again at every use, and downloaded again when it changed.
+func TestCachedAgentCheckedAgain(t *testing.T) {
+	arch := "arm64"
+	if runtime.GOARCH == "arm64" {
+		arch = "amd64"
+	}
+	if version.AgentSum(arch) != "" {
+		t.Skip("built with the agents' checksums")
+	}
+	name := "dockflow-agent-linux-" + arch
+	bin := "#!genuine agent"
+	var downloads atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v9.9.9/SHA256SUMS":
+			w.Write([]byte(sum(bin) + "  " + name + "\n"))
+		case "/v9.9.9/" + name:
+			downloads.Add(1)
+			w.Write([]byte(bin))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("DOCKFLOW_AGENT_BINARY", "")
+	t.Setenv("DOCKFLOW_RELEASES_URL", srv.URL)
+	var c events.Collector
+	l := &Launcher{Version: "9.9.9", Events: events.NewEmitter("r", &c, nil)}
+
+	path, err := l.agentBinary(context.Background(), arch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.agentBinary(context.Background(), arch); err != nil || downloads.Load() != 1 {
+		t.Fatalf("an intact cache is used as it is: %v, %d downloads", err, downloads.Load())
+	}
+	if err := os.WriteFile(path, []byte("#!substituted"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.agentBinary(context.Background(), arch); err != nil || downloads.Load() != 2 {
+		t.Fatalf("a changed cache is downloaded again: %v, %d downloads", err, downloads.Load())
+	}
+	if b, _ := os.ReadFile(path); string(b) != bin {
+		t.Fatalf("the cache holds %q", b)
+	}
+	if !slices.Contains(c.Types(), events.Warning) {
+		t.Fatalf("the mismatch must be reported: %v", c.Types())
+	}
 }
 
 func TestDownload(t *testing.T) {

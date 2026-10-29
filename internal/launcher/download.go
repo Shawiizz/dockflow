@@ -61,45 +61,85 @@ func (l *Launcher) agentBinary(ctx context.Context, arch string) (string, error)
 	dir := filepath.Join(cache, "dockflow", l.Version)
 	name := "dockflow-agent-linux-" + arch
 	path := filepath.Join(dir, name)
-	if _, err := os.Stat(path); err == nil {
-		// written only once its checksum matched
-		return path, nil
-	}
 	base := ReleasesURL
 	if u := os.Getenv("DOCKFLOW_RELEASES_URL"); u != "" {
 		base = strings.TrimSuffix(u, "/")
 	}
 	base += "/v" + strings.TrimPrefix(l.Version, "v") + "/"
+	builtIn := version.AgentSum(arch)
+	if _, err := os.Stat(path); err == nil {
+		// checked again at every use: the cache is a file anyone with this user's rights can change
+		want := builtIn
+		if want == "" {
+			if want, err = releaseSum(ctx, http.DefaultClient, base, name); err != nil {
+				return "", err
+			}
+		}
+		if got, err := fileSum(path); err == nil && got == want {
+			return path, nil
+		}
+		l.Events.Warn(events.Warning, fmt.Sprintf("the cached agent binary %s does not match its checksum: downloading it again", path),
+			map[string]any{"code": "agent.cache_mismatch", "detail": path})
+		if err := os.Remove(path); err != nil {
+			return "", errs.Internal("cache: %v", err)
+		}
+	}
 	l.Events.Info(events.Log, fmt.Sprintf("downloading the agent binary for linux/%s", arch), map[string]any{"line": "download " + base + name})
-	if err := Download(ctx, http.DefaultClient, base, name, version.AgentSum(arch), path); err != nil {
+	if err := Download(ctx, http.DefaultClient, base, name, builtIn, path); err != nil {
 		return "", err
 	}
 	return path, nil
 }
 
+// fileSum returns the hex SHA-256 of the file at path.
+func fileSum(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func downloadFailed(base, format string, a ...any) error {
+	return errs.Newf("agent.download_failed", errs.ExitConnect, format, a...).
+		WithHint("check that this machine can reach %s, or set DOCKFLOW_AGENT_BINARY to the dockflow binary for the server", base)
+}
+
+// releaseSum reads the checksum of name in base+SHA256SUMS.
+func releaseSum(ctx context.Context, client *http.Client, base, name string) (string, error) {
+	var sums bytes.Buffer
+	if err := fetch(ctx, client, base+"SHA256SUMS", 1<<20, &sums); err != nil {
+		return "", downloadFailed(base, "cannot download the checksums of the release: %v", err)
+	}
+	want := ""
+	sc := bufio.NewScanner(&sums)
+	for sc.Scan() {
+		f := strings.Fields(sc.Text())
+		if len(f) == 2 && strings.TrimPrefix(f[1], "*") == name {
+			want = f[0]
+		}
+	}
+	if want == "" {
+		return "", downloadFailed(base, "the release lists no %s", name)
+	}
+	return want, nil
+}
+
 // Download fetches base+name to path, after checking it against want, or against base+SHA256SUMS
 // when want is empty.
 func Download(ctx context.Context, client *http.Client, base, name, want, path string) error {
-	failed := func(format string, a ...any) error {
-		return errs.Newf("agent.download_failed", errs.ExitConnect, format, a...).
-			WithHint("check that this machine can reach %s, or set DOCKFLOW_AGENT_BINARY to the dockflow binary for the server", base)
-	}
+	failed := func(format string, a ...any) error { return downloadFailed(base, format, a...) }
 	source := "the checksum this dockflow was built with"
 	if want == "" {
 		source = "the release's checksum"
-		var sums bytes.Buffer
-		if err := fetch(ctx, client, base+"SHA256SUMS", 1<<20, &sums); err != nil {
-			return failed("cannot download the checksums of the release: %v", err)
-		}
-		sc := bufio.NewScanner(&sums)
-		for sc.Scan() {
-			f := strings.Fields(sc.Text())
-			if len(f) == 2 && strings.TrimPrefix(f[1], "*") == name {
-				want = f[0]
-			}
-		}
-		if want == "" {
-			return failed("the release lists no %s", name)
+		var err error
+		if want, err = releaseSum(ctx, client, base, name); err != nil {
+			return err
 		}
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

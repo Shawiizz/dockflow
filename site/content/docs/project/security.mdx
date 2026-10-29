@@ -150,8 +150,8 @@ It holds:
   - Only after the check is the binary cached, in `dockflow/<version>/` under your user's cache directory, and sent to the server.
   - A mismatch stops with `agent.checksum_mismatch` (exit code 4), and nothing is sent.
   - A CLI built without these checksums (from source, with a version) checks against the release's `SHA256SUMS`.
-  - `DOCKFLOW_RELEASES_URL` points the download at a mirror. The check is the same, so a mirror cannot substitute another binary.
-  - A cached binary is not checked again: the cache directory is as sensitive as the CLI itself.
+  - `DOCKFLOW_RELEASES_URL` points the download at a mirror. With a released CLI, which carries the checksums, the check is the same, so a mirror cannot substitute another binary. A CLI built without them reads the checksum from the mirror's own `SHA256SUMS`, so that mirror could serve another binary: use one only with a released CLI, or a mirror you trust as much as the CLI.
+  - A cached binary is checked again at every use, against the same checksum, and downloaded again when it does not match (a `agent.cache_mismatch` warning).
 - **Your own agent binary.** `DOCKFLOW_AGENT_BINARY` replaces the download with a binary you provide. Dockflow does not check it: use it only with binaries you built or verified yourself.
 
 ## Remote builds
