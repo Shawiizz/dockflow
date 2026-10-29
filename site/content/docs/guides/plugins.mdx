@@ -137,7 +137,7 @@ ExecStart=/usr/bin/rclone mount {{ remote }} {{ mount }}{% if read_only %} --rea
 | `inputs` | Each with `name`, `description`, `type` (default `string`), `required` and `default`. `required_unless: <input>` makes it required when that other input is not given; it must name another input. `pattern` is a regular expression a given value must match whole: a string, each item of a list, a file's name; a value that ends up in a command or a configuration file should have one. A name matches `^[a-z][a-z0-9_]*$`, is declared once, and cannot be `id`, which is reserved. |
 | `templates` | Files of the plugin rendered with Jinja: a path, rendered in place, or `src` and `dest`. |
 | `uploads` | As in `dockflow.yml`, with `src` a file or directory of the plugin. |
-| `hooks` | As in `dockflow.yml`, without `script`: upload the script and run it with `host:`. An `after_deploy` hook can take `if_changed`: the destination of one of the plugin's uploads, so it runs only when the deploy changed it. `if_changed` in another phase, or naming no upload of the plugin, is an error. Write a value into a host command as `{{ name | shquote }}`, which makes it one shell word whatever it holds. |
+| `hooks` | As in `dockflow.yml`, without `script`: upload the script and run it with `host:`. An `after_deploy` hook can take `if_changed`: the destination of one of the plugin's uploads, so it runs only when the deploy changed it. `if_changed` in another phase, or naming no upload of the plugin, is an error. Write a value into a host command as `{{ name \| shquote }}`, which makes it one shell word whatever it holds. |
 
 Input types:
 
