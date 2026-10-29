@@ -16,8 +16,9 @@ Dockflow v2, a rewrite from scratch in Go. It shares nothing with Dockflow 1.x (
 ## How to work
 
 - **Vertical slices.** One user-visible capability per pull request, end to end: code, tests, docs. No horizontal "add all the types first" changes.
-- **User documentation** lives in `site/` (Astro Starlight, deployed to dockflow.shawiizz.dev by `.github/workflows/docs.yml`). A user-visible change updates its pages in the same pull request; the design documents in `docs/design/` stay the contracts.
+- **User documentation** lives in `site/` (Fumadocs, a static Next.js export, deployed to dockflow.shawiizz.dev by `.github/workflows/docs.yml`). A user-visible change updates its pages in the same pull request; the design documents in `docs/design/` stay the contracts.
 - **No sweeping refactors** before v1.0. Fix what a change touches, nothing more.
+- **Quality over size.** There is no line budget: the goal is code of quality, simple to read and well tested. A change that grows a package a lot says why in its description.
 - **No regression from 1.x.** `docs/design/parity.md` maps every 1.x feature to its v2 equivalent. A milestone that ships a row's replacement updates the row; removing a row needs the project owner's decision.
 - **Dependencies.** Each new module needs a sentence in the pull request on why the standard library or an existing dependency is not enough (ADR-0002).
 

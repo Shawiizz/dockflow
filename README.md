@@ -105,7 +105,7 @@ This version is a rewrite in Go. It shares nothing with the earlier Dockflow bui
 
 The design is written down before the code. Start with:
 
-- [Vision](docs/design/vision.md): goals, non-goals and the code budget
+- [Vision](docs/design/vision.md): goals, non-goals and principles
 - [Architecture decisions](docs/design/adr/README.md): one record per decision
 - [Specifications](docs/design/README.md#specifications): configuration, server state, events, CLI
 - [Roadmap](docs/design/roadmap.md): milestones and their exit criteria
