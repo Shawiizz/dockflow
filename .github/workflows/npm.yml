@@ -41,12 +41,22 @@ jobs:
           (cd dist && sha256sum -c --quiet SHA256SUMS)
           sh packaging/npm/pack.sh "${TAG#v}" dist npm
           # every release goes to the latest tag: the versions before 1.0.0-alpha are deprecated
+          published() {
+            npm view "$(node -p "require('./$1/package.json').name")@${TAG#v}" version >/dev/null 2>&1
+          }
           publish() {
             # a version already published (a run started again) is left as it is
-            if npm view "$(node -p "require('./$1/package.json').name")@${TAG#v}" version >/dev/null 2>&1; then
+            if published "$1"; then
               echo "$1: ${TAG#v} is already published"; return
             fi
-            # ./ makes it a directory: npm reads npm/cli as a GitHub repository
+            # ./ makes it a directory: npm reads npm/cli as a GitHub repository. A transient
+            # failure (Sigstore's transparency log answering 409 to a retried upload) is retried
+            # once, unless the package went through all the same.
+            npm publish --provenance --access public --tag latest "./$1" && return
+            sleep 30
+            if published "$1"; then
+              echo "$1: published despite the error"; return
+            fi
             npm publish --provenance --access public --tag latest "./$1"
           }
           # the platforms first: the package that depends on them comes last
