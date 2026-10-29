@@ -12,7 +12,7 @@ plugins:
       domain: [shop.example.com, www.shop.example.com]
   - use: ./deploy/plugins/rclone    # the project's own
     id: archives
-    with: { remote: "ovhs3:archives" }
+    with: { remote: "s3:archives" }
 ```
 
 `dockflow plugins list` shows the built-in plugins and the project's, with their inputs. `dockflow config show` lists the uploads and hooks they add, and the plan names the plugin of each upload.
@@ -87,7 +87,7 @@ description: An rclone mount of a remote, as a systemd unit
 inputs:
   - name: remote
     required: true
-    description: the rclone remote, like ovhs3:archives
+    description: the rclone remote, like s3:archives
   - name: mount
     default: /mnt/archives
   - name: read_only

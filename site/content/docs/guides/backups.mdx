@@ -59,7 +59,7 @@ A game server is backed up without stopping it:
 
 ```yaml title="compose.yml"
 services:
-  minecraft:
+  game:
     image: itzg/minecraft-server
     volumes: [world:/data]
     x-dockflow:

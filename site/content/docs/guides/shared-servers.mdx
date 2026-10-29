@@ -10,7 +10,7 @@ One server can run any number of apps and environments. They share the server's 
 Each app has its own networks, so apps cannot reach each other by default. When they must, say a game server writing to the backend's Postgres, create a network that belongs to the server, and let both apps join it:
 
 ```sh
-dockflow server network create valientrp
+dockflow server network create shared
 ```
 
 ```yaml
@@ -20,26 +20,26 @@ services:
     image: postgres:17
     networks:
       default: {}
-      valientrp: { aliases: [valientrp-db] }
+      shared: { aliases: [backend-db] }
 networks:
-  valientrp: { external: true }
+  shared: { external: true }
 ```
 
 ```yaml
 # compose.yml of the game server
 services:
-  minecraft:
+  game:
     image: itzg/minecraft-server
     environment:
-      DB_HOST: valientrp-db
+      DB_HOST: backend-db
     networks:
       default: {}
-      valientrp: {}
+      shared: {}
 networks:
-  valientrp: { external: true }
+  shared: { external: true }
 ```
 
-The game server reaches `valientrp-db:5432`, an alias the backend chose, without knowing the backend's project name. A deploy of an app that joins a shared network the server does not have fails before changing anything, with the command that creates it.
+The game server reaches `backend-db:5432`, an alias the backend chose, without knowing the backend's project name. A deploy of an app that joins a shared network the server does not have fails before changing anything, with the command that creates it.
 
 | Command | What it does |
 |---|---|
@@ -69,7 +69,7 @@ volumes:
   archives:
     driver: rclone
     driver_opts:
-      remote: "ovhs3:mohist-archives"
+      remote: "s3:archives"
       s3-access-key-id: ${S3_ACCESS_KEY}
       s3-secret-access-key: ${S3_SECRET_KEY}
 ```

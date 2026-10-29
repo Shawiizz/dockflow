@@ -17,7 +17,7 @@ hooks:
       secrets: [JWT_PRIVATE_KEY]
   before_deploy:
     - name: back up the world
-      service: minecraft
+      service: game
       exec: ["rcon-cli", "save-all"]
       timeout: 10m
       fatal: false

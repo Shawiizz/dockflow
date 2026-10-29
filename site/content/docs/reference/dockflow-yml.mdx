@@ -194,7 +194,7 @@ plugins:
     with: { domain: "${DOMAIN}", cloudflare: true }
   - use: ./deploy/plugins/rclone
     id: archives
-    with: { remote: "ovhs3:archives" }
+    with: { remote: "s3:archives" }
 ```
 
 | Key | Type | Default | Description |
@@ -209,17 +209,17 @@ Routes the switch serves that don't target a service of the app. Each has exactl
 
 ```yaml
 routes:
-  - domains: [mohistmc.com]
-    path: /maven
-    redirect: "https://maven.mohistmc.com{uri}"
-  - domains: [api.mohistmc.com]
-    proxy: http://valientrp-api:8080       # another app's service, on a shared network
-    network: valientrp
+  - domains: [example.com]
+    path: /docs
+    redirect: "https://docs.example.com{uri}"
+  - domains: [api.example.com]
+    proxy: http://billing-api:8080      # another app's service, on a shared network
+    network: shared
   - name: maintenance
-    domains: [mohistmc.com]
+    domains: [example.com]
     path: /maintenance
     files: { host_path: /srv/maintenance }
-  - domains: [archives.mohistmc.com]
+  - domains: [files.example.com]
     files: { volume: archives, browse: true }
     auth: { user: team, password: "${ARCHIVES_PASSWORD}" }
 ```

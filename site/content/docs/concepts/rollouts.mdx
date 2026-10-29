@@ -97,7 +97,7 @@ These force `stop-first`, because two containers of the service cannot run at th
 Asking for another strategy on such a service is an error, as is `switch` on a service without routes:
 
 ```text
-error: service minecraft: strategy start-first is impossible because it publishes fixed host ports; use stop-first
+error: service game: strategy start-first is impossible because it publishes fixed host ports; use stop-first
 ```
 
 <Callout type="idea">
@@ -110,7 +110,7 @@ A game server keeps its world on a volume and is reached on a fixed port, withou
 
 ```yaml title="compose.yml"
 services:
-  minecraft:
+  game:
     image: itzg/minecraft-server
     environment:
       EULA: "TRUE"
