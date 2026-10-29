@@ -80,12 +80,12 @@ func (a *app) loadProject(ctx context.Context, env, versionFlag string, configOn
 	if versionFlag == "" {
 		versionFlag = ciVersion()
 	}
-	o := project.Options{Dir: dir, Env: env, Version: versionFlag, Environ: os.Environ(), Git: git, ConfigOnly: configOnly}
+	o := project.Options{Dir: dir, Env: env, Version: versionFlag, Environ: os.Environ(), Git: git, ConfigOnly: configOnly,
+		Mask: a.emitter.Masker().Add}
 	l, err := project.Load(ctx, o)
 	if err != nil {
 		return nil, err
 	}
-	a.emitter.Masker().Add(l.Secrets.Values()...)
 	a.emitter.Masker().Add(l.FileSecrets...)
 	return l, nil
 }
@@ -112,7 +112,7 @@ func (a *app) connectProject(ctx context.Context, env, versionFlag string, confi
 	}
 	if t.Server.Name != "main" {
 		// DOCKFLOW_SERVER is known now
-		o := project.Options{Dir: a.dir, Env: l.Config.Env, Version: l.Version, Environ: os.Environ(), Git: l.Git, Server: t.Server.Name, ConfigOnly: configOnly}
+		o := project.Options{Dir: a.dir, Env: l.Config.Env, Version: l.Version, Environ: os.Environ(), Git: l.Git, Server: t.Server.Name, ConfigOnly: configOnly, Mask: a.emitter.Masker().Add}
 		if l, err = project.Load(ctx, o); err != nil {
 			return nil, err
 		}

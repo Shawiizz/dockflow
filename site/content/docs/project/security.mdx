@@ -110,7 +110,7 @@ For `production`, the key `X` resolves to `PRODUCTION_X` when it exists, otherwi
 
 **What Dockflow guarantees:**
 
-- **Masked output.** Every secret value is replaced with `***` in everything Dockflow shows or stores: events, build output, hook and job output, errors, `config show`, and the `--json` stream. Values shorter than 4 characters are not masked, because they would hide ordinary words. Output is shown line by line, so each line of a multi-line secret (a PEM key) is masked on its own too, when it has at least 8 characters.
+- **Masked output.** From the moment it is read, every secret value is replaced with `***` in everything Dockflow shows or stores: events, build output, hook and job output, errors, `config show`, and the `--json` stream. Values shorter than 4 characters are not masked, because they would hide ordinary words. Output is shown line by line, so each line of a multi-line secret (a PEM key) is masked on its own too, when it has at least 8 characters.
 - **No command lines.** Secrets never appear in a command line, on your machine or on the server, where other users could see them in the process list.
 - **Not in the agent's environment.** The agent receives its run on its standard input, not through environment variables.
 - **A missing secret is an error**, never an empty string.

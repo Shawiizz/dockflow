@@ -77,6 +77,9 @@ type Options struct {
 	// ConfigOnly stops after dockflow.yml: no plugins, no Compose files, so none of the
 	// variables they use is needed. Commands that act on what the server already runs use it.
 	ConfigOnly bool
+	// Mask, when set, receives the secret values as soon as they are read, before any error
+	// of interpolation could quote one.
+	Mask func(values ...string)
 }
 
 // Loaded is an environment, ready to plan.
@@ -193,6 +196,9 @@ func Load(ctx context.Context, o Options) (*Loaded, error) {
 			return nil, err
 		}
 		store.AddFile(file, values)
+	}
+	if o.Mask != nil {
+		o.Mask(store.Values()...)
 	}
 	version := o.Version
 	if version == "" {
