@@ -67,7 +67,7 @@ Provisioning does the following, and every step is idempotent:
 - install Docker from Docker's signed repository (Debian 12 and 13, Ubuntu 22.04, 24.04 and 26.04), unless `--skip-docker-install`;
 - write `/etc/docker/daemon.json` with log rotation;
 - create the deploy user and install its key with the options above;
-- add an SSH hardening drop-in (no password authentication, root only by key); fail2ban, unattended security updates and time synchronisation were dropped by [ADR-0024](0024-provisioning-scope.md);
+- with `--harden-ssh`, add an SSH hardening drop-in (no password authentication, root only by key); it is opt-in, and fail2ban, unattended security updates and time synchronisation were dropped, by [ADR-0024](0024-provisioning-scope.md);
 - create `/var/lib/dockflow`;
 - start the switch with the chosen edge ([ADR-0011](0011-switch-and-edge.md)), the local registry ([ADR-0009](0009-images.md)) and the watchdog ([ADR-0010](0010-rollout-health-jobs.md)), each one optional;
 - install the published-port filter ([ADR-0014](0014-networking-port-filter.md)), unless `--no-port-filter`;
@@ -90,7 +90,7 @@ The rest (interactive mode, running on the server itself, `from=`, SSH hardening
 
 ### Implementation (M3)
 
-- **Hardening**, unless `--no-hardening`: `/etc/ssh/sshd_config.d/50-dockflow.conf` (checked with `sshd -t` before the reload, removed when refused) turns password authentication off only when the administrator's account has an authorized key, so provisioning never locks it out; it writes the file only when it changed, so a second run says nothing. (fail2ban, `20auto-upgrades` and `timedatectl set-ntp true` shipped here first, then were dropped by [ADR-0024](0024-provisioning-scope.md).)
+- **Hardening**, with `--harden-ssh` only ([ADR-0024](0024-provisioning-scope.md)): `/etc/ssh/sshd_config.d/01-dockflow.conf`, read before the providers' drop-ins since sshd keeps the first value (checked with `sshd -t` before the reload, removed when refused), turns password authentication off only when the administrator's account has an authorized key, so provisioning never locks it out; when that account is root without a key, nothing is written. The values sshd uses are then read with `sshd -T`, and each one that did not take effect is a warning. It writes the file only when it changed, so a second run says nothing. A `50-dockflow.conf` written by earlier versions is left in place. (fail2ban, `20auto-upgrades` and `timedatectl set-ntp true` shipped here first, then were dropped by [ADR-0024](0024-provisioning-scope.md).)
 - **`from=`** prefixes the deploy key's options; a key already installed with other options is replaced.
 - **`--nginx`** installs nginx, replaces the distribution's default site with one that refuses unknown host names (`return 444`, `ssl_reject_handshake`), and installs `/etc/sudoers.d/dockflow-nginx`, checked with `visudo -c`. It implies `--edge external` unless an edge is given.
 - **Interactive mode** asks for the edge, and nginx with the external edge, when provisioning on a terminal without `--edge`; Enter keeps the server's.

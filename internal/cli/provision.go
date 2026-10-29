@@ -27,10 +27,10 @@ type provisionFlags struct {
 	key, passwordFile, hostKey, name string
 	user, deployKey                  string
 	skipDocker, noFilter             bool
-	// noHarden leaves SSH's settings as they are; nginx installs nginx; from
+	// hardenSSH writes the SSH hardening drop-in (ADR-0024); nginx installs nginx; from
 	// restricts the deploy key's source addresses (ADR-0013)
-	noHarden, nginx bool
-	from            []string
+	hardenSSH, nginx bool
+	from             []string
 	// on the server itself: the address and SSH port the connection string gives
 	host string
 	port int
@@ -126,7 +126,7 @@ func (f *provisionFlags) deployKeyFor(host string) (*provision.Key, error) {
 func (f *provisionFlags) options(key *provision.Key, admin string) provision.Options {
 	return provision.Options{
 		User: f.user, AuthorizedKey: key.Authorized, InstallDocker: !f.skipDocker, PortFilter: !f.noFilter,
-		Harden: !f.noHarden, Admin: admin, Nginx: f.nginx,
+		Harden: f.hardenSSH, Admin: admin, Nginx: f.nginx,
 	}
 }
 
@@ -142,7 +142,11 @@ func (a *app) runProvisioning(script string, run func(out io.Writer) (int, error
 			line := sc.Text()
 			output.WriteString(line + "\n")
 			if step, ok := strings.CutPrefix(line, "step: "); ok {
-				a.emitter.Info(events.Log, step, map[string]any{"line": step})
+				if w, ok := strings.CutPrefix(step, "warning: "); ok {
+					a.emitter.Warn(events.Warning, w, map[string]any{"code": "provision.warning", "detail": w})
+				} else {
+					a.emitter.Info(events.Log, step, map[string]any{"line": step})
+				}
 			} else {
 				a.emitter.Debug(events.Log, line, map[string]any{"line": line})
 			}

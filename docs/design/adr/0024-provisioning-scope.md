@@ -1,7 +1,7 @@
 # ADR-0024: Provisioning stays within what Dockflow needs
 
 - Status: Accepted (supersedes the hardening part of [ADR-0013](0013-servers-access-security.md))
-- Date: 2026-10-27
+- Date: 2026-10-27, revised 2026-10-29 (SSH hardening becomes opt-in)
 
 ## Context
 
@@ -14,11 +14,15 @@
 ## Decision
 
 - **Provisioning installs what Dockflow uses:** Docker, the deploy user and its key, `/var/lib/dockflow`, the port filter's boot unit, the Cloudflare ranges' timer (it does nothing unless the edge is `cloudflare`, and only root can install it, while the edge can be changed later as the deploy user), nginx and its sudo rules with `--nginx`, and the switch, the registry and the watchdog.
-- **The one hardening step it keeps is SSH's:** the drop-in that refuses passwords and lets root in by key only, once the administrator's account has a key. Dockflow's access is by key, and this is what makes the server's SSH as strong as that access. `--no-hardening` leaves it out.
+- **SSH hardening is opt-in** (revised 2026-10-29). The server's security is its administrator's, so `server init` and `server cloud-init` leave SSH's settings alone unless `--harden-ssh` is given (`--no-hardening` is gone). With it, provisioning writes a drop-in that refuses passwords and lets root in by key only, once the administrator's account has a key:
+  - **No lockout.** While the administrator's account has no authorized key, passwords stay accepted. When that account is root, `PermitRootLogin` is not set either, and nothing is written: root still logs in with its password. The output says so.
+  - **It takes precedence.** sshd keeps the first value it reads, and providers ship their own drop-ins (`50-cloud-init.conf` sets `PasswordAuthentication yes` on some images). The drop-in is `/etc/ssh/sshd_config.d/01-dockflow.conf`, read before them.
+  - **It is verified.** After writing it, provisioning reads the values sshd uses (`sshd -T`) and warns about each one that did not take effect, rather than claiming success. A file the administrator named to be read first still wins.
+  - **Existing servers.** A `50-dockflow.conf` written by an earlier version stays where it is: Dockflow does not remove what an administrator may rely on. The documentation's server layout page says how to remove it.
 - **fail2ban, unattended upgrades and time synchronisation are left to the server's administrator,** and so is checking them: `server check` checks what Dockflow needs (Docker, its tmpfs, its state, its containers, its filter, the switch's ports), not the server's security.
 
 ## Consequences
 
 - Provisioning changes less on a server, and nothing that bans a client.
-- Dockflow neither changes nor reports the rest of the server's administration.
+- Dockflow neither changes nor reports the rest of the server's administration, unless asked to with `--harden-ssh`.
 - Servers provisioned by a development build of M3 that installed fail2ban keep it: Dockflow does not remove packages, and no release ever installed it.

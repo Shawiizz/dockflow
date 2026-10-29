@@ -589,7 +589,7 @@ Prepare a server, or update one. The command has three forms, described below.
 
 1. installs Docker from Docker's repository when it is missing (Debian and Ubuntu; elsewhere, install Docker Engine 27 or later first, or pass `--skip-docker-install` to be told so);
 2. creates the deploy user (`dockflow`), adds it to the `docker` group, and installs a key generated on this machine, with `restrict,port-forwarding,pty`, and `from=` with `--from`;
-3. hardens SSH, unless `--no-hardening`: a drop-in that refuses passwords and lets root in by key only. Passwords stay allowed while the administrator's account has no key, so you are never locked out. The rest of the server's administration (fail2ban, automatic updates, time synchronisation) is left to you;
+3. with `--harden-ssh`, hardens SSH: a drop-in, read before the providers' ones, that refuses passwords and lets root in by key only. Passwords stay allowed while the administrator's account has no key, and nothing is written when that account is root without a key, so you are never locked out. It then checks the values sshd uses, and warns about each one that did not take effect. Without it, SSH is left alone, as is the rest of the server's administration (fail2ban, automatic updates, time synchronisation): see [Security model](/project/security/#what-provisioning-sets-up);
 4. with `--nginx`, installs nginx, which refuses the host names no vhost serves, with the sudo rules of the [nginx plugin](/guides/plugins/#the-nginx-plugin);
 5. installs the boot units of the port filter and of Cloudflare's ranges;
 6. reconnects as the deploy user and installs the switch, the server-local registry and the watchdog.
@@ -636,7 +636,7 @@ The deploy user is then checked through the SSH server on `127.0.0.1`, as the CI
 | `--deploy-key string` | a new key | When preparing a server: a private key to use for the deploy user instead of generating one. |
 | `--name string` | `main` | When preparing a server: its name in the connection string. |
 | `--skip-docker-install` | `false` | When preparing a server: refuse one without Docker instead of installing it. |
-| `--no-hardening` | `false` | When preparing a server: leave SSH's settings as they are. |
+| `--harden-ssh` | `false` | When preparing a server: write an SSH drop-in that refuses passwords and lets root in by key only, once the administrator has a key. |
 | `--nginx` | `false` | When preparing a server: install nginx in front of the switch (`--edge external` unless given), refusing unknown host names, with the sudo rules of the nginx plugin. |
 | `--from strings` | none | When preparing a server: the addresses or CIDRs the deploy key is accepted from (`from=` of `authorized_keys`). Keep it off with hosted CI runners, whose addresses change. |
 | `--host string` | its public address | On the server itself: the address or domain name the CI reaches it at. |
@@ -729,7 +729,7 @@ On a terminal, it asks you to type the server's name. Without a terminal, it nee
 dockflow server cloud-init --host <address> [flags] > user-data.yml
 ```
 
-Prints the cloud-init user-data of a new server, to give your provider (DigitalOcean, Hetzner, Scaleway, AWS) when you create it. On its first boot, the server does what `server init` does before reconnecting: Docker, the deploy user and its key, hardening, `--nginx`. The command then prints the connection string on the standard error.
+Prints the cloud-init user-data of a new server, to give your provider (DigitalOcean, Hetzner, Scaleway, AWS) when you create it. On its first boot, the server does what `server init` does before reconnecting: Docker, the deploy user and its key, `--harden-ssh`, `--nginx`. The command then prints the connection string on the standard error.
 
 - The deploy key is generated here; only its public part is in the user-data.
 - The server's SSH host key is generated here too, and is in the user-data: the connection string pins it before the server exists. Keep the user-data as you would the server's disk, or write it with `-o user-data.yml` (mode 600).
@@ -746,7 +746,7 @@ The first boot takes a few minutes, mostly to install Docker. `cloud-init status
 | `--name string` | `main` | The server's name in the connection string. |
 | `--from strings` | none | The source addresses or CIDRs the deploy key accepts. |
 | `--nginx` | `false` | Install nginx, with the sudo rules of the nginx plugin. |
-| `--no-hardening` | `false` | Leave SSH's settings as they are. |
+| `--harden-ssh` | `false` | Write an SSH drop-in that refuses passwords and lets root in by key only, once root has a key. |
 | `--no-port-filter` | `false` | Do not install the published-port filter's boot unit. |
 | `--skip-docker-install` | `false` | For an image that has Docker: refuse to install it. |
 | `-o, --output string` | the standard output | Write the user-data to this file, mode 600. |

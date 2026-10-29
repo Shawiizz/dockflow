@@ -17,7 +17,7 @@ func TestCloudInit(t *testing.T) {
 	var out, errOut bytes.Buffer
 	a := &app{stdout: &out, stderr: &errOut, stdin: os.Stdin, interrupts: make(chan struct{}, 2)}
 	root := a.root()
-	root.SetArgs([]string{"--json", "server", "cloud-init", "--host", "203.0.113.9", "--from", "198.51.100.0/24", "--nginx"})
+	root.SetArgs([]string{"--json", "server", "cloud-init", "--host", "203.0.113.9", "--from", "198.51.100.0/24", "--nginx", "--harden-ssh"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("%v\n%s", err, errOut.String())
 	}
@@ -63,9 +63,23 @@ func TestCloudInit(t *testing.T) {
 		t.Fatal("the deploy key's private part must not be in the user-data")
 	}
 	if !strings.Contains(script, "DF_NGINX='1'") || !strings.Contains(script, "DF_HARDEN='1'") {
-		t.Fatal("the script hardens the server and installs nginx")
+		t.Fatal("with --harden-ssh and --nginx, the script hardens SSH and installs nginx")
 	}
 	if len(cfg.RunCmd) != 2 || cfg.RunCmd[0][1] != cfg.WriteFiles[0].Path {
 		t.Fatalf("runcmd: %v", cfg.RunCmd)
+	}
+}
+
+// SSH's settings are the administrator's: hardening is opt-in (ADR-0024)
+func TestCloudInitLeavesSSHAlone(t *testing.T) {
+	var out, errOut bytes.Buffer
+	a := &app{stdout: &out, stderr: &errOut, stdin: os.Stdin, interrupts: make(chan struct{}, 2)}
+	root := a.root()
+	root.SetArgs([]string{"--json", "server", "cloud-init", "--host", "203.0.113.9"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("%v\n%s", err, errOut.String())
+	}
+	if !strings.Contains(out.String(), `DF_HARDEN='0'`) {
+		t.Fatalf("without --harden-ssh, the script leaves SSH alone:\n%s", out.String())
 	}
 }

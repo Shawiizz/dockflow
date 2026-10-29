@@ -204,6 +204,8 @@ export DOCKFLOW_AGENT_BINARY=$PWD/dockflow-linux-amd64
 - creates the deploy user and its key;
 - installs the switch and the registry.
 
+It leaves SSH's settings and the rest of the server's security to you. `--harden-ssh` adds a drop-in that refuses passwords and lets root in by key only: see [What provisioning sets up](/project/security/#what-provisioning-sets-up).
+
 See the [Quickstart](/start/quickstart/). The server needs:
 
 | Requirement | Why |

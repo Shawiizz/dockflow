@@ -140,6 +140,10 @@ func TestServerInitOnTheServer(t *testing.T) {
 	if !strings.Contains(out, "creating the user deployer") || !strings.Contains(out, "is ready") {
 		t.Fatalf("server init must create the user and finish:\n%s", out)
 	}
+	// SSH's settings are the administrator's, unless --harden-ssh (ADR-0024)
+	if got, _ := inServer("ls /etc/ssh/sshd_config.d"); got != "port.conf" {
+		t.Fatalf("server init without --harden-ssh must leave SSH's settings alone: %q", got)
+	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	cs := lines[len(lines)-1]
 	decoded, _ := base64.StdEncoding.DecodeString(cs)

@@ -87,7 +87,7 @@ The CLI starts the agent on the server, which runs a Linux binary of exactly the
 |---|---|
 | `VISUAL`, `EDITOR` | The editor of `dockflow secrets edit`: `VISUAL`, else `EDITOR`, else `vi`. |
 | `XDG_CONFIG_HOME` | Where the default age key file is looked up, `$XDG_CONFIG_HOME/sops/age/keys.txt`, when neither `SOPS_AGE_KEY` nor `SOPS_AGE_KEY_FILE` is set. |
-| `SUDO_USER` | Read by `sudo dockflow server init` on the server itself: the account that ran `sudo`, whose password login the SSH hardening keeps while it has no key. `root` when unset. |
+| `SUDO_USER` | Read by `sudo dockflow server init` on the server itself: the account that ran `sudo`, whose password login `--harden-ssh` keeps while it has no key. `root` when unset. |
 
 ## CI detection
 

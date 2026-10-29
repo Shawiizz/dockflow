@@ -44,7 +44,7 @@ func (a *app) cloudInitCmd() *cobra.Command {
 		Use:   "cloud-init --host <address> [flags]",
 		Short: "Print cloud-init user-data that prepares a new server on its first boot, and its connection string",
 		Long: "Prints the user-data to give a new server (DigitalOcean, Hetzner, Scaleway, AWS…): on its first boot, it " +
-			"installs Docker, creates the deploy user with a key generated here, and hardens the server, as server init does. " +
+			"installs Docker and creates the deploy user with a key generated here, as server init does (with --harden-ssh, it also hardens SSH). " +
 			"The server's SSH host key is generated here too, so the connection string, printed after, pins it.\n\n" +
 			"The user-data holds the server's private host key, never the deploy key: keep it as you would the server's " +
 			"disk. Once the server is up, install the switch, the registry and the watchdog with `dockflow server init <env>`.",
@@ -131,7 +131,7 @@ func (a *app) cloudInitCmd() *cobra.Command {
 	f.StringVar(&pf.name, "name", "", "the server's name in the connection string (default main)")
 	f.BoolVar(&pf.skipDocker, "skip-docker-install", false, "for an image that has Docker: refuse to install it")
 	f.BoolVar(&pf.noFilter, "no-port-filter", false, "do not install the published-port filter's boot unit")
-	f.BoolVar(&pf.noHarden, "no-hardening", false, "leave SSH's settings as they are")
+	f.BoolVar(&pf.hardenSSH, "harden-ssh", false, "write an SSH drop-in that refuses passwords and lets root in by key only, once root has a key")
 	f.BoolVar(&pf.nginx, "nginx", false, "install nginx, with the sudo rules of the nginx plugin")
 	f.StringSliceVar(&pf.from, "from", nil, "the source addresses or CIDRs the deploy key accepts")
 	f.StringVarP(&output, "output", "o", "", "write the user-data to this file (mode 600) instead of the standard output")

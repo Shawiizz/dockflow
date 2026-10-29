@@ -129,7 +129,8 @@ stub docker 'echo 27.5.1'
 stub dpkg '[ -e /tmp/pkgs/$2 ]'
 stub apt-get 'echo "apt-get $*" >>/tmp/calls; for p in "$@"; do touch /tmp/pkgs/$p; [ "$p" = nginx ] && printf "#!/bin/sh\necho nginx \$*>>/tmp/calls\n" >/usr/local/bin/nginx && chmod +x /usr/local/bin/nginx; done; true'
 stub systemctl 'echo "systemctl $*" >>/tmp/calls'
-stub sshd 'exit 0'
+stub sshd '[ "$1" = -T ] && cat /etc/ssh/sshd_config.d/*.conf | grep -v "^#" | awk "{ k = tolower(\$1); if (!(k in seen)) { seen[k] = 1; print k, (\$2 == \"prohibit-password\" ? \"without-password\" : tolower(\$2)) } }"; exit 0'
+echo 'PasswordAuthentication yes' >/etc/ssh/sshd_config.d/50-cloud-init.conf
 stub visudo 'exit 0'
 mkdir -p /etc/nginx/sites-enabled && ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 `
@@ -137,7 +138,11 @@ mkdir -p /etc/nginx/sites-enabled && ln -s /etc/nginx/sites-available/default /e
 sh /tmp/first.sh >/tmp/out1
 sh /tmp/second.sh >/tmp/out2
 cat /tmp/out1; echo ---; cat /tmp/out2; echo ---
-cat /etc/ssh/sshd_config.d/50-dockflow.conf; echo ---
+cat /etc/ssh/sshd_config.d/01-dockflow.conf; echo ---
+echo 'PasswordAuthentication yes' >/etc/ssh/sshd_config.d/00-early.conf
+sh /tmp/second.sh; echo ---
+rm /etc/ssh/sshd_config.d/00-early.conf /etc/ssh/sshd_config.d/01-dockflow.conf /root/.ssh/authorized_keys
+sh /tmp/second.sh; ls /etc/ssh/sshd_config.d; echo ---
 ls /etc/fail2ban /etc/apt/apt.conf.d/20auto-upgrades 2>&1 || true; echo ---
 cat /etc/nginx/conf.d/00-dockflow-default.conf; ls /etc/nginx/sites-enabled; echo ---
 cat /etc/sudoers.d/dockflow-nginx; echo ---
@@ -152,10 +157,11 @@ cat /tmp/calls
 		t.Fatalf("%v:\n%s", err, out)
 	}
 	parts := strings.Split(string(out), "---\n")
-	if len(parts) < 8 {
+	if len(parts) < 10 {
 		t.Fatalf("unexpected output:\n%s", out)
 	}
-	run1, run2, sshd, system, nginx, sudoers, keys, calls := parts[0], parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7]
+	run1, run2, sshd, shadowed, noKey := parts[0], parts[1], parts[2], parts[3], parts[4]
+	system, nginx, sudoers, keys, calls := parts[5], parts[6], parts[7], parts[8], parts[9]
 	for _, want := range []string{"hardening SSH", "installing nginx", "refusing unknown host names", "allowing dockflow to check and reload nginx"} {
 		if !strings.Contains(run1, want) {
 			t.Errorf("first run: no %q", want)
@@ -166,6 +172,18 @@ cat /tmp/calls
 	}
 	if !strings.Contains(sshd, "PasswordAuthentication no") || !strings.Contains(sshd, "PermitRootLogin prohibit-password") {
 		t.Errorf("the SSH drop-in, with root's key there:\n%s", sshd)
+	}
+	// a provider's 50-cloud-init.conf comes after 01-dockflow.conf: no warning then. A file
+	// read before it wins, and the run says so
+	if strings.Contains(run1, "warning") {
+		t.Errorf("01-dockflow.conf comes before the provider's drop-in:\n%s", run1)
+	}
+	if !strings.Contains(shadowed, "warning: SSH hardening did not take effect: passwordauthentication is yes, not no") {
+		t.Errorf("a setting another file sets first must be reported:\n%s", shadowed)
+	}
+	// root without a key logs in with a password: nothing is written
+	if !strings.Contains(noKey, "root has no authorized key") || strings.Contains(noKey, "01-dockflow.conf") {
+		t.Errorf("root without a key must not be locked out:\n%s", noKey)
 	}
 	// the server's administration is not Dockflow's (ADR-0024)
 	if strings.Count(system, "No such file") != 2 {

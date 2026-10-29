@@ -215,10 +215,15 @@ Keep the user-data as you would the server's disk. `-o user-data.yml` writes it 
 
 ## What provisioning sets up
 
-`server init <admin>@<host>`, `sudo dockflow server init` and `server cloud-init` also, unless `--no-hardening`:
+`server init <admin>@<host>`, `sudo dockflow server init` and `server cloud-init` rotate Docker's logs when they install Docker. They leave SSH's settings alone: the server's security is yours.
 
-- add `/etc/ssh/sshd_config.d/50-dockflow.conf`: no password authentication, root by key only. While the administrator's account has no authorized key, passwords stay accepted, and the output says so: add your key, then run `server init` again;
-- rotate Docker's logs, when they install Docker.
+With `--harden-ssh`, they also add `/etc/ssh/sshd_config.d/01-dockflow.conf`: no password authentication, root by key only.
+
+- **You are never locked out.** While the administrator's account has no authorized key, passwords stay accepted. When that account is root, nothing is written at all, since root logs in with its password. The output says so: add your key, then run `server init` again.
+- **It comes first.** sshd keeps the first value it reads, and some providers' images ship a drop-in that turns passwords on (`50-cloud-init.conf`). `01-dockflow.conf` is read before it.
+- **It is checked.** After writing the file, provisioning asks sshd for the values it uses (`sshd -T`). A setting that did not take effect, because a file read earlier sets it, is a warning, not a success.
+
+Servers prepared by an earlier version have `/etc/ssh/sshd_config.d/50-dockflow.conf`, which stays where it is. To remove it, run `sudo rm /etc/ssh/sshd_config.d/50-dockflow.conf && sudo systemctl reload ssh` (`sshd` on some distributions).
 
 The rest of the server's administration stays yours: fail2ban, firewall rules outside Docker, automatic updates, time synchronisation. Ubuntu's and Debian's cloud images already turn on automatic security updates and time synchronisation.
 

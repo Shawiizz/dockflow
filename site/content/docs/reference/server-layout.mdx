@@ -63,7 +63,7 @@ Preparing a server (`server init <admin>@<host>`, `sudo dockflow server init`, o
 | Path | What it is |
 |---|---|
 | `/home/<user>/.ssh/authorized_keys` | The deploy user's key line, with `restrict,port-forwarding,pty` (and `from=` with `--from`); `0600`, in a `0700` directory |
-| `/etc/ssh/sshd_config.d/50-dockflow.conf` | The SSH hardening drop-in, unless `--no-hardening` |
+| `/etc/ssh/sshd_config.d/01-dockflow.conf` | With `--harden-ssh`: the SSH hardening drop-in. Servers prepared by earlier versions have `50-dockflow.conf` instead, left in place; remove it with `sudo rm /etc/ssh/sshd_config.d/50-dockflow.conf && sudo systemctl reload ssh` |
 | `/etc/docker/daemon.json` | Only when Dockflow installed Docker and the file did not exist: the `json-file` log driver, 10 MB per file, 3 files |
 | `/etc/apt/keyrings/docker.asc`, `/etc/apt/sources.list.d/docker.list` | Docker's apt repository, when Dockflow installed Docker |
 | `/etc/nginx/conf.d/00-dockflow-default.conf` | With `--nginx`: the default server that refuses unknown host names (Debian's `sites-enabled/default` link is removed) |
@@ -290,7 +290,7 @@ To do the same by hand:
    ```sh
    sudo systemctl disable --now dockflow-cloudflare.timer
    sudo rm -f /etc/systemd/system/dockflow-cloudflare.timer /etc/systemd/system/dockflow-cloudflare.service /usr/local/libexec/dockflow-cloudflare-refresh
-   sudo rm -f /etc/ssh/sshd_config.d/50-dockflow.conf /etc/sudoers.d/dockflow-nginx
+   sudo rm -f /etc/ssh/sshd_config.d/01-dockflow.conf /etc/ssh/sshd_config.d/50-dockflow.conf /etc/sudoers.d/dockflow-nginx
    sudo systemctl daemon-reload
    ```
 

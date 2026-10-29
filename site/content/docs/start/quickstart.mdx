@@ -87,6 +87,8 @@ It takes about ten minutes.
    - reconnects as `dockflow` and installs the switch (`dockflow-switch`, a Caddy container that publishes ports 80 and 443 and obtains certificates) and the server-local registry (`dockflow-registry`, on `127.0.0.1:5959`);
    - prints the **connection string**: the server, its host key and the deploy key, in one value.
 
+   It leaves SSH's settings alone. Add `--harden-ssh` to turn passwords off and let root in by key only, once your account has a key.
+
    You can run it again at any time. On a prepared server, it changes nothing.
 
    <Callout type="info" title="The host key">

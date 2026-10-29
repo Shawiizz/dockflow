@@ -64,7 +64,7 @@ What works today:
 - image builds with buildx bake or Podman, locally or on the server, pushed to a registry on the server or an external one;
 - jobs such as migrations, health checks, hooks, templates, file uploads and webhooks;
 - secrets from CI, Compose `secrets:` and `configs:`, and SOPS files;
-- server setup in one command, with SSH hardening, a port filter and a watchdog;
+- server setup in one command, with a port filter, a watchdog and optional SSH hardening;
 - several apps on one server, with shared networks and volume plugins;
 - backups with restic, and restores, including production's data into staging;
 - day-2 commands: `logs`, `exec`, `run`, `cp`, `ssh`, `ps`, `status`, `restart`, `scale` and more;

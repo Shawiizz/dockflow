@@ -48,8 +48,9 @@ type Options struct {
 	// PortFilter installs the systemd unit that loads the published-port filter at boot, before
 	// Docker (ADR-0014). The agent writes and applies the rules themselves.
 	PortFilter bool
-	// Harden adds the SSH hardening drop-in (ADR-0024). Admin is the account provisioning runs
-	// from: SSH keeps accepting passwords while it has no key, so that it is not locked out.
+	// Harden adds the SSH hardening drop-in, with --harden-ssh (ADR-0024). Admin is the account
+	// provisioning runs from: SSH keeps accepting passwords while it has no key, so that it is
+	// not locked out.
 	Harden bool
 	Admin  string
 	// Nginx installs nginx, which refuses the host names it does not serve, and the sudo rules
@@ -206,24 +207,50 @@ install_file() {
 }
 
 if [ "$DF_HARDEN" = 1 ]; then
-	# SSH: keys only, root by key only; passwords stay while the admin account has no key
+	# --harden-ssh: keys only, root by key only, never locking the administrator out
 	if [ -d /etc/ssh/sshd_config.d ] && grep -qiE '^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d' /etc/ssh/sshd_config 2>/dev/null; then
 		admin_home=$(awk -F: -v u="$DF_ADMIN" '$1 == u { print $6 }' /etc/passwd)
-		dropin=/etc/ssh/sshd_config.d/50-dockflow.conf
-		if [ -n "$admin_home" ] && grep -qE '^[^#]*(ssh-|ecdsa-)' "$admin_home/.ssh/authorized_keys" 2>/dev/null; then
-			printf '# Written by Dockflow (server init): keys only, root by key only\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\n' >"$dropin.tmp"
+		# sshd keeps the first value it reads: 01- comes before the providers' drop-ins (50-cloud-init)
+		dropin=/etc/ssh/sshd_config.d/01-dockflow.conf
+		want=""
+		if [ -n "$admin_home" ] && grep -qE '^[^#]*(ssh-|ecdsa-|sk-)' "$admin_home/.ssh/authorized_keys" 2>/dev/null; then
+			printf '# Written by Dockflow (server init --harden-ssh): keys only, root by key only\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\n' >"$dropin.tmp"
+			want="passwordauthentication=no kbdinteractiveauthentication=no permitrootlogin=prohibit-password"
+		elif [ "$DF_ADMIN" != root ]; then
+			printf '# Written by Dockflow (server init --harden-ssh): root by key only; passwords stay until %s has a key\nPermitRootLogin prohibit-password\n' "$DF_ADMIN" >"$dropin.tmp"
+			want="permitrootlogin=prohibit-password"
+			say "warning: SSH still accepts passwords: $DF_ADMIN has no authorized key yet"
 		else
-			printf '# Written by Dockflow (server init): root by key only; passwords stay until %s has a key\nPermitRootLogin prohibit-password\n' "$DF_ADMIN" >"$dropin.tmp"
+			# root logs in with a password: nothing may change before it has a key
+			say "warning: SSH not hardened: root has no authorized key yet; add one, then run server init again"
 		fi
-		if install_file "$dropin.tmp" "$dropin" "hardening SSH ($dropin)"; then
+		if [ -n "$want" ] && install_file "$dropin.tmp" "$dropin" "hardening SSH ($dropin)"; then
 			if sshd -t >/dev/null 2>&1; then
 				systemctl reload ssh >/dev/null 2>&1 || systemctl reload sshd >/dev/null 2>&1 || true
 			else
 				rm -f "$dropin"
-				say "SSH hardening undone: sshd refuses it"
+				say "warning: SSH hardening undone: sshd refuses it"
+				want=""
 			fi
-			grep -q PasswordAuthentication "$dropin" 2>/dev/null || say "SSH still accepts passwords: $DF_ADMIN has no authorized key yet"
 		fi
+		if [ -n "$want" ]; then
+			# what sshd uses, which another file read first may have set
+			effective=$(sshd -T 2>/dev/null | tr 'A-Z' 'a-z')
+			if [ -z "$effective" ]; then
+				say "warning: SSH hardening not verified: sshd -T fails"
+			fi
+			for kv in $want; do
+				k=${kv%%=*}
+				v=${kv#*=}
+				got=$(printf '%s\n' "$effective" | awk -v k="$k" '$1 == k { print $2; exit }')
+				[ "$got" = without-password ] && got=prohibit-password
+				if [ -n "$effective" ] && [ "$got" != "$v" ]; then
+					say "warning: SSH hardening did not take effect: $k is ${got:-unset}, not $v; another sshd setting comes first"
+				fi
+			done
+		fi
+	else
+		say "warning: SSH not hardened: /etc/ssh/sshd_config does not include /etc/ssh/sshd_config.d"
 	fi
 fi
 

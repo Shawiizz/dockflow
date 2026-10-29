@@ -32,7 +32,7 @@ func TestProvisionAndDeploy(t *testing.T) {
 	keyFile := filepath.Join(workDir, "root-key")
 	writeFile(t, keyFile, string(rootKey.pem))
 	writeFile(t, filepath.Join(dir, "README"), "")
-	r := dockflow(t, dir, "", "--json", "server", "init", "root@"+ip, "-k", keyFile, "--host-key", fp, "--acme-ca", stagingCA)
+	r := dockflow(t, dir, "", "--json", "server", "init", "root@"+ip, "-k", keyFile, "--host-key", fp, "--acme-ca", stagingCA, "--harden-ssh")
 	mustSucceed(t, r, "server init")
 	var init struct {
 		Connection string `json:"connection"`
@@ -43,7 +43,7 @@ func TestProvisionAndDeploy(t *testing.T) {
 	}
 	conn := init.Connection
 
-	// hardening: root has a key, so SSH takes keys only; the rest is the administrator's
+	// --harden-ssh: root has a key, so SSH takes keys only; the rest is the administrator's
 	if out, _ := sshRun(t, ip, "root", rootKey.signer, fp, "sshd -T | grep -i '^passwordauthentication'; command -v fail2ban-server || echo no-fail2ban", time.Minute); !strings.Contains(out, "passwordauthentication no") || !strings.Contains(out, "no-fail2ban") {
 		t.Fatalf("SSH refuses passwords, and nothing else is installed:\n%s", out)
 	}
