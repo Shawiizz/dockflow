@@ -38,12 +38,17 @@ const (
 	resticNoRepository = 10
 )
 
+// backupTmp holds each run's restic environment, on the secrets' tmpfs; tests replace it.
+var backupTmp = filepath.Dir(domain.SecretsRoot)
+
 // repo is a restic repository, opened for one run.
 type repo struct {
 	image  string
 	key    string // names the files of this repository in the state directory
 	mounts []domain.Mount
-	close  func()
+	// dir holds restic's environment, mounted at /run/backup in its containers.
+	dir   string
+	close func()
 }
 
 // openRepo prepares restic's environment: the repository, its password and the storage's
@@ -82,7 +87,8 @@ func (r *runner) openRepo(ctx context.Context, create bool) (*repo, error) {
 	r.ev.Masker().Add(password)
 	env["RESTIC_PASSWORD"] = password
 
-	dir := filepath.Join(filepath.Dir(domain.SecretsRoot), "backup-"+r.req.Run)
+	dir := filepath.Join(backupTmp, "backup-"+r.req.Run)
+	rp.dir = dir
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, errs.Internal("create %s: %v", dir, err)
 	}
@@ -495,7 +501,10 @@ if [ -n "${MONGO_INITDB_ROOT_USERNAME:-}" ]; then
 	set -- --config="$cnf" --username="$MONGO_INITDB_ROOT_USERNAME" --authenticationDatabase=admin "$@"
 fi
 `
-	redisDump = `set -e
+	// stdinCommand is restic's command for a dump: it copies the stdin of restic, its parent,
+	// and succeeds only when the file $1 exists.
+	stdinCommand = `cat /proc/$PPID/fd/0 && test -e "$1"`
+	redisDump    = `set -e
 [ -z "${REDIS_PASSWORD:-}" ] || export REDISCLI_AUTH="$REDIS_PASSWORD"
 rdb=$(mktemp); trap 'rm -f "$rdb"' EXIT
 redis-cli "$@" --rdb "$rdb" >/dev/null
@@ -538,7 +547,14 @@ func (r *runner) backupDump(ctx context.Context, rp *repo, svc *domain.Service, 
 		return nil, err
 	}
 	cmd, name := dumpCommand(svc)
-	args = append(args, "--stdin", "--stdin-filename", name)
+	// restic makes a snapshot of what its command printed only when the command succeeds: it
+	// copies the container's stdin, then succeeds only once the agent wrote the marker, after a
+	// dump that succeeded. A dump that fails, or an agent that dies, closes stdin without it.
+	suffix := make([]byte, 4)
+	_, _ = rand.Read(suffix)
+	marker := "complete-" + hex.EncodeToString(suffix)
+	args = append(args, "--stdin-filename", name, "--stdin-from-command", "--",
+		"sh", "-c", stdinCommand, "sh", "/run/backup/"+marker)
 	var dumpErr error
 	res, err := r.restic(ctx, rp, args, nil, func(w io.Writer) error {
 		ex, err := r.Engine.Exec(ctx, c.ID, engine.ExecOptions{Cmd: cmd})
@@ -560,6 +576,10 @@ func (r *runner) backupDump(ctx context.Context, rp *repo, svc *domain.Service, 
 			dumpErr = fmt.Errorf("%s exited with code %d: %s", cmd[0], code, lastLines(stderr.Bytes(), 3))
 		case copyErr != nil:
 			dumpErr = copyErr
+		default:
+			if err := os.WriteFile(filepath.Join(rp.dir, marker), nil, 0o600); err != nil {
+				dumpErr = fmt.Errorf("mark the dump complete: %w", err)
+			}
 		}
 		return nil
 	})
@@ -567,7 +587,7 @@ func (r *runner) backupDump(ctx context.Context, rp *repo, svc *domain.Service, 
 		return nil, err
 	}
 	if dumpErr != nil {
-		// restic kept what it read: that snapshot holds a partial dump
+		// restic makes no snapshot of a dump that failed; this one is from a restic that did
 		if s, err := backupSummary(res); err == nil {
 			_, _ = r.restic(context.WithoutCancel(ctx), rp, []string{"forget", s.Snapshot}, nil, nil)
 		}

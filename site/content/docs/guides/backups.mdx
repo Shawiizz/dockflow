@@ -112,7 +112,7 @@ The repository's password and the storage's credentials reach restic through a f
 1. `dockflow backup run [<env>] [<service>]` takes the environment's lock. A backup and a deploy never run at the same time (`--wait-lock` on a deploy waits for the backup).
 2. The agent opens the repository, and creates it on the first backup.
 3. It backs up each service of the **current release** that declares `backup`, or the one you named. This is what the server runs, not your working tree.
-4. A dump streams from the service's container into restic, without a temporary file. A failed dump keeps no snapshot.
+4. A dump streams from the service's container into restic, without a temporary file. restic saves it only once the dump has succeeded and all of it has arrived: a dump that fails, or a run that is cut, leaves no snapshot.
 5. Each snapshot is tagged with the app, the environment, the service and the release. Its host is the server's name.
 6. The service's retention is applied (`restic forget`). Once a day, the space of forgotten snapshots is reclaimed (`--prune`).
 7. `restic check` reads 1% of the repository's data, chosen at random, to catch corruption early.
