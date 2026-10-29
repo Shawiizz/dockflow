@@ -51,6 +51,10 @@ func Send(ctx context.Context, hooks []Webhook, p Payload, client *http.Client) 
 	if client == nil {
 		client = http.DefaultClient
 	}
+	// a redirect would send the body, its signature and the custom headers to another URL
+	noRedirect := *client
+	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client = &noRedirect
 	body, _ := json.Marshal(p)
 	var failed []error
 	for _, h := range hooks {
@@ -90,6 +94,10 @@ func post(ctx context.Context, client *http.Client, h Webhook, body []byte) erro
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		return fmt.Errorf("status %d: redirects are not followed, so the payload and its signature reach no other URL; set the webhook's url to the one it redirects to (%s)",
+			resp.StatusCode, resp.Header.Get("Location"))
+	}
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}

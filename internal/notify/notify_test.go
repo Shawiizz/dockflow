@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -37,6 +38,28 @@ func TestSendSignsAndFilters(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Outcome != "rolled_back" {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+// A redirect is a failure, never followed: the body, its signature and the custom headers reach
+// no other URL.
+func TestSendRefusesRedirects(t *testing.T) {
+	reached := false
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true }))
+	defer other.Close()
+	for _, code := range []int{301, 302, 307, 308} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, other.URL+"/hook", code)
+		}))
+		hooks := []Webhook{{URL: srv.URL, Secret: "s3cret", Headers: map[string]string{"Authorization": "Bearer x"}}}
+		errs := Send(context.Background(), hooks, Payload{Status: "success"}, &http.Client{})
+		srv.Close()
+		if len(errs) != 1 || !strings.Contains(errs[0].Error(), "redirects are not followed") || !strings.Contains(errs[0].Error(), other.URL+"/hook") {
+			t.Fatalf("%d: %v", code, errs)
+		}
+	}
+	if reached {
+		t.Fatal("a redirect was followed")
 	}
 }
 

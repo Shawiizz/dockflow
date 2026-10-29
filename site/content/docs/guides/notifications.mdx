@@ -223,3 +223,5 @@ The payload has no unique delivery ID. To ignore replays, check that `at` is rec
 Each webhook is called once per run, one after the other.
 
 A webhook that cannot be reached, times out, or answers with a status of 300 or more is reported as a warning (`notify.failed` in `--json` output). It is not retried, and it never changes the outcome or the exit code of the run.
+
+Redirects are not followed, so the payload, its signature and your `headers` reach only the URL you wrote. A webhook that answers with a redirect fails, and the warning names where it pointed: write that URL in `url`.

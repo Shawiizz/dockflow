@@ -179,6 +179,7 @@ Dockflow then signs each request's body with HMAC-SHA256, and sends the signatur
 - On the receiving side, compute the HMAC of the raw body with the same secret, and compare it with the header in constant time. Examples in Node.js, Python and Go are in [Notifications](/guides/notifications/#verifying-the-signature).
 - Reject requests whose signature does not match.
 - Use an `https://` URL, so the payload and its signature are not readable on the way.
+- Redirects are not followed: the payload, its signature and the webhook's `headers` are sent to its `url` only.
 
 ## The deploy user and its key
 
