@@ -95,6 +95,8 @@ A `volume:` name that the Compose file does not declare stops `dockflow plan` an
 3. **Only missing files travel.** The server keeps a content-addressed store of the app's files. The CLI asks which contents the server lacks and sends only those. Each file is checked against its hash on arrival. A 2 GB directory where one file changed sends one file.
 4. **A helper container applies the manifest.** The agent starts a short-lived container that mounts the store and the destination (the volume, or the parent directory of a host path). Each changed file is written to a temporary file next to its target, then renamed over it. A reader sees either the old file or the new one, never a partial one. With `mirror`, files the manifest does not list are deleted, then empty directories.
 
+The helper never follows a symbolic link out of the destination. A container that can write to the destination could replace a directory with a link to elsewhere on the server: the upload then fails instead of writing there. Of `/var/lib/dockflow`, the helper mounts only the store, read-only, the upload manifests, and an empty directory for the files it replaces.
+
 The swap is atomic per file, not for the whole directory. While the upload runs, a container serving the volume can see some new files next to some old ones.
 
 In the plan, uploads run after networks and volumes are created and before the jobs and services. A `before` [job](/guides/jobs/) can therefore read what was uploaded.

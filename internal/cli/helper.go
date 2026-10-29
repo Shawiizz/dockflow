@@ -36,7 +36,7 @@ func (a *app) uploadHelperCmd() *cobra.Command {
 			}
 			var stats upload.Stats
 			before, err := upload.Apply(hr.Target, &m, upload.Store(hr.Blobs), upload.Options{
-				Mirror: hr.Mirror, Mode: fs.FileMode(hr.Mode), UID: hr.UID, GID: hr.GID, Stats: &stats,
+				Mirror: hr.Mirror, Mode: fs.FileMode(hr.Mode), UID: hr.UID, GID: hr.GID, Saved: upload.Store(hr.Saved), Stats: &stats,
 			})
 			if err != nil {
 				fmt.Fprintln(a.stderr, err)

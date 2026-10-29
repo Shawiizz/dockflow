@@ -129,4 +129,28 @@ func TestUploads(t *testing.T) {
 	if _, body := get(t, host, "/"); body != "v1" {
 		t.Fatalf("served %q after a failed deploy, want v1", body)
 	}
+
+	// a container that writes to the volume swaps a directory of it for a link to Dockflow's
+	// state: the helper must not write through it
+	vol, err := inServer("docker volume ls -q | grep " + app + " | grep site")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateDir, err := inServer("ls -d /var/lib/dockflow/apps/" + app + "*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifests := stateDir + "/uploads/manifests"
+	if _, err := inServer(fmt.Sprintf(`d=$(docker volume inspect -f '{{.Mountpoint}}' %s) && rm -rf "$d/docs" && ln -s %s "$d/docs"`, vol, manifests)); err != nil {
+		t.Fatal(err)
+	}
+	uploadsProject(t, dir, app, serve)
+	os.MkdirAll(filepath.Join(dir, "public", "docs"), 0o755)
+	write("public/docs/page.html", "through the link")
+	if swapped := dockflow(t, dir, "deploy"); swapped.code == 0 {
+		t.Fatalf("an upload through a link out of its destination must fail:\n%s", swapped.out)
+	}
+	if out, _ := inServer("ls -a " + manifests); strings.Contains(out, "page.html") {
+		t.Fatalf("the helper wrote into the state through a link: %s", out)
+	}
 }

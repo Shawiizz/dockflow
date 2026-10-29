@@ -27,10 +27,13 @@ type HelperRequest struct {
 	Target   string `json:"target"`
 	Manifest string `json:"manifest"` // path of the manifest file
 	Blobs    string `json:"blobs"`
-	Mirror   bool   `json:"mirror"`
-	Mode     uint32 `json:"mode"`
-	UID      int    `json:"uid"`
-	GID      int    `json:"gid"`
+	// Saved is where the helper saves the files it replaces or deletes; the agent checks them
+	// and moves them into Blobs, which the helper mounts read-only.
+	Saved  string `json:"saved"`
+	Mirror bool   `json:"mirror"`
+	Mode   uint32 `json:"mode"`
+	UID    int    `json:"uid"`
+	GID    int    `json:"gid"`
 	// Manifests is where the helper writes the manifest that restores the target; it prints its
 	// digest as its last line.
 	Manifests string `json:"manifests"`
@@ -153,7 +156,24 @@ func (r *runner) applyUpload(ctx context.Context, u domain.Upload, manifest stri
 	if hr.UID, hr.GID, err = upload.ParseOwner(u.Owner); err != nil {
 		return "", upload.Stats{}, errs.Config("%s", err.Error())
 	}
-	mounts := []domain.Mount{{Type: "bind", Source: state.Root, Target: state.Root}}
+	// the helper mounts the destination, which containers may write to: of the state, it gets
+	// the blobs, read-only, the manifests, and an empty directory for the files it replaces
+	for _, dir := range []string{blobs, manifests} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return "", upload.Stats{}, errs.Internal("create %s: %v", dir, err)
+		}
+	}
+	saved, err := os.MkdirTemp(filepath.Dir(blobs), "saved-")
+	if err != nil {
+		return "", upload.Stats{}, errs.Internal("create a directory for the replaced files: %v", err)
+	}
+	defer os.RemoveAll(saved)
+	hr.Saved = saved
+	mounts := []domain.Mount{
+		{Type: "bind", Source: blobs, Target: blobs, ReadOnly: true},
+		{Type: "bind", Source: manifests, Target: manifests},
+		{Type: "bind", Source: saved, Target: saved},
+	}
 	if u.Volume != "" {
 		mounts = append(mounts, domain.Mount{Type: "volume", Source: u.Volume, Target: "/dest"})
 		hr.Target = "/dest"
@@ -188,8 +208,12 @@ func (r *runner) applyUpload(ctx context.Context, u domain.Upload, manifest stri
 		out, _ = io.ReadAll(logs)
 		logs.Close()
 	}
+	kept := keepSaved(saved, blobs)
 	if code != 0 {
 		return "", upload.Stats{}, errs.Newf("upload.failed", errs.ExitRolledBack, "cannot write %s: %s", u.Dest, strings.TrimSpace(string(out)))
+	}
+	if kept != nil {
+		return "", upload.Stats{}, kept
 	}
 	// the helper prints its counts, then the restore manifest's digest
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
@@ -198,6 +222,33 @@ func (r *runner) applyUpload(ctx context.Context, u domain.Upload, manifest stri
 		_ = json.Unmarshal([]byte(lines[len(lines)-2]), &stats)
 	}
 	return lines[len(lines)-1], stats, nil
+}
+
+// keepSaved moves the files the helper saved into the blobs, each checked against the sum it is
+// named by: their content comes from the destination.
+func keepSaved(saved, blobs string) error {
+	entries, err := os.ReadDir(saved)
+	if err != nil {
+		return errs.Internal("read the replaced files: %v", err)
+	}
+	for _, e := range entries {
+		p := filepath.Join(saved, e.Name())
+		if !e.Type().IsRegular() {
+			continue
+		}
+		sum, _, err := upload.HashFile(p)
+		if err != nil {
+			return errs.Internal("read a replaced file: %v", err)
+		}
+		if sum != e.Name() {
+			// a temporary file the helper left, or a file that changed: never a blob
+			continue
+		}
+		if err := os.Rename(p, filepath.Join(blobs, sum)); err != nil {
+			return errs.Internal("keep a replaced file: %v", err)
+		}
+	}
+	return nil
 }
 
 // upload applies one upload of the plan.
