@@ -59,6 +59,7 @@ The CLI ships its own Linux binary to servers ([ADR-0004](0004-ephemeral-agent.m
 - After the release, the workflow writes `Formula/dockflow.rb` from `SHA256SUMS`, installs it with Homebrew on Linux, and commits it on `main`.
 - A release is a tag and nothing else: no file in the repository holds the version. The documentation site reads the newest tag at build time (`site/lib/version.ts`, or `DOCKFLOW_RELEASE` in the image build), shows it on its landing page and in place of `{{version}}` in the pages, and `.github/workflows/docs.yml` redeploys it on every tag.
 - The npm packages are built from the release's binaries by `packaging/npm/pack.sh` and published with provenance by `.github/workflows/npm.yml`, which the release starts as a run of its own. It holds no token: npm trusts that workflow by its file name (trusted publishing), set in each package's settings on npmjs.com. `@dockflow-tools/cli` runs the binary of `@dockflow-tools/cli-<os>-<arch>`, its optional dependency for the platform, from a Node script, without a postinstall script.
+- The workflows and the composite Action pin every third-party action by its full commit SHA, the release tag in a comment (`actions/checkout@<sha> # v4.4.0`): a moved tag cannot change what signs and publishes a release. Dependabot (`github-actions`) updates the SHA and its comment together.
 
 ## Embedding the Linux binaries
 
