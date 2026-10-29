@@ -71,7 +71,9 @@ func (a *app) cloudInitCmd() *cobra.Command {
 				return errs.Internal("encode the host key: %v", err)
 			}
 			hostPub, _ := ssh.NewPublicKey(pub)
-			script, err := provision.Script(pf.options(key, "root"))
+			opts := pf.options(key, "root")
+			opts.CloudInit = true
+			script, err := provision.Script(opts)
 			if err != nil {
 				return err
 			}
@@ -97,8 +99,8 @@ func (a *app) cloudInitCmd() *cobra.Command {
 			server := connection.Server{Name: name, Host: pf.host, Port: port, User: pf.user, HostKey: ssh.FingerprintSHA256(hostPub)}
 			cs := connection.ConnString{Servers: []connection.Server{server}, PrivateKey: key.PrivatePEM}.Encode()
 			if output != "" {
-				// it holds the server's private host key
-				if err := os.WriteFile(output, []byte(userData), 0o600); err != nil {
+				// it holds the server's private host key: 0600, an existing file's mode included
+				if err := writePrivate(output, []byte(userData)); err != nil {
 					return errs.Usage("cannot write %s: %v", output, err)
 				}
 			}
@@ -136,4 +138,22 @@ func (a *app) cloudInitCmd() *cobra.Command {
 	f.StringSliceVar(&pf.from, "from", nil, "the source addresses or CIDRs the deploy key accepts")
 	f.StringVarP(&output, "output", "o", "", "write the user-data to this file (mode 600) instead of the standard output")
 	return cmd
+}
+
+// writePrivate writes a file only its owner can read: an existing file is made 0600 before it
+// gets the content.
+func writePrivate(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }

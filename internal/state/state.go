@@ -24,6 +24,17 @@ import (
 // Root is where the state lives on a server.
 const Root = "/var/lib/dockflow"
 
+// UserDataHostKey is the file, in Root, that server cloud-init's provisioning leaves: the
+// server's SSH host key came in its user-data, which the provider's metadata service serves to
+// whoever asks, containers included (ADR-0014).
+const UserDataHostKey = "user-data-host-key"
+
+// HostKeyInUserData tells whether provisioning left UserDataHostKey.
+func (s *Store) HostKeyInUserData() bool {
+	_, err := os.Lstat(filepath.Join(s.root, UserDataHostKey))
+	return err == nil
+}
+
 // Schema is the version of the state format.
 const Schema = 1
 

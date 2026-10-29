@@ -221,3 +221,56 @@ func TestScriptReplacesTheKeysOptions(t *testing.T) {
 		t.Fatalf("%v: authorized_keys:\n%s\nwant only:\n%s", err, out, restricted.Authorized)
 	}
 }
+
+// Contract test: Docker's apt key is refused unless it is Docker's, alone, by its fingerprint.
+// gpg, curl and apt-get are stand-ins: gpg prints the keys of the case, as gpg --with-colons does.
+func TestScriptPinsDockersKey(t *testing.T) {
+	if err := exec.Command("docker", "version").Run(); err != nil {
+		if os.Getenv("DOCKFLOW_CONTRACT") != "" {
+			t.Fatal("docker is required")
+		}
+		t.Skip("no docker")
+	}
+	key, _ := NewKey("x")
+	script, err := Script(Options{User: DefaultUser, AuthorizedKey: key.Authorized, InstallDocker: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stubs := `mkdir -p /usr/local/bin
+stub() { printf '#!/bin/sh\n%s\n' "$2" >/usr/local/bin/$1; chmod +x /usr/local/bin/$1; }
+stub apt-get 'for p in "$@"; do [ "$p" = docker-ce ] && printf "#!/bin/sh\necho 27.5.1\n" >/usr/local/bin/docker && chmod +x /usr/local/bin/docker; done; true'
+stub dpkg 'echo amd64'
+stub systemctl 'true'
+stub curl 'while [ $# -gt 0 ]; do [ "$1" = -o ] && out=$2; shift; done; echo key >"$out"'
+stub gpg 'for f in $(cat /tmp/fprs); do echo "pub:-:4096:1:8D81803C0EBFCD88:1487788586:::-:::scESA::::::23::0:"; echo "fpr:::::::::$f:"; echo "uid:-::::1487792064::0:::Docker Release (CE deb) <docker@docker.com>::::::::::0:"; done'
+`
+	for name, c := range map[string]struct {
+		fprs string
+		want int
+	}{
+		"docker's key":         {DockerKeyFingerprint, 0},
+		"another key":          {"0123456789ABCDEF0123456789ABCDEF01234567", exitDockerKey},
+		"docker's and another": {DockerKeyFingerprint + " 0123456789ABCDEF0123456789ABCDEF01234567", exitDockerKey},
+		"no key":               {"", exitDockerKey},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cmd := exec.Command("docker", "run", "--rm", "-i", "mirror.gcr.io/library/debian:12", "sh", "-c",
+				"cat >/tmp/p.sh; echo '"+c.fprs+"' >/tmp/fprs\n"+stubs+"sh /tmp/p.sh >/dev/null 2>/tmp/err; code=$?; ls /etc/apt/keyrings /etc/apt/sources.list.d; cat /tmp/err; exit $code")
+			cmd.Stdin = strings.NewReader(script)
+			out, err := cmd.CombinedOutput()
+			code := 0
+			if ee, ok := err.(*exec.ExitError); ok {
+				code = ee.ExitCode()
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			if code != c.want {
+				t.Fatalf("exit %d, want %d:\n%s", code, c.want, out)
+			}
+			trusted := strings.Contains(string(out), "docker.asc\n") || strings.Contains(string(out), "docker.list")
+			if trusted != (c.want == 0) {
+				t.Fatalf("the key and the repository are installed only with Docker's key:\n%s", out)
+			}
+		})
+	}
+}

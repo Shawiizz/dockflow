@@ -23,6 +23,10 @@ const Chain = "DOCKFLOW-FILTER"
 // InputChain is the filter's chain for traffic to the host's own sockets; INPUT jumps to it.
 const InputChain = "DOCKFLOW-INPUT"
 
+// MetadataAddress is the address of the cloud providers' metadata service, per family: every
+// major provider serves it on 169.254.169.254, and AWS on fd00:ec2::254 too.
+var MetadataAddress = map[int]string{4: "169.254.169.254", 6: "fd00:ec2::254"}
+
 // Allow is one allowed port, with where it comes from.
 type Allow struct {
 	domain.PublicPort
@@ -39,8 +43,9 @@ type rule struct {
 // Rules returns the iptables-restore input of the filter for one family (4 or 6), for
 // `iptables-restore --noflush`: only the filter's chains are declared, so only they are
 // replaced. published are the host ports containers publish, whose connections docker-proxy
-// may receive on the host itself: DOCKFLOW-INPUT drops those not allowed.
-func Rules(allowed []Allow, published []domain.Port, family int) (string, error) {
+// may receive on the host itself: DOCKFLOW-INPUT drops those not allowed. With noMetadata,
+// containers on Docker's bridges cannot reach the cloud provider's metadata service.
+func Rules(allowed []Allow, published []domain.Port, family int, noMetadata bool) (string, error) {
 	allows, err := expand(allowed, family)
 	if err != nil {
 		return "", err
@@ -49,6 +54,15 @@ func Rules(allowed []Allow, published []domain.Port, family int) (string, error)
 	b.WriteString("*filter\n:" + Chain + " - [0:0]\n:" + InputChain + " - [0:0]\n")
 	add := func(chain, rule string) { b.WriteString("-A " + chain + " " + rule + "\n") }
 
+	if noMetadata {
+		// it serves the user-data, which holds the server's host key (server cloud-init); routed
+		// off the host on most clouds, served by the host itself on some
+		for _, chain := range []string{Chain, InputChain} {
+			for _, br := range []string{"docker0", "br-+"} {
+				add(chain, fmt.Sprintf("-i %s -d %s -j DROP", br, MetadataAddress[family]))
+			}
+		}
+	}
 	// forwarded: containers' own traffic, and the replies to connections already allowed
 	add(Chain, "-i docker0 -j RETURN")
 	add(Chain, "-i br-+ -j RETURN")

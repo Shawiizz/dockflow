@@ -13,6 +13,7 @@ This page lists everything Dockflow creates on a server, so you can inspect it, 
 /var/lib/dockflow/
 ├── server.json                       the server's settings
 ├── server.lock                       held while the switch's configuration changes
+├── user-data-host-key                empty; present when server cloud-init prepared the server: the filter keeps containers from the metadata service
 ├── switch/routes/<stack>.json        the routes the switch serves for each app environment
 ├── backups/
 │   ├── <repository>.password         a backup repository's password, when Dockflow generated it

@@ -211,7 +211,11 @@ The administrator's account is used for this run only, and its credentials are n
 - the deploy key's public part only;
 - the server's **private host key**, so that the connection string can pin it before the server exists.
 
-Keep the user-data as you would the server's disk. `-o user-data.yml` writes it with mode `600`.
+Keep the user-data as you would the server's disk. `-o user-data.yml` writes it with mode `600`, and makes an existing file `600` too.
+
+The provider's metadata service serves the user-data to whatever runs on the server, at `169.254.169.254`, for as long as the server exists. So on a server prepared by `server cloud-init`, the port filter drops what containers on Docker's bridges send to the metadata service (`169.254.169.254`, and AWS's `fd00:ec2::254`). The host itself and containers on the host's network still reach it: they are root on the server anyway. An app that needs the metadata service, for a cloud role's credentials for example, cannot reach it from a bridge network there; give it its credentials another way, or opt out of the filter with `--no-port-filter`.
+
+When Dockflow installs Docker, it checks that the key download.docker.com gives is Docker's signing key, by its fingerprint `9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88`, and that no other key comes with it. Otherwise it stops with `provision.docker_key`, and installs nothing.
 
 ## What provisioning sets up
 

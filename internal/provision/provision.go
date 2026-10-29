@@ -29,7 +29,12 @@ const (
 	exitDockerTooOld  = 21
 	exitUnsupportedOS = 22
 	exitNoNginx       = 23
+	exitDockerKey     = 24
 )
+
+// DockerKeyFingerprint is the fingerprint of Docker's apt signing key: a key downloaded from
+// download.docker.com with another fingerprint, or with another key, is refused.
+const DockerKeyFingerprint = "9DC858229FC7DD38854AE2D88D81803C0EBFCD88"
 
 // MinDocker is the oldest Docker Engine Dockflow supports (ADR-0003).
 const MinDocker = 27
@@ -56,6 +61,10 @@ type Options struct {
 	// Nginx installs nginx, which refuses the host names it does not serve, and the sudo rules
 	// of the nginx plugin (ADR-0017).
 	Nginx bool
+	// CloudInit is for the user-data of server cloud-init, which holds the server's host key:
+	// the script leaves state.UserDataHostKey, and the port filter keeps containers from the
+	// metadata service that serves the user-data (ADR-0014).
+	CloudInit bool
 }
 
 // Script returns the provisioning script, to run as root with sh.
@@ -92,7 +101,8 @@ func Script(o Options) (string, error) {
 	}
 	s := &shell.Script{}
 	s.Set("DF_USER", o.User).Set("DF_KEY", o.AuthorizedKey).Set("DF_KEY_BLOB", blob).Set("DF_INSTALL_DOCKER", flag(o.InstallDocker)).
-		Set("DF_PORT_FILTER", flag(o.PortFilter)).Set("DF_HARDEN", flag(o.Harden)).Set("DF_ADMIN", o.Admin).Set("DF_NGINX", flag(o.Nginx))
+		Set("DF_PORT_FILTER", flag(o.PortFilter)).Set("DF_HARDEN", flag(o.Harden)).Set("DF_ADMIN", o.Admin).Set("DF_NGINX", flag(o.Nginx)).
+		Set("DF_CLOUD_INIT", flag(o.CloudInit)).Set("DF_DOCKER_KEY", DockerKeyFingerprint)
 	s.Body(body)
 	return s.String(), nil
 }
@@ -109,9 +119,20 @@ if ! command -v docker >/dev/null 2>&1; then
 	say "installing Docker from download.docker.com ($ID $VERSION_CODENAME)"
 	export DEBIAN_FRONTEND=noninteractive
 	apt-get update -q >/dev/null
-	apt-get install -yq ca-certificates curl >/dev/null
+	apt-get install -yq ca-certificates curl gnupg >/dev/null
 	install -m 0755 -d /etc/apt/keyrings
-	curl -fsSL "https://download.docker.com/linux/$ID/gpg" -o /etc/apt/keyrings/docker.asc
+	curl -fsSL "https://download.docker.com/linux/$ID/gpg" -o /etc/apt/keyrings/docker.asc.tmp
+	# Docker's key, by its fingerprint, and no other key with it
+	gnupghome=$(mktemp -d)
+	fprs=$(GNUPGHOME="$gnupghome" gpg --batch --show-keys --with-colons /etc/apt/keyrings/docker.asc.tmp 2>/dev/null |
+		awk -F: '$1 == "pub" { p = 1; next } p && $1 == "fpr" { print $10; p = 0 }')
+	rm -rf "$gnupghome"
+	if [ "$fprs" != "$DF_DOCKER_KEY" ]; then
+		rm -f /etc/apt/keyrings/docker.asc.tmp
+		printf 'docker key: %s\n' "$(echo ${fprs:-none})" >&2
+		exit 24
+	fi
+	mv /etc/apt/keyrings/docker.asc.tmp /etc/apt/keyrings/docker.asc
 	chmod a+r /etc/apt/keyrings/docker.asc
 	printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/%s %s stable\n' \
 		"$(dpkg --print-architecture)" "$ID" "$VERSION_CODENAME" >/etc/apt/sources.list.d/docker.list
@@ -163,6 +184,11 @@ if ! grep -qxF "$DF_KEY" "$home/.ssh/authorized_keys"; then
 fi
 mkdir -p /var/lib/dockflow
 chmod 700 /var/lib/dockflow
+if [ "$DF_CLOUD_INIT" = 1 ] && [ ! -e /var/lib/dockflow/user-data-host-key ]; then
+	# the host key came in the user-data, which the metadata service serves to containers too
+	: >/var/lib/dockflow/user-data-host-key
+	chmod 600 /var/lib/dockflow/user-data-host-key
+fi
 chmod 700 "$home/.ssh"
 chmod 600 "$home/.ssh/authorized_keys"
 chown -R "$DF_USER:$(id -g "$DF_USER")" "$home/.ssh"
@@ -379,6 +405,9 @@ func Failed(code int, output string) error {
 	case exitNoNginx:
 		return errs.Newf("provision.no_nginx", errs.ExitConnect, "--nginx: nginx is not installed, and Dockflow installs it on Debian and Ubuntu only").
 			WithHint("install nginx yourself, then run server init again")
+	case exitDockerKey:
+		return errs.Newf("provision.docker_key", errs.ExitConnect, "the key download.docker.com gave is not Docker's signing key (%s): Docker was not installed", strings.TrimSpace(lastLine(output))).
+			WithHint("something between the server and download.docker.com changed the key; install Docker yourself from a source you trust, then run server init again")
 	case exitUnsupportedOS:
 		return errs.Newf("provision.unsupported_os", errs.ExitConnect, "Docker is not installed, and Dockflow installs it on Debian and Ubuntu only").
 			WithHint("install Docker %d or later yourself, then run server init again", MinDocker)

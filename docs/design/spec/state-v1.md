@@ -26,6 +26,8 @@ All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/000
 /var/lib/dockflow/
 ├── server.json                     server settings: edge, switch and registry images, filter state, versions
 ├── server.lock                     empty file, held with flock while the switch's configuration changes
+├── user-data-host-key              empty file, left by server cloud-init's provisioning: the host key is in the user-data,
+│                                   and the port filter keeps containers from the metadata service (ADR-0014)
 ├── switch/routes/<stack>.json      the routes the switch serves for each app environment
 ├── backups/<repository>.password   a backup repository's password, when Dockflow generated it (ADR-0015);
 │                                   <repository> is local, or the first 16 hex digits of the sha256 of its URL

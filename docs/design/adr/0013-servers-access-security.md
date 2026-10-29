@@ -64,7 +64,7 @@ An environment's connection string is the base64 of a JSON document:
 
 Provisioning does the following, and every step is idempotent:
 
-- install Docker from Docker's signed repository (Debian 12 and 13, Ubuntu 22.04, 24.04 and 26.04), unless `--skip-docker-install`;
+- install Docker from Docker's signed repository (Debian 12 and 13, Ubuntu 22.04, 24.04 and 26.04), unless `--skip-docker-install`; the repository's key is refused unless it is Docker's alone, by its fingerprint `9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88` (`provision.docker_key`);
 - write `/etc/docker/daemon.json` with log rotation;
 - create the deploy user and install its key with the options above;
 - with `--harden-ssh`, add an SSH hardening drop-in (no password authentication, root only by key); it is opt-in, and fail2ban, unattended security updates and time synchronisation were dropped, by [ADR-0024](0024-provisioning-scope.md);

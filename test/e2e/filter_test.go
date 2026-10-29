@@ -142,3 +142,35 @@ func TestPortFilterIPv6(t *testing.T) {
 		t.Fatal("a port open to other IPv6 sources must not be reachable from here")
 	}
 }
+
+// A server prepared by server cloud-init has its host key in the user-data, which the metadata
+// service serves: the filter keeps containers from it (ADR-0014). The server here serves
+// 169.254.169.254 itself, as some clouds do.
+func TestPortFilterMetadata(t *testing.T) {
+	t.Cleanup(func() {
+		inServer("docker rm -f dftest-metadata; ip addr del 169.254.169.254/32 dev lo; rm -f /var/lib/dockflow/user-data-host-key")
+		serverInit()
+	})
+	if _, err := inServer("ip addr add 169.254.169.254/32 dev lo && docker run -d --name dftest-metadata --network host whoami-e2e:v1 --port 8169"); err != nil {
+		t.Fatal(err)
+	}
+	fromContainer := func() bool {
+		_, err := inServer("docker run --rm " + alpineImage + " wget -q -T 3 -O /dev/null http://169.254.169.254:8169/")
+		return err == nil
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for !fromContainer() {
+		if time.Now().After(deadline) {
+			t.Fatal("the metadata stand-in must be reachable from a container before the marker")
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	// what server cloud-init's provisioning leaves
+	if _, err := inServer("touch /var/lib/dockflow/user-data-host-key"); err != nil {
+		t.Fatal(err)
+	}
+	mustSucceed(t, serverInit(), "server init applies the filter")
+	if fromContainer() {
+		t.Fatal("a container must not reach the metadata service when the user-data holds the host key")
+	}
+}

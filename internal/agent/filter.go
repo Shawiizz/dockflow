@@ -94,11 +94,13 @@ func (r *runner) syncFilter(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// the user-data holds the server's host key: containers must not read it
+	noMetadata := r.Store.HostKeyInUserData()
 	var fr FilterRequest
-	if fr.Rules4, err = filter.Rules(allowed, published, 4); err != nil {
+	if fr.Rules4, err = filter.Rules(allowed, published, 4, noMetadata); err != nil {
 		return err
 	}
-	if fr.Rules6, err = filter.Rules(allowed, published, 6); err != nil {
+	if fr.Rules6, err = filter.Rules(allowed, published, 6, noMetadata); err != nil {
 		return err
 	}
 	sum := sha256.Sum256([]byte(fr.Rules4 + fr.Rules6))

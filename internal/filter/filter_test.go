@@ -16,7 +16,7 @@ func TestRulesRefuseInvalidPorts(t *testing.T) {
 		{PublicPort: domain.PublicPort{Port: 1, Protocol: "sctp"}, Why: "app-x"},
 		{PublicPort: domain.PublicPort{Port: 1, From: []string{"nope"}}, Why: "app-x"},
 	} {
-		if _, err := Rules([]Allow{bad}, nil, 4); err == nil || !strings.Contains(err.Error(), "app-x") {
+		if _, err := Rules([]Allow{bad}, nil, 4, false); err == nil || !strings.Contains(err.Error(), "app-x") {
 			t.Fatalf("%+v must be refused, naming its app: %v", bad, err)
 		}
 	}

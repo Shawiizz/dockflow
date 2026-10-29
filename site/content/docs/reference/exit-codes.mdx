@@ -99,6 +99,7 @@ Each error code below maps to the exit code given in its row. A few errors use a
 | `provision.unsupported_os` | 4 | Docker is not installed, and the server is not Debian or Ubuntu, where Dockflow installs it. | Install Docker 27 or later yourself, then run `server init` again. |
 | `provision.docker_too_old` | 4 | The server's Docker is older than 27, or not running. | Upgrade Docker Engine to 27 or later and start it. |
 | `provision.no_nginx` | 4 | `--nginx` was given, nginx is not installed, and the server is not Debian or Ubuntu, where Dockflow installs it. | Install nginx yourself, then run `server init` again. |
+| `provision.docker_key` | 4 | The key download.docker.com gave is not Docker's signing key (fingerprint `9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88`), or comes with another key. Docker is not installed. | Something between the server and download.docker.com changed the key: install Docker yourself from a source you trust, then run `server init` again. |
 | `provision.no_ssh_server` | 4 | `server init` without a target, on the server itself, found no SSH host key: no SSH server is installed. | Install and start OpenSSH, then run `server init` again. |
 | `provision.failed` | 4 | A step of the provisioning script failed. | The output above says which step. Every step can be run again safely. |
 

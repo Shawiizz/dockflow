@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -81,5 +83,35 @@ func TestCloudInitLeavesSSHAlone(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `DF_HARDEN='0'`) {
 		t.Fatalf("without --harden-ssh, the script leaves SSH alone:\n%s", out.String())
+	}
+}
+
+// -o writes the user-data, which holds the server's private host key, readable by its owner
+// only, over an existing file too; the script marks the host key as being in the user-data.
+func TestCloudInitOutputIsPrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no Unix modes")
+	}
+	path := filepath.Join(t.TempDir(), "user-data.yml")
+	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	a := &app{stdout: &out, stderr: &errOut, stdin: os.Stdin, interrupts: make(chan struct{}, 2)}
+	root := a.root()
+	root.SetArgs([]string{"server", "cloud-init", "--host", "203.0.113.9", "-o", path})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("%v\n%s", err, errOut.String())
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm() != 0o600 {
+		t.Fatalf("the user-data is %v, want 0600", st.Mode().Perm())
+	}
+	b, _ := os.ReadFile(path)
+	if !strings.Contains(string(b), "ed25519_private") || !strings.Contains(string(b), "DF_CLOUD_INIT='1'") {
+		t.Fatalf("the user-data:\n%s", b)
 	}
 }
