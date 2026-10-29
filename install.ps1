@@ -29,9 +29,13 @@ $name = 'dockflow-windows-amd64.exe'
 if (-not $Version) {
     # the newest release of this CLI, its tags v<semver>: the API does not list them by date
     try {
-        $list = Invoke-RestMethod -UseBasicParsing "https://api.github.com/repos/$repo/releases?per_page=100"
+        # GitHub limits unauthenticated calls to 60 an hour per address: a token lifts it
+        $headers = @{}
+        $token = if ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { $env:GH_TOKEN }
+        if ($token) { $headers['Authorization'] = "Bearer $token" }
+        $list = Invoke-RestMethod -UseBasicParsing -Headers $headers "https://api.github.com/repos/$repo/releases?per_page=100"
     } catch {
-        Fail "cannot list the releases; pass -Version"
+        Fail "cannot list the releases (GitHub limits unauthenticated calls: set GITHUB_TOKEN); pass -Version"
     }
     $Version = ($list | Where-Object { $_.tag_name -match '^v[0-9]' -and $_.published_at } |
         Sort-Object published_at -Descending | Select-Object -First 1).tag_name

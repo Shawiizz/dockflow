@@ -55,7 +55,18 @@ trap 'rm -rf "$tmp"' EXIT INT TERM
 
 if [ -z "$version" ]; then
 	# the newest release of this CLI, its tags v<semver>: the API does not list them by date
-	fetch "https://api.github.com/repos/$repo/releases?per_page=100" "$tmp/releases.json" || fail "cannot list the releases; pass --version"
+	# GitHub limits unauthenticated calls to 60 an hour per address, which CI runners share: a
+	# token (GITHUB_TOKEN, as in GitHub Actions) lifts it. It goes through a file, never argv.
+	token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+	if [ -n "$token" ] && command -v curl >/dev/null 2>&1; then
+		(umask 077 && printf 'Authorization: Bearer %s\n' "$token" >"$tmp/auth")
+		curl -fsSL -H "@$tmp/auth" "https://api.github.com/repos/$repo/releases?per_page=100" -o "$tmp/releases.json" ||
+			fail "cannot list the releases; pass --version"
+		rm -f "$tmp/auth"
+	else
+		fetch "https://api.github.com/repos/$repo/releases?per_page=100" "$tmp/releases.json" ||
+			fail "cannot list the releases (GitHub limits unauthenticated calls: set GITHUB_TOKEN); pass --version"
+	fi
 	version=$(grep -oE '"(tag_name|published_at)": *"[^"]*"' "$tmp/releases.json" |
 		awk -F'"' '$2 == "tag_name" { t = $4 } $2 == "published_at" && t ~ /^v[0-9]/ { print $4, t; t = "" }' |
 		sort -r | head -n 1 | cut -d' ' -f2)

@@ -58,6 +58,8 @@ runs:
       env:
         VERSION: ${{ inputs.version }}
         REF: ${{ github.action_ref }}
+        # to find the newest release without GitHub's limit on unauthenticated calls
+        GITHUB_TOKEN: ${{ github.token }}
       run: |
         if [ "$VERSION" = none ]; then exit 0; fi
         if [ -z "$VERSION" ]; then

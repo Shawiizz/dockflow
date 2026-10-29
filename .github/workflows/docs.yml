@@ -29,7 +29,8 @@ jobs:
       - name: Current release
         run: echo "DOCKFLOW_RELEASE=$(git describe --tags --abbrev=0 --match 'v[0-9]*')" >>"$GITHUB_ENV"
       - name: Install Dockflow
-        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh
+        # the release the site shows, so no call to GitHub's API (rate limited on shared runners)
+        run: sh install.sh --version "$DOCKFLOW_RELEASE" --dir "$RUNNER_TEMP/dockflow-bin"
       - name: Deploy
         env:
           PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
