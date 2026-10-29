@@ -19,6 +19,20 @@ import (
 	"github.com/Shawiizz/dockflow/internal/state"
 )
 
+// readableImage names a container's image for people: an image built on the server, such as the
+// agent's, has no registry digest and is pinned to its bare ID, which says nothing; its tag then
+// comes first, with the ID's start.
+func readableImage(ctx context.Context, eng engine.Engine, image string) string {
+	if !strings.HasPrefix(image, "sha256:") {
+		return image
+	}
+	img, err := eng.InspectImage(ctx, image)
+	if err != nil || len(img.Tags) == 0 {
+		return image
+	}
+	return fmt.Sprintf("%s (%s)", img.Tags[0], image[:len("sha256:")+12])
+}
+
 // ServerStatus is what `dockflow server status` shows.
 type ServerStatus struct {
 	Server     *state.Server    `json:"server"`
@@ -67,7 +81,7 @@ func (r *runner) serverStatus(ctx context.Context) events.RunFinishedData {
 		}
 		cst := ComponentState{Name: c.name, State: "absent"}
 		if len(cs) > 0 {
-			cst.State, cst.Image = cs[0].State, cs[0].Image
+			cst.State, cst.Image = cs[0].State, readableImage(ctx, r.Engine, cs[0].Image)
 			if h := cs[0].Health; h != "" && h != "none" && cs[0].State == "running" {
 				cst.State += " (" + h + ")"
 			}
