@@ -135,7 +135,7 @@ It holds:
 - the release records, which contain your services' full configuration, including interpolated values;
 - the copies of the Compose secret files.
 
-`dockflow server check` fails when the directory is not `0700`. A backup of the server's state (`dockflow backup run --server`) leaves out the backups' passwords. See [Server layout](/reference/server-layout/).
+`dockflow server check` fails when the directory is not `0700`. A backup of the server's state (`dockflow backup run --server`) leaves out the backups' passwords. During a restore, the snapshot's data also sits in staging volumes (volumes) or in a temporary file of the database's container (MySQL, MongoDB, Redis), removed at the end. See [Server layout](/reference/server-layout/).
 
 ## Verified downloads
 

@@ -12,3 +12,7 @@ func diskUsage(path string) (free, total uint64) {
 	}
 	return st.Bavail * uint64(st.Bsize), st.Blocks * uint64(st.Bsize)
 }
+
+// syncDisks writes the server's dirty pages to disk: the files a restore staged reach the disk
+// before anything relies on them, as the state's files do.
+func syncDisks() { syscall.Sync() }

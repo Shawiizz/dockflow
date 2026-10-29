@@ -9,7 +9,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -159,9 +158,13 @@ func (r *runner) resticPipe(ctx context.Context, rp *repo, args []string, extra 
 		Command:    args,
 		Mounts:     append(append([]domain.Mount{}, rp.mounts...), extra...),
 		Restart:    "no",
-		StdinOpen:  stdin != nil,
-		StdinOnce:  stdin != nil,
 	}
+	return r.helper(ctx, spec, stdin, stdout)
+}
+
+// helper runs a one-off container of spec to its end, as restic does, with stdin and stdout.
+func (r *runner) helper(ctx context.Context, spec domain.ContainerSpec, stdin func(io.Writer) error, stdout io.Writer) (*resticRun, error) {
+	spec.StdinOpen, spec.StdinOnce = stdin != nil, stdin != nil
 	labels := map[string]string{
 		domain.LabelKind: domain.KindHelper, domain.LabelSchema: "1", domain.LabelManagedBy: "true", domain.LabelOneOff: "True",
 	}
@@ -170,7 +173,7 @@ func (r *runner) resticPipe(ctx context.Context, rp *repo, args []string, extra 
 	}
 	suffix := make([]byte, 4)
 	_, _ = rand.Read(suffix)
-	id, err := r.Engine.Create(ctx, "dockflow-restic-"+r.req.Run+"-"+hex.EncodeToString(suffix), spec, labels)
+	id, err := r.Engine.Create(ctx, helperPrefix(r.req.Run)+hex.EncodeToString(suffix), spec, labels)
 	if err != nil {
 		return nil, err
 	}
@@ -286,6 +289,9 @@ func (r *runner) backupRun(ctx context.Context) events.RunFinishedData {
 		return failed(err)
 	}
 	defer r.unlock(l)
+	if err := r.finishLeft(ctx); err != nil {
+		return failed(err)
+	}
 	rel, err := r.currentRelease()
 	if err != nil {
 		return failed(err)
@@ -473,7 +479,8 @@ mongodump --archive "$@"
 
 // The dump and restore scripts of the mysql, mongo and redis types run in the service's
 // container, with its own environment: the credentials never leave it, and never reach a
-// command line ($1 is the database, the options follow).
+// command line ($1 is the database, the options follow; a restore of mysql and mongo first takes the
+// dump's size).
 const (
 	// mysqlCredentials writes the client's credentials, from the image's variables, to a file
 	// only this command reads.
@@ -490,7 +497,7 @@ if [ -n "$db" ]; then set -- "$@" --databases "$db"; else set -- "$@" --all-data
 "$dump" --defaults-extra-file="$cnf" --single-transaction --routines --events "$@"
 `
 	mysqlRestore = `client=$(command -v mariadb || command -v mysql)
-"$client" --defaults-extra-file="$cnf" "$@"
+"$client" --defaults-extra-file="$cnf" "$@" < "$dump"
 `
 	// mongoCredentials adds the root user of the image's variables, its password in a file.
 	mongoCredentials = `set -e
@@ -614,68 +621,24 @@ func (r *runner) backupVolumes(ctx context.Context, rp *repo, svc *domain.Servic
 			return nil, fmt.Errorf("%s mounts nothing at %s", svc.Name, target)
 		}
 	}
-	resume, err := r.quiesce(ctx, svc)
-	if err != nil {
+	if svc.Backup.Quiesce.Mode == domain.QuiesceNone {
+		return r.restic(ctx, rp, args, mounts, nil)
+	}
+	// what an earlier service of this run could not finish, first: one record at a time
+	if err := r.finishLeft(ctx); err != nil {
 		return nil, err
 	}
-	res, err := r.restic(ctx, rp, args, mounts, nil)
-	if rerr := resume(); rerr != nil {
-		r.ev.Emit(events.Error, events.Warning, fmt.Sprintf("%s: writes could not be resumed: %v", svc.Name, rerr), map[string]any{"code": "backup.resume", "service": svc.Name})
+	rec := r.newBackupRun(svc)
+	var res *resticRun
+	err := r.pause(ctx, svc, svc.Backup.Quiesce.Mode, "its backup", rec)
+	if err == nil {
+		res, err = r.restic(ctx, rp, args, mounts, nil)
+	}
+	if ferr := r.endFailed(ctx, rec); ferr != nil {
+		r.ev.Emit(events.Error, events.Warning, fmt.Sprintf("%s: writes could not be resumed: %v; the next run or the watchdog resumes them", svc.Name, ferr),
+			map[string]any{"code": "backup.resume", "service": svc.Name})
 	}
 	return res, err
-}
-
-// quiesce stops a service's writes for a volume backup, and returns how to resume them.
-func (r *runner) quiesce(ctx context.Context, svc *domain.Service) (func() error, error) {
-	q := svc.Backup.Quiesce
-	switch q.Mode {
-	case domain.QuiesceNone:
-		return func() error { return nil }, nil
-	case domain.QuiesceExec:
-		c, err := r.runningContainer(ctx, svc)
-		if err != nil {
-			return nil, err
-		}
-		if err := r.backupExec(ctx, svc, c, q.Pre); err != nil {
-			_ = r.backupExec(context.WithoutCancel(ctx), svc, c, q.Post)
-			return nil, fmt.Errorf("quiesce pre: %w", err)
-		}
-		return func() error { return r.backupExec(context.WithoutCancel(ctx), svc, c, q.Post) }, nil
-	default:
-		return r.stopService(ctx, svc, "its backup")
-	}
-}
-
-// stopService stops a service's running containers, and returns how to start them again.
-func (r *runner) stopService(ctx context.Context, svc *domain.Service, why string) (func() error, error) {
-	cs, err := r.Engine.Containers(ctx, engine.Filter{Labels: map[string]string{
-		domain.LabelProject: r.stack, domain.LabelService: svc.Name, domain.LabelKind: domain.KindService,
-	}})
-	if err != nil {
-		return nil, err
-	}
-	var grace *time.Duration
-	if svc.Spec.StopGrace != nil {
-		d := svc.Spec.StopGrace.D()
-		grace = &d
-	}
-	var stopped []engine.Container
-	resume := func() error {
-		var errAll error
-		for _, c := range stopped {
-			errAll = errors.Join(errAll, r.Engine.Start(context.WithoutCancel(ctx), c.ID))
-		}
-		return errAll
-	}
-	for _, c := range cs {
-		r.ev.Info(events.Log, "stopping "+c.Name+" for "+why, map[string]any{"line": "stop " + c.Name})
-		if err := r.Engine.Stop(ctx, c.ID, grace); err != nil {
-			_ = resume()
-			return nil, err
-		}
-		stopped = append(stopped, c)
-	}
-	return resume, nil
 }
 
 // backupExec runs a quiesce command in the service's container, its output as log events.
@@ -706,7 +669,7 @@ func (r *runner) backupExec(ctx context.Context, svc *domain.Service, c engine.C
 		return err
 	}
 	if code != 0 {
-		return fmt.Errorf("%s exited with code %d", strings.Join(cmd, " "), code)
+		return &hookExit{cmd: strings.Join(cmd, " "), code: code}
 	}
 	return nil
 }

@@ -1,7 +1,7 @@
 # ADR-0015: Backups with restic, run in one-off containers
 
 - Status: Accepted
-- Date: 2026-10-25, revised 2026-10-26 (local repository by default, custom commands, application-aware quiesce, prune: nothing 1.x did is lost)
+- Date: 2026-10-25, revised 2026-10-26 (local repository by default, custom commands, application-aware quiesce, prune: nothing 1.x did is lost), revised 2026-10-29 (crash consistency: interrupted backups and restores)
 
 ## Context
 
@@ -66,16 +66,20 @@ There is no scheduler on the server in v1. Backups are triggered by the user's C
 
 ### Implementation (M4)
 
-- **Dumps stream** from an `exec` in the service's running container (`pg_dump` is that image's, so the server's version) into `restic backup --stdin`, rather than a job writing to a temporary volume: no copy on disk, the same tool version. A dump that fails after restic started keeps no snapshot: it is forgotten.
+- **Dumps stream** from an `exec` in the service's running container (`pg_dump` is that image's, so the server's version) into restic, rather than a job writing to a temporary volume: no copy on disk, the same tool version. restic reads it with `--stdin-from-command`, a command that copies restic's stdin and succeeds only if a marker file exists in `/run/backup`, which the agent writes once the dump has exited 0 and all of it was sent. restic makes no snapshot when its command fails: a dump that fails, and an agent that dies (Docker then closes the stdin), leave no snapshot, where `--stdin` would have saved the part that arrived as a complete one.
 - **restic** runs in one-off containers of the `restic/restic` release that Dockflow's version pins by digest (`internal/agent/images.go`). The repository's location, its password and the storage's credentials are written to a file on the secrets' tmpfs (`/run/dockflow/backup-<run>/env`, 0600), which the container sources: never in a command line or in a container's configuration. The file is removed at the end of the run.
 - **The local repository** is the `dockflow-backups` volume; restic's cache is `dockflow-backups-cache`. Generated passwords are in `/var/lib/dockflow/backups/<repository>.password`, generated on the first `backup run`, never by `backup list`. `server uninstall` keeps the repository and its password unless `--volumes`.
 - **Retention:** without `keep`, `{ last: 7, daily: 14, weekly: 8, monthly: 6 }`. Snapshots are grouped by restic's default, host and paths, within the service's tags. `--prune` joins the first `forget` of a day.
 - **check** reads 1% of the data after each `backup run` that made a snapshot.
 - A failed backup exits with code 12, a new code, after the other services are backed up.
-- **Restore** streams `restic dump` into the restore command in the running container; volumes are restored one by one, `restic restore <id>:/data<target> --target /data<target> --delete`, with the service stopped. `--from` is resolved by the CLI, which sends the other environment's repository and secrets.
+- **Restore** streams `restic dump` into the restore command in the running container. `pg_restore --single-transaction` rolls back a dump cut short; the mysql and mongo scripts write the dump to a temporary file in the container and check its size, from `restic ls`, before the client reads it, since those clients change the data as they read. `--from` is resolved by the CLI, which sends the other environment's repository and secrets.
+- **Volumes are restored through staging volumes**, `dockflow-restore-<run>-<n>`: `restic restore <id>:/data<target> --target /data<target>` into a new volume while the service runs, then, the service stopped, a one-off container of restic's image replaces the volume's files with the staging volume's (`rm`, then `cp -a`), and the service starts. The disk holds the snapshot twice during the restore: the cost of never starting a service on a volume half-restored, or of keeping it stopped while restic reads an off-site repository.
+- **Interrupted runs** (state-v1.md, `backup.json`): before a backup stops or quiesces a service, and before a restore stages, stops or copies, the run records it under the environment's lock. The next run that takes the lock, or the watchdog once the agent is gone, finishes it: the copy of a restore is done again from the staging volumes before the service starts; a stopped service starts; the quiesce `post` command runs, so it may run twice and must be idempotent. They first remove the dead run's restic and copy containers, so that no snapshot is completed from a service that writes again.
+- **Redis** is restored by writing the RDB beside the data, `/data/.dockflow-restore.rdb`, while Redis runs; then, Redis stopped, one archive holding a hard link replaces `dump.rdb` at once.
+- **Generated passwords and the prune stamp** are written as the state's files are: to a temporary file, synced, then renamed.
 - **The repository is created** by `restic init` at the start of each `backup run`, which stops at once when it exists ("config file already exists"): reading the config of a missing S3 bucket would retry for minutes instead, and `init` creates the bucket.
 - **`--server`** backs up `/var/lib/dockflow`, mounted read-only, to the environment's repository, tagged `server=<name>`, with the default retention and no lock: its files are written atomically. `backups/` stays out, since a snapshot holding its own repository's password protects nothing. There is no `restore --server`: a lost server is rebuilt with `server install`, then `restic restore` of the latest snapshot.
-- **mysql, mongo, redis** dump and restore with small shell scripts run in the service's container, which read the credentials from the image's variables (`MYSQL_ROOT_PASSWORD`, `MARIADB_*`, `MONGO_INITDB_ROOT_*`, `REDIS_PASSWORD`) and give them to the tool in a temporary file (`--defaults-extra-file`, `--config`) or `REDISCLI_AUTH`, never in argv. Redis is restored by writing the RDB into the stopped container's `/data`, through the Engine API's archive endpoint, since Redis loads it at start.
+- **mysql, mongo, redis** dump and restore with small shell scripts run in the service's container, which read the credentials from the image's variables (`MYSQL_ROOT_PASSWORD`, `MARIADB_*`, `MONGO_INITDB_ROOT_*`, `REDIS_PASSWORD`) and give them to the tool in a temporary file (`--defaults-extra-file`, `--config`) or `REDISCLI_AUTH`, never in argv. Redis is restored through the Engine API's archive endpoint, since Redis loads its RDB at start.
 
 ## Consequences
 
@@ -85,5 +89,7 @@ There is no scheduler on the server in v1. Backups are triggered by the user's C
 - Without CI or cron, nothing runs on a schedule. 1.x had no scheduler either.
 
 ## Open questions
+
+- A mysql, mongo or `command` restore that the database itself fails half-way is not rolled back: those tools have no transaction around a whole restore. A safety snapshot taken before each restore would allow it.
 
 - Point-in-time recovery for Postgres (pgBackRest or WAL-G). After v1.

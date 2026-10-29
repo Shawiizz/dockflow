@@ -26,6 +26,7 @@ This page lists everything Dockflow creates on a server, so you can inspect it, 
     ├── configs/<name>-<hash12>       Compose configs, by content
     ├── secrets/<name>-<hash12>       copies of the Compose secret files, for the watchdog
     ├── watchdog.json                 the watchdog's latest restarts
+    ├── backup.json                   what a backup or a restore in progress changed
     └── uploads/
         ├── blobs/<sha256>            uploaded files, and the files uploads replaced
         └── manifests/<digest>.json   what each upload and its replaced files contain
@@ -110,6 +111,8 @@ Fields that are not always present:
   `ci` is the CI provider, absent outside CI.
 
 - `apps/<stack>/manual-lock.json` exists while `dockflow lock acquire` holds the environment, with the same fields and the `message` of `-m`. Every run refuses to start while it exists, unless given `--force`. It never expires: `dockflow lock release` removes it.
+
+- `apps/<stack>/backup.json` exists while a backup or a restore has a service stopped or quiesced, or its volumes being replaced. The watchdog, or the next run that takes the lock, finishes it if the agent died: see [Backups](/guides/backups/#when-a-run-is-cut).
 
 ### env.json and releases
 

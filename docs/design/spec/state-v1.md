@@ -39,6 +39,8 @@ All of Dockflow's state for a server lives on that server ([ADR-0007](../adr/000
 │   ├── configs/<name>-<hash12>     Compose configs, named after their content and permissions
 │   ├── secrets/<name>-<hash12>     copies of the Compose secret files, 0600 (ADR-0012)
 │   ├── watchdog.json               the watchdog's latest restarts (ADR-0010)
+│   ├── backup.json                 present while a backup or a restore has a service stopped,
+│   │                               quiesced, or its volumes being replaced (ADR-0015)
 │   └── uploads/
 │       ├── blobs/<sha256>          the uploaded files, and those uploads overwrote, by content
 │       └── manifests/<digest>.json the manifests of uploads, and of what they replaced
@@ -98,6 +100,20 @@ A service with `container_name` keeps that name and uses the `stop-first` strate
 
 **The watchdog** ([ADR-0010](../adr/0010-rollout-health-jobs.md)) is the container `dockflow-watchdog` (kind `watchdog`), whose image `server.json` records in `watchdog_image`. It takes an environment's lock, as `watchdog`, only to restart containers and to recover a run whose agent died (see [Recovery](#release-lifecycle)); it mounts the switch's admin volume for that. It records each restart in `apps/<stack>/watchdog.json`: `{"schema": 1, "restarts": [{"service", "container", "at", "reason"}]}`, the 20 most recent, `reason` being `unhealthy` or `boot`.
 
+**Backups and restores** ([ADR-0015](../adr/0015-backups-restic.md)) record in `apps/<stack>/backup.json`, before they change a service, what must not outlive the run, and remove it once the service runs as before:
+
+```json
+{ "schema": 1, "run": "01jbx6k3…", "op": "backup.restore", "service": "files", "quiesce": "stop",
+  "containers": ["3f1c…"], "volumes": [ { "type": "volume", "source": "shop-production_files", "staging": "dockflow-restore-01jbx6k3…-1" } ],
+  "copying": true, "since": "2026-10-26T14:03:11Z" }
+```
+
+- `quiesce` is `stop` when the run stopped `containers`, `exec` when it ran the quiesce `pre` command in `containers[0]`.
+- `volumes` are the volumes and bind mounts a restore replaces, each with the staging volume, `dockflow-restore-<run>-<n>`, that holds the snapshot's files.
+- `copying` is set before the first volume is replaced, and cleared once all are, before the service starts.
+
+A run that takes the lock (`deploy`, `backup run`, `backup restore`, and the others of the table below), and the watchdog as soon as the agent is gone, finish a `backup.json` left behind, in this order: they remove the dead run's helper containers (`dockflow-restic-<run>-…`), so that no copy or restic goes on; if `copying`, they stop the service and replace each volume again from its staging volume; they clear `copying`; they start `containers` again, or run the quiesce `post` command; they remove the staging volumes, then the file. Each step can be cut and done again. A restore that fails before `copying` leaves the volumes as they were.
+
 **The switch's certificates** are requested with the address `server.json` records in `acme_email` (`server init --acme-email`), when it has one, from the ACME directory in `acme_ca` (`--acme-ca`), or Let's Encrypt's then ZeroSSL's without one.
 
 **The cloudflare edge** records in `server.json` the ranges it lets in and trusts, `cloudflare_ranges`, as last downloaded.
@@ -112,6 +128,7 @@ A service with `container_name` keeps that name and uses the `stop-first` strate
   { "schema": 1, "run": "01jbx6k3…", "op": "deploy", "by": "alice@laptop", "ci": null, "since": "2026-10-26T14:03:11Z" }
   ```
 
+- **What it protects.** Besides the releases, `backup.json`: one backup or restore at a time records what it changed.
 - **When it is held.** A run that cannot take it reads `lock.json` and fails with `lock.held`, exit code 5. With `--wait-lock`, it retries until the lock is free or the given duration has passed. A lock the watchdog holds (`"op": "watchdog"`) is waited for in any case, up to 3 minutes: the watchdog holds it only to restart a container or to recover a run that died.
 - **When the holder dies.** The kernel releases the lock. There is no lease and no takeover.
 - **Manual locks.** `dockflow lock acquire` writes `manual-lock.json` (who, why, when). Every run refuses to start while it exists, unless given `--force`. `dockflow lock release` removes it.
@@ -151,14 +168,14 @@ A minor release may add statuses ([compatibility](#compatibility)).
 2. On success, it rewrites the release with its `serving` and `hashes`, still `applying`, then `env.json` with `current` and `previous`. **That write of `env.json` is the commit point:** before it, the run rolls back; after it, the release is live, whatever happens to the agent. Then the run rewrites the release with `status: active`, the previous one with `status: superseded`, and removes the containers the release replaced.
 3. A run that cannot write its commit rolls back, as for any failure before it: the release ends `rolled_back`, with the error `state.commit_failed`.
 
-**Recovery.** `env.json` says which release is current; the statuses follow it. A run that takes the lock, before it plans:
+**Recovery.** `env.json` says which release is current; the statuses follow it. A run that takes the lock, before it plans, finishes a backup or a restore that `backup.json` records (see [Docker objects](#docker-objects)), then:
 1. completes a commit: the release `env.json` names, if still `applying`, becomes `active`, and the previous one, if still `active`, `superseded`;
 2. finds the releases newer than the current one that are still `applying`, which no run holds since it holds the lock. Their agent died. A release newer than the current one and marked `active` is one whose agent died during its commit, in a version before `env.json` was the commit point; it is treated the same;
 3. restores the current release, if such a release exists, if the latest release failed and was left in place (`on_failure: fail`, `--no-rollback`), or if containers of other releases remain: it removes those containers, gives the current release's containers their names back and starts those that are stopped, and points the switch at them. A routed service's other containers are removed only once the switch has moved;
 4. marks the dead runs' releases `abandoned`, last, so that a recovery that is itself cut is done again;
 5. then plans from what is actually running ([ADR-0008](../adr/0008-plan-apply-releases.md)).
 
-The watchdog runs the same recovery as soon as a run's agent died, without waiting for the next run: when a release is left `applying` while its agent container (`dockflow-run-<run>`) no longer runs, when a commit was not completed, or when containers of other releases remain while no failed release was left in place; and only once it holds the environment's lock.
+The watchdog runs the same recovery as soon as a run's agent died, without waiting for the next run: when `backup.json` exists, when a release is left `applying` while its agent container (`dockflow-run-<run>`) no longer runs, when a commit was not completed, or when containers of other releases remain while no failed release was left in place; and only once it holds the environment's lock.
 
 **Retention.** After a successful run, the agent keeps:
 - the newest `releases.keep` releases with status `active` or `superseded`;

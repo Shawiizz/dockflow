@@ -98,6 +98,9 @@ func (w *Watchdog) stack(ctx context.Context, stack string, seen map[string]bool
 	}
 	// the files first: the containers recovery starts again may mount them
 	w.restoreFiles(app, rel)
+	if err := w.finishBackup(ctx, stack, app); err != nil {
+		w.warn(stack + ": cannot finish the backup or restore that stopped: " + err.Error())
+	}
 	if err := w.recoverDead(ctx, stack, app); err != nil {
 		w.warn(stack + ": cannot recover the run that stopped: " + err.Error())
 	}
@@ -215,6 +218,25 @@ func (w *Watchdog) recoverDead(ctx context.Context, stack string, app *state.App
 		req:  Request{Op: "recover", Run: "watchdog", Stack: stack}, ev: w.Events, app: app, stack: stack, start: w.Now(),
 	}
 	return r.recover(ctx)
+}
+
+// finishBackup finishes at once what a backup or a restore whose agent died left in backup.json:
+// the service it stopped or quiesced resumes, on its data or on the whole snapshot. It takes the
+// lock, which a run holds until it ends.
+func (w *Watchdog) finishBackup(ctx context.Context, stack string, app *state.App) error {
+	if rec, err := app.BackupRun(); err != nil || rec == nil {
+		return quiet(err)
+	}
+	l, err := app.Lock(domain.LockInfo{Run: "watchdog", Op: "watchdog", By: "watchdog", Since: w.Now().UTC()})
+	if err != nil {
+		return quiet(err)
+	}
+	defer l.Release()
+	r := &runner{
+		Deps: Deps{Engine: w.Engine, Store: w.Store, Switch: w.Switch, Events: w.Events, Now: w.Now},
+		req:  Request{Op: "recover", Run: "watchdog", Stack: stack}, ev: w.Events, app: app, stack: stack, start: w.Now(),
+	}
+	return quiet(r.finishLeft(ctx))
 }
 
 // stopped tells why app was left by a run that stopped before it finished, if it was: a release

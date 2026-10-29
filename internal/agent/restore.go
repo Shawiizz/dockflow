@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/engine"
 	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/events"
+	"github.com/Shawiizz/dockflow/internal/state"
 )
 
 // pickSnapshot is the snapshot sel names among snaps, oldest first: latest (or nothing), an id
@@ -85,6 +87,9 @@ func (r *runner) backupRestore(ctx context.Context) events.RunFinishedData {
 		return failed(err)
 	}
 	defer r.unlock(l)
+	if err := r.finishLeft(ctx); err != nil {
+		return failed(err)
+	}
 	rel, err := r.currentRelease()
 	if err != nil {
 		return failed(err)
@@ -134,9 +139,12 @@ func (r *runner) backupRestore(ctx context.Context) events.RunFinishedData {
 }
 
 // restoreCommand is the command a dump type is restored with, in the service's container, the
-// dump on its stdin: with the strictest options, so that the first error stops it.
-func restoreCommand(svc *domain.Service) []string {
+// dump on its stdin: with the strictest options, so that the first error stops it. size is the
+// dump's size: mysql and mongo, which change the data as they read, read nothing until the whole
+// dump has arrived, and a dump cut short changes nothing; pg_restore rolls back on its own.
+func restoreCommand(svc *domain.Service, size int64) []string {
 	b := svc.Backup
+	n := strconv.FormatInt(size, 10)
 	switch b.Type {
 	case domain.BackupPostgres:
 		user := envValue(svc.Spec.Env, "POSTGRES_USER", "postgres")
@@ -147,15 +155,45 @@ func restoreCommand(svc *domain.Service) []string {
 		cmd := []string{"pg_restore", "--username", user, "--dbname", db, "--clean", "--if-exists", "--single-transaction", "--exit-on-error"}
 		return append(cmd, b.RestoreOptions...)
 	case domain.BackupMySQL:
-		return append([]string{"sh", "-c", mysqlCredentials + mysqlRestore, "sh", b.Database}, b.RestoreOptions...)
+		return append([]string{"sh", "-c", stageSize + mysqlCredentials + stageDump + mysqlRestore, "sh", n, b.Database}, b.RestoreOptions...)
 	case domain.BackupMongo:
-		return append([]string{"sh", "-c", mongoCredentials + `if [ -n "$db" ]; then set -- --nsInclude="$db.*" "$@"; fi
-mongorestore --archive --drop --stopOnError "$@"
-`, "sh", b.Database}, b.RestoreOptions...)
+		return append([]string{"sh", "-c", stageSize + mongoCredentials + stageDump + `if [ -n "$db" ]; then set -- --nsInclude="$db.*" "$@"; fi
+mongorestore --archive --drop --stopOnError "$@" < "$dump"
+`, "sh", n, b.Database}, b.RestoreOptions...)
 	case domain.BackupCommand:
 		return b.Restore
 	}
 	return nil
+}
+
+// stageSize and stageDump keep the dump in a temporary file of the container, and check that all
+// of it arrived ($1 is its size), before the restore reads it from "$dump".
+const (
+	stageSize = `size="$1"; shift
+`
+	stageDump = `dump=$(mktemp); trap 'rm -f "${cnf:-}" "$dump"' EXIT
+cat > "$dump"
+got=$(wc -c < "$dump")
+if [ "$got" -ne "$size" ]; then echo "the dump was cut short: $got of $size bytes arrived; nothing was restored" >&2; exit 1; fi
+`
+)
+
+// dumpSize is the size of the dump name in a snapshot.
+func (r *runner) dumpSize(ctx context.Context, rp *repo, snap Snapshot, name string) (int64, error) {
+	ls, err := r.restic(ctx, rp, []string{"ls", "--json", "--no-lock", snap.ID, "/" + name}, nil, nil)
+	if err != nil {
+		return 0, err
+	}
+	for _, line := range strings.Split(string(ls.stdout), "\n") {
+		var n struct {
+			Path string `json:"path"`
+			Size int64  `json:"size"`
+		}
+		if json.Unmarshal([]byte(line), &n) == nil && n.Path == "/"+name {
+			return n.Size, nil
+		}
+	}
+	return 0, fmt.Errorf("snapshot %s holds no %s", snap.ID, name)
 }
 
 // restoreDump streams a dump out of the snapshot into the restore command, in the service's
@@ -166,7 +204,13 @@ func (r *runner) restoreDump(ctx context.Context, rp *repo, svc *domain.Service,
 		return err
 	}
 	_, name := dumpCommand(svc)
-	cmd := restoreCommand(svc)
+	size := int64(-1)
+	if t := svc.Backup.Type; t == domain.BackupMySQL || t == domain.BackupMongo {
+		if size, err = r.dumpSize(ctx, rp, snap, name); err != nil {
+			return err
+		}
+	}
+	cmd := restoreCommand(svc, size)
 	ex, err := r.Engine.Exec(ctx, c.ID, engine.ExecOptions{Cmd: cmd, Stdin: true})
 	if err != nil {
 		return err
@@ -195,32 +239,20 @@ func (r *runner) restoreDump(ctx context.Context, rp *repo, svc *domain.Service,
 	return nil
 }
 
+// redisStaged is where a restore writes the RDB first, next to Redis's data.
+const redisStaged = ".dockflow-restore.rdb"
+
 // restoreRedis restores an RDB: Redis reads its data when it starts, so the dump becomes the
-// stopped container's /data/dump.rdb.
+// stopped container's /data/dump.rdb. It is written beside it first, while Redis runs, then a
+// hard link replaces dump.rdb at once: a restore cut at any point leaves Redis its own data or
+// the whole snapshot.
 func (r *runner) restoreRedis(ctx context.Context, rp *repo, svc *domain.Service, snap Snapshot) error {
 	c, err := r.runningContainer(ctx, svc)
 	if err != nil {
 		return err
 	}
 	_, name := dumpCommand(svc)
-	ls, err := r.restic(ctx, rp, []string{"ls", "--json", "--no-lock", snap.ID, "/" + name}, nil, nil)
-	if err != nil {
-		return err
-	}
-	size := int64(-1)
-	for _, line := range strings.Split(string(ls.stdout), "\n") {
-		var n struct {
-			Path string `json:"path"`
-			Size int64  `json:"size"`
-		}
-		if json.Unmarshal([]byte(line), &n) == nil && n.Path == "/"+name {
-			size = n.Size
-		}
-	}
-	if size < 0 {
-		return fmt.Errorf("snapshot %s holds no %s", snap.ID, name)
-	}
-	resume, err := r.stopService(ctx, svc, "its restore")
+	size, err := r.dumpSize(ctx, rp, snap, name)
 	if err != nil {
 		return err
 	}
@@ -229,13 +261,16 @@ func (r *runner) restoreRedis(ctx context.Context, rp *repo, svc *domain.Service
 	var dumpErr error
 	go func() {
 		tw := tar.NewWriter(pw)
-		if err := tw.WriteHeader(&tar.Header{Name: "dump.rdb", Mode: 0o644, Size: size, ModTime: snap.Time}); err != nil {
+		if err := tw.WriteHeader(&tar.Header{Name: redisStaged, Mode: 0o644, Size: size, ModTime: snap.Time}); err != nil {
 			pw.CloseWithError(err)
 			return
 		}
 		dumpRes, dumpErr = r.resticPipe(ctx, rp, []string{"dump", snap.ID, "/" + name}, nil, nil, tw)
-		if dumpErr == nil {
+		if dumpErr == nil && dumpRes.code == 0 {
 			dumpErr = tw.Close()
+		}
+		if dumpErr == nil && dumpRes.code != 0 {
+			dumpErr = fmt.Errorf("restic dump exited with code %d: %s", dumpRes.code, lastLines(dumpRes.stderr, 3))
 		}
 		pw.CloseWithError(dumpErr)
 	}()
@@ -243,50 +278,90 @@ func (r *runner) restoreRedis(ctx context.Context, rp *repo, svc *domain.Service
 	_ = pr.CloseWithError(copyErr)
 	switch {
 	case dumpErr != nil:
-		err = dumpErr
-	case dumpRes != nil && dumpRes.code != 0:
-		err = fmt.Errorf("restic dump exited with code %d: %s", dumpRes.code, lastLines(dumpRes.stderr, 3))
+		return dumpErr
 	case copyErr != nil:
-		err = copyErr
+		return copyErr
 	}
-	if rerr := resume(); rerr != nil {
-		err = errors.Join(err, fmt.Errorf("%s could not start again: %w", svc.Name, rerr))
+
+	rec := r.newBackupRun(svc)
+	err = r.pause(ctx, svc, domain.QuiesceStop, "its restore", rec)
+	if err == nil {
+		var link bytes.Buffer
+		tw := tar.NewWriter(&link)
+		_ = tw.WriteHeader(&tar.Header{Typeflag: tar.TypeLink, Name: "dump.rdb", Linkname: redisStaged, Mode: 0o644, ModTime: snap.Time})
+		_ = tw.Close()
+		err = r.Engine.CopyTo(ctx, c.ID, "/data", &link)
+	}
+	if ferr := r.endFailed(ctx, rec); ferr != nil {
+		err = errors.Join(err, fmt.Errorf("%s could not start again: %w; the next run or the watchdog starts it", svc.Name, ferr))
+	}
+	if err == nil {
+		// the link is the data file's second name: one less copy of it on the disk
+		if ex, xerr := r.Engine.Exec(ctx, c.ID, engine.ExecOptions{Cmd: []string{"rm", "-f", "/data/" + redisStaged}}); xerr == nil {
+			_ = ex.Stdin.Close()
+			_, _ = io.Copy(io.Discard, ex.Stdout)
+			_, _ = ex.Wait(ctx)
+			ex.Close()
+		}
 	}
 	return err
 }
 
-// restoreVolumes restores the service's volumes with the service stopped: each one gets the
-// snapshot's files, and loses those the snapshot does not have.
+// restoreVolumes restores the service's volumes: each one gets the snapshot's files, and loses
+// those the snapshot does not have. The snapshot goes to staging volumes first, with the service
+// running; then, the service stopped, each volume's files are replaced with its staging volume's.
+// backup.json records each step: a restore cut before the copy leaves the volumes as they were,
+// and one cut during the copy is completed before the service starts again.
 func (r *runner) restoreVolumes(ctx context.Context, rp *repo, svc *domain.Service, snap Snapshot) error {
-	resume, err := r.stopService(ctx, svc, "its restore")
-	if err != nil {
-		return err
-	}
-	var errRestore error
-	for _, target := range svc.Backup.Volumes {
+	rec := r.newBackupRun(svc)
+	for i, target := range svc.Backup.Volumes {
 		var mount *domain.Mount
 		for _, m := range svc.Spec.Mounts {
 			if m.Target == target && (m.Type == "volume" || m.Type == "bind") {
-				mount = &domain.Mount{Type: m.Type, Source: m.Source, Target: "/data" + target}
+				mount = &m
 			}
 		}
 		if mount == nil {
-			errRestore = fmt.Errorf("%s mounts nothing at %s", svc.Name, target)
-			break
+			return fmt.Errorf("%s mounts nothing at %s", svc.Name, target)
 		}
-		res, err := r.restic(ctx, rp, []string{"restore", snap.ID + ":/data" + target, "--target", "/data" + target, "--delete"}, []domain.Mount{*mount}, nil)
-		if err == nil && res.code != 0 {
-			err = fmt.Errorf("restic restore of %s exited with code %d: %s", target, res.code, lastLines(res.stderr, 3))
-		}
+		rec.Volumes = append(rec.Volumes, state.RestoreVolume{Type: mount.Type, Source: mount.Source, Staging: fmt.Sprintf("dockflow-restore-%s-%d", r.req.Run, i+1)})
+	}
+	err := r.app.SetBackupRun(*rec)
+	for i, v := range rec.Volumes {
 		if err != nil {
-			errRestore = err
 			break
 		}
+		target := "/data" + svc.Backup.Volumes[i]
+		if err = r.Engine.CreateVolume(ctx, domain.Volume{Name: v.Staging}, ""); err != nil {
+			break
+		}
+		var res *resticRun
+		res, err = r.restic(ctx, rp, []string{"restore", snap.ID + ":" + target, "--target", target}, []domain.Mount{{Type: "volume", Source: v.Staging, Target: target}}, nil)
+		if err == nil && res.code != 0 {
+			err = fmt.Errorf("restic restore of %s exited with code %d: %s", svc.Backup.Volumes[i], res.code, lastLines(res.stderr, 3))
+		}
 	}
-	if err := resume(); err != nil {
-		errRestore = errors.Join(errRestore, fmt.Errorf("%s could not start again: %w", svc.Name, err))
+	if err == nil {
+		syncDisks()
+		err = r.pause(ctx, svc, domain.QuiesceStop, "its restore", rec)
 	}
-	return errRestore
+	if err == nil {
+		rec.Copying = true
+		if err = r.app.SetBackupRun(*rec); err != nil {
+			rec.Copying = false
+		}
+	}
+	if err != nil {
+		// the volumes are untouched
+		if ferr := r.endFailed(ctx, rec); ferr != nil {
+			err = errors.Join(err, fmt.Errorf("%s could not start again: %w; the next run or the watchdog starts it", svc.Name, ferr))
+		}
+		return err
+	}
+	if err := r.endFailed(ctx, rec); err != nil {
+		return fmt.Errorf("%w: %s stays stopped, its volumes partly replaced, until the next run or the watchdog finishes the restore", err, svc.Name)
+	}
+	return nil
 }
 
 // backupPrune applies a retention now, and reclaims the space of the forgotten snapshots.

@@ -55,7 +55,7 @@ The options of `backup`:
 | `database` | string | the image's | `postgres`, `mysql`, `mongo`: the database to dump. |
 | `dump_options`, `restore_options` | string | none | Extra arguments of the dump tool (`postgres`, `mysql`, `mongo`, `redis`) and of the restore tool (`postgres`, `mysql`, `mongo`; a `redis` restore replaces the data file and takes none), split on spaces, like `"--no-owner --no-acl"`. |
 | `volumes` | list | every volume and bind mount | `volume`: the volumes, by their key in the Compose file, and bind mounts, by their path on the server, to copy. |
-| `quiesce` | `stop`, `none` or map | `stop` | `volume`: how writes stop during the copy. `stop` stops the service's containers, then starts them again; `none` copies while it runs; `{ exec: { pre: [...], post: [...] } }` runs `pre` in the running container before the copy and `post` after, even when the copy fails. |
+| `quiesce` | `stop`, `none` or map | `stop` | `volume`: how writes stop during the copy. `stop` stops the service's containers, then starts them again; `none` copies while it runs; `{ exec: { pre: [...], post: [...] } }` runs `pre` in the running container before the copy and `post` after, even when the copy fails or the run is cut: `post` may then run twice, so it must be harmless to repeat. |
 | `dump`, `restore` | argument lists | required for `command` | The commands of the `command` type. |
 | `keep` | map | `{ last: 7, daily: 14, weekly: 8, monthly: 6 }` | The snapshots kept: `last`, `hourly`, `daily`, `weekly`, `monthly`, as restic's `forget --keep-*`. |
 
@@ -163,12 +163,23 @@ How each kind of backup is restored:
   - the `command` type: its `restore` command.
 
   `restore_options` adds arguments.
-- **Redis** loads its data when it starts. The service is stopped, the dump becomes `/data/dump.rdb` in its container (the official image's data directory), and the service starts again. With `appendonly yes`, Redis loads its append-only file instead: turn it off, or back Redis up as a `volume`.
-- **Volumes** are restored with the service stopped, then started again. Each volume gets the snapshot's files, and loses those the snapshot does not have.
+  MySQL and MongoDB change the data as they read the dump, so the dump is first written whole to a temporary file in the container, and its size checked, before the client reads it: a dump cut short changes nothing. A restore that the database itself stops half-way (an SQL error) is not rolled back, except by Postgres.
+- **Redis** loads its data when it starts. The dump is written beside its data while it runs; then the service is stopped, the dump replaces `/data/dump.rdb` in its container (the official image's data directory) in one step, and the service starts again. With `appendonly yes`, Redis loads its append-only file instead: turn it off, or back Redis up as a `volume`.
+- **Volumes** are restored into new staging volumes first, `dockflow-restore-<run>-<n>`, while the service runs. Then the service is stopped, each volume's files are replaced with its staging volume's, and the service starts again. Each volume gets the snapshot's files, and loses those the snapshot does not have. The server needs free space for a copy of the snapshot during the restore; the staging volumes are removed at the end.
 
 `--from <env>` restores a snapshot of another environment of the same app. It reads that environment's repository, with that environment's secrets: the repository on the server when both run on the same server, or its off-site `backups.repository`.
 
 A restore that fails exits with code 12, and says why.
+
+### When a run is cut
+
+A backup or a restore can be cut at any point: the connection drops, the agent is killed, the server reboots. Dockflow records what it changes before it changes it, in `/var/lib/dockflow/apps/<app>-<env>/backup.json`, and the [watchdog](/guides/health-checks/#after-the-deploy-the-watchdog), within seconds, or the next `deploy`, `backup run` or `backup restore`, finishes it:
+
+- a service stopped or quiesced for a backup or a restore starts again, or gets its `post` command;
+- a volume restore cut before its copy began leaves the volumes as they were; one cut during the copy is copied again from the staging volumes before the service starts, so the service never runs on a volume half-restored;
+- a backup cut short leaves no snapshot; `backup list` and `backup restore` only see complete ones.
+
+If the copy of a volume restore cannot finish (a full disk), the service stays stopped rather than start on a part of the snapshot, and the watchdog tries again: free the space, or run `backup restore` again.
 
 ## Retention and pruning
 

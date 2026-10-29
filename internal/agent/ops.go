@@ -25,8 +25,11 @@ import (
 // commit point (state-v1.md): a commit an agent did not finish is completed, and the current
 // release is restored after a run that did not finish: an agent that died, or a failed run left
 // in place (on_failure: fail). Each step can be cut and done again: a release is marked
-// abandoned last.
+// abandoned last. A backup or a restore that did not finish is finished first.
 func (r *runner) recover(ctx context.Context) error {
+	if err := r.finishLeft(ctx); err != nil {
+		return err
+	}
 	if err := r.removeJobs(ctx); err != nil {
 		return err
 	}
