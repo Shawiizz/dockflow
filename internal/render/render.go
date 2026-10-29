@@ -19,6 +19,7 @@ import (
 
 	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/ignore"
+	"github.com/Shawiizz/dockflow/internal/shell"
 )
 
 // Template is one entry of `templates:`, relative to the project. Src equals Dest for a file
@@ -31,6 +32,18 @@ type Template struct {
 func init() {
 	// gonja logs through logrus; Dockflow reports errors itself
 	gonja.SetLoggerOutput(io.Discard)
+	// {{ value | shquote }}: one shell word, whatever the value holds, for hooks' host commands
+	if err := gonja.DefaultEnvironment.Filters.Register("shquote", func(_ *exec.Evaluator, in *exec.Value, params *exec.VarArgs) *exec.Value {
+		if in.IsError() {
+			return in
+		}
+		if err := params.Take(); err != nil {
+			return exec.AsValue(exec.ErrInvalidCall(err))
+		}
+		return exec.AsValue(shell.Quote(in.String()))
+	}); err != nil {
+		panic(err)
+	}
 }
 
 // File renders the template at path with vars. An undefined variable is an error.

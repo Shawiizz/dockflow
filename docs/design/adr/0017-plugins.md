@@ -18,7 +18,7 @@ v2 already has every piece a plugin needs:
 
 A plugin is a directory with a `plugin.yml`. It declares:
 
-- **`inputs`**: name, description, `required` (or `required_unless` another input is given), `default`, `type: string | file`;
+- **`inputs`**: name, description, `required` (or `required_unless` another input is given), `default`, `type: string | file`, and `pattern`, a regular expression a value must match whole (each item of a list, a file's name). The built-in plugins give one to every input that reaches a command run with sudo or nginx's configuration: a unit name matches `[A-Za-z0-9@._-]+`, a domain is a host name or a `*.` wildcard. Templates have a `shquote` filter that makes a value one shell word;
 - **`uploads`**: as in `dockflow.yml`, with `src` relative to the plugin;
 - **`hooks`**: as in `dockflow.yml`;
 - **`templates`**: rendered with the inputs in their context.

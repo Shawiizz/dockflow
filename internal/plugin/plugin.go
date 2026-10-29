@@ -52,6 +52,11 @@ type Input struct {
 	// RequiredUnless names another input: this one is required when that one is not given
 	RequiredUnless string `yaml:"required_unless" json:"required_unless,omitempty"`
 	Default        any    `yaml:"default" json:"default,omitempty"`
+	// Pattern is a regular expression a given value must match whole: a string, each item of a
+	// list, a file's name. A value that ends up in a command or a configuration file is checked
+	// here, before anything renders it.
+	Pattern string `yaml:"pattern" json:"pattern,omitempty"`
+	pattern *regexp.Regexp
 }
 
 type manifest struct {
@@ -165,6 +170,16 @@ func read(fsys fs.FS, name, source string, isBuiltin bool) (*Plugin, error) {
 		case TypeString, TypeBoolean, TypeList, TypeFile:
 		default:
 			return nil, errs.Config("%s: input %s: type must be string, boolean, list or file, not %q", at, in.Name, in.Type)
+		}
+		if in.Pattern != "" {
+			if in.Type == TypeBoolean {
+				return nil, errs.Config("%s: input %s: a boolean takes no pattern", at, in.Name)
+			}
+			re, err := regexp.Compile(`^(?:` + in.Pattern + `)$`)
+			if err != nil {
+				return nil, errs.Config("%s: input %s: the pattern is not a regular expression: %v", at, in.Name, err)
+			}
+			in.pattern = re
 		}
 	}
 	p.Inputs = m.Inputs
@@ -371,6 +386,9 @@ func (p *Plugin) inputs(dir, at string, with map[string]any, bundle *render.Bund
 		if err != nil {
 			return nil, errs.Config("%s: input %s: %v", at, in.Name, err)
 		}
+		if err := in.check(v); err != nil {
+			return nil, errs.Config("%s: input %s: %v", at, in.Name, err).WithHint("%s", in.Description)
+		}
 		if in.Type == TypeFile && v != "" {
 			rel := v.(string)
 			clean, err := inside(filepath.ToSlash(rel))
@@ -392,6 +410,32 @@ func (p *Plugin) inputs(dir, at string, with map[string]any, bundle *render.Bund
 		out[in.Name] = v
 	}
 	return out, nil
+}
+
+// check matches a coerced value against the input's pattern: a string, each item of a list, the
+// name of a file. An empty value is the input left out.
+func (in *Input) check(v any) error {
+	if in.pattern == nil {
+		return nil
+	}
+	var values []string
+	switch x := v.(type) {
+	case string:
+		if in.Type == TypeFile {
+			x = path.Base(filepath.ToSlash(x))
+		}
+		if x != "" && x != "." {
+			values = []string{x}
+		}
+	case []string:
+		values = x
+	}
+	for _, s := range values {
+		if !in.pattern.MatchString(s) {
+			return fmt.Errorf("%q does not match %s", s, in.Pattern)
+		}
+	}
+	return nil
 }
 
 func coerce(typ string, val any) (any, error) {

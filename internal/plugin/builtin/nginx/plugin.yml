@@ -4,17 +4,22 @@ inputs:
   - name: domain
     type: list
     required_unless: template
+    # host names, *.wildcards: each value goes into server_name as it is
+    pattern: '(\*\.)?([A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.)*[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?'
     description: the domains the vhost serves; a template of the project names its own
   - name: upstream
     default: 127.0.0.1:8080
+    pattern: '([A-Za-z0-9._-]+|\[[0-9A-Fa-f:.]+\]):[0-9]{1,5}'
     description: where nginx sends requests, the switch's --switch-listen
   - name: port
+    pattern: '[0-9]{1,5}'
     description: with the none edge, a port published on the server, instead of upstream
   - name: tls
     type: boolean
     default: false
     description: listen on 443 with the certificate in certificate_dir, and redirect 80 to it
   - name: certificate_dir
+    pattern: '/[A-Za-z0-9._/@+-]*'
     description: the directory of fullchain.pem and privkey.pem (default /etc/letsencrypt/live/<first domain>)
   - name: cloudflare
     type: boolean
@@ -26,11 +31,14 @@ inputs:
     description: listen on IPv6 too; turn it off on a server whose kernel has no IPv6
   - name: max_body_size
     default: 25m
+    pattern: '[0-9]+[kKmMgG]?'
     description: nginx's client_max_body_size
   - name: dir
     default: /etc/nginx/sites-enabled
+    pattern: '/[A-Za-z0-9._/@+-]*'
     description: the directory nginx includes vhosts from
   - name: name
+    pattern: '[A-Za-z0-9@._-]+'
     description: the vhost's file name (default <app>-<env>.conf, with the id when it is not nginx)
   - name: template
     type: file

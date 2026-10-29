@@ -174,3 +174,48 @@ func TestManifestErrors(t *testing.T) {
 		})
 	}
 }
+
+// Inputs that end up in a command run with sudo, or in nginx's configuration, are checked
+// against the built-in plugins' patterns before anything renders them.
+func TestBuiltinInputsAreChecked(t *testing.T) {
+	for name, use := range map[string]config.PluginUse{
+		"a unit name with a command":   {Use: "systemd", With: map[string]any{"unit": "deploy/rclone.service", "name": "x; rm -rf /"}},
+		"a unit file named oddly":      {Use: "systemd", With: map[string]any{"unit": "deploy/odd name;id.service"}},
+		"a domain with a directive":    {Use: "nginx", With: map[string]any{"domain": []any{"shop.example.com; include /etc/shadow"}}},
+		"a domain with a block":        {Use: "nginx", With: map[string]any{"domain": "shop.example.com }"}},
+		"an upstream with a directive": {Use: "nginx", With: map[string]any{"domain": "shop.example.com", "upstream": "127.0.0.1:8080; }"}},
+		"a port that is not one":       {Use: "nginx", With: map[string]any{"domain": "shop.example.com", "port": "80 x"}},
+		"a relative directory":         {Use: "nginx", With: map[string]any{"domain": "shop.example.com", "dir": "../etc"}},
+		"a body size with a directive": {Use: "nginx", With: map[string]any{"domain": "shop.example.com", "max_body_size": "1m; return 200"}},
+	} {
+		_, err := Expand("testdata/project", []config.PluginUse{use}, values)
+		if err == nil || errs.CodeOf(err) != "config.invalid" || !strings.Contains(err.Error(), "does not match") {
+			t.Errorf("%s: must be refused: %v", name, err)
+		}
+	}
+	// what the patterns let through
+	_, x := expand(t, config.PluginUse{Use: "nginx", With: map[string]any{
+		"domain": []any{"*.example.com", "shop-1.example.com", "_"}, "upstream": "[::1]:8080", "max_body_size": "100M", "certificate_dir": "/etc/ssl/shop",
+	}})
+	if len(x.Uploads) != 1 {
+		t.Fatalf("uploads: %+v", x.Uploads)
+	}
+}
+
+// The systemd plugin quotes the unit's name in its host command.
+func TestSystemdQuotesTheUnit(t *testing.T) {
+	_, x := expand(t, config.PluginUse{Use: "systemd", With: map[string]any{"unit": "deploy/rclone.service", "name": "rclone@media.service"}})
+	if len(x.Hooks) != 1 || !strings.Contains(x.Hooks[0].Command, "enable 'rclone@media.service' &&") {
+		t.Fatalf("hooks: %+v", x.Hooks)
+	}
+}
+
+func TestPatternOnABooleanIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ManifestName), []byte("name: x\ninputs:\n  - name: on\n    type: boolean\n    pattern: 'true'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir, "."); err == nil {
+		t.Fatal("a pattern on a boolean must be refused")
+	}
+}

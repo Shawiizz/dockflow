@@ -59,6 +59,8 @@ plugins:
 | `name` | `<app>-<env>.conf`, with `-<id>` for an id other than `nginx` | The vhost's file name. |
 | `template` | none | The project's own vhost, a Jinja template that sees these inputs, instead of the plugin's. |
 
+Each value goes into nginx's configuration as it is, so each is checked first: domains are host names or `*.` wildcards, `upstream` is `host:port`, `port` a number, `max_body_size` a size such as `25m`, `dir` and `certificate_dir` absolute paths, `name` a file name. Anything else, such as a `;` or a space, is refused with `config.invalid`.
+
 The hook runs as the environment's SSH user, without a terminal. So `sudo` must not ask for a password for `nginx -t` and one of the two reloads.
 
 `server init --nginx` installs nginx and this rule. On a server prepared otherwise, add the rule with `sudo visudo -f /etc/sudoers.d/dockflow-nginx`, with your SSH user and the paths that `command -v nginx systemctl` prints:
@@ -89,7 +91,7 @@ plugins:
 - The unit goes to `/etc/systemd/system/rclone-archives.service`.
 - When the unit changed, the plugin runs `sudo systemctl daemon-reload`, then `enable` and `restart` of the unit.
 - A failure is a warning: the release stays.
-- Inputs: `unit` (required, a file of the project) and `name` (default: the file's name).
+- Inputs: `unit` (required, a file of the project) and `name` (default: the file's name). The unit's name, given or taken from the file, must match `[A-Za-z0-9@._-]+`: it goes into a command run with `sudo`.
 - The SSH user needs `sudo` without a password for `systemctl`.
 
 ## Writing a plugin
@@ -132,10 +134,10 @@ ExecStart=/usr/bin/rclone mount {{ remote }} {{ mount }}{% if read_only %} --rea
 |---|---|
 | `name` | The plugin's name, the default `id` of its uses. Default: the directory's name. An `id`, given or defaulted, must match `^[a-z][a-z0-9_-]{0,31}$`. |
 | `description` | Shown by `plugins list`. |
-| `inputs` | Each with `name`, `description`, `type` (default `string`), `required` and `default`. `required_unless: <input>` makes it required when that other input is not given; it must name another input. A name matches `^[a-z][a-z0-9_]*$`, is declared once, and cannot be `id`, which is reserved. |
+| `inputs` | Each with `name`, `description`, `type` (default `string`), `required` and `default`. `required_unless: <input>` makes it required when that other input is not given; it must name another input. `pattern` is a regular expression a given value must match whole: a string, each item of a list, a file's name; a value that ends up in a command or a configuration file should have one. A name matches `^[a-z][a-z0-9_]*$`, is declared once, and cannot be `id`, which is reserved. |
 | `templates` | Files of the plugin rendered with Jinja: a path, rendered in place, or `src` and `dest`. |
 | `uploads` | As in `dockflow.yml`, with `src` a file or directory of the plugin. |
-| `hooks` | As in `dockflow.yml`, without `script`: upload the script and run it with `host:`. An `after_deploy` hook can take `if_changed`: the destination of one of the plugin's uploads, so it runs only when the deploy changed it. `if_changed` in another phase, or naming no upload of the plugin, is an error. |
+| `hooks` | As in `dockflow.yml`, without `script`: upload the script and run it with `host:`. An `after_deploy` hook can take `if_changed`: the destination of one of the plugin's uploads, so it runs only when the deploy changed it. `if_changed` in another phase, or naming no upload of the plugin, is an error. Write a value into a host command as `{{ name | shquote }}`, which makes it one shell word whatever it holds. |
 
 Input types:
 

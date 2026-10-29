@@ -21,7 +21,7 @@ chmod +x /usr/local/bin/sudo /usr/local/bin/nginx /usr/local/bin/systemctl
 rm -f /tmp/systemctl.log`
 }
 
-func pluginsProject(t *testing.T, dir, app, domains, greeting string) {
+func pluginsProject(t *testing.T, dir, app, domains, greeting string, with ...string) {
 	t.Helper()
 	// nginx cannot listen on IPv6 where the kernel has none, as on some servers
 	ipv6 := "true"
@@ -35,14 +35,14 @@ plugins:
   - use: nginx
     with:
       domain: [%s]
-      ipv6: %s
+      ipv6: %s%s
   - use: ./deploy/plugins/motd
     with: { greeting: "%s" }
 environments:
   production:
     deploy:
       timeout: 60s
-`, app, domains, ipv6, greeting)
+`, app, domains, ipv6, strings.Join(append([]string{""}, with...), "\n      "), greeting)
 	files := map[string]string{
 		"dockflow.yml": cfg,
 		"deploy/plugins/motd/plugin.yml": `description: A message of the day
@@ -118,16 +118,23 @@ func TestPlugins(t *testing.T) {
 	}
 
 	// a vhost nginx -t refuses rolls the deploy back, and the rollback restores the vhost
-	pluginsProject(t, dir, app, "shop.test, broken;test", "hello")
+	// every input matches its pattern: an upstream nginx cannot resolve makes nginx -t fail
+	pluginsProject(t, dir, app, "shop.test, www.shop.test", "hello", "upstream: broken.invalid:80")
 	r = dockflow(t, dir, "deploy", "--version", "broken")
 	if r.code != 8 || !r.has("rollback.started") {
 		t.Fatalf("a refused vhost must roll back (exit 8), got %d:\n%s", r.code, r.out)
 	}
-	if !strings.Contains(r.out, "unknown directive") {
+	if !strings.Contains(r.out, "host not found") {
 		t.Fatalf("the hook's output shows nginx's error:\n%s", r.out)
 	}
-	if got, _ := inServer("cat " + vhost); strings.Contains(got, "broken") || !strings.Contains(got, "server_name shop.test www.shop.test;") {
+	if got, _ := inServer("cat " + vhost); strings.Contains(got, "broken.invalid") || !strings.Contains(got, "server_name shop.test www.shop.test;") {
 		t.Fatalf("the rollback restores the vhost:\n%s", got)
+	}
+
+	// a domain that would add a directive is refused before anything changes
+	pluginsProject(t, dir, app, `"shop.test; include /etc/shadow"`, "hello")
+	if r = dockflow(t, dir, "deploy", "--version", "injected"); r.code != 3 || !strings.Contains(r.out, "config.invalid") {
+		t.Fatalf("a domain that is not a host name must be refused (exit 3), got %d:\n%s", r.code, r.out)
 	}
 
 	r = dockflow(t, dir, "plugins", "list")

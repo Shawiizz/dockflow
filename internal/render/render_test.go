@@ -74,3 +74,14 @@ func TestUndefinedVariableIsAnError(t *testing.T) {
 		t.Fatalf("want an error naming the template, got %v", err)
 	}
 }
+
+// shquote makes any value one shell word, for host commands.
+func TestShquote(t *testing.T) {
+	got, err := String("systemctl restart {{ name | shquote }}", map[string]any{"name": "a'b; rm -rf /"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `systemctl restart 'a'\''b; rm -rf /'`; got != want {
+		t.Fatalf("got %s, want %s", got, want)
+	}
+}

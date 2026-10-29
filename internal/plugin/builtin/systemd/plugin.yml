@@ -4,8 +4,10 @@ inputs:
   - name: unit
     type: file
     required: true
-    description: the unit file, a Jinja template that sees these inputs
+    pattern: "[A-Za-z0-9@._-]+"
+    description: the unit file, a Jinja template that sees these inputs; its name is the unit's unless name is given
   - name: name
+    pattern: "[A-Za-z0-9@._-]+"
     description: the unit's name (default the file's name)
 templates:
   - src: "{{ unit }}"
@@ -17,5 +19,5 @@ uploads:
 hooks:
   after_deploy:
     - name: enable and restart the unit
-      host: sudo systemctl daemon-reload && sudo systemctl enable {{ name or unit.split('/')[-1] }} && sudo systemctl restart {{ name or unit.split('/')[-1] }}
+      host: sudo systemctl daemon-reload && sudo systemctl enable {{ (name or unit.split('/')[-1]) | shquote }} && sudo systemctl restart {{ (name or unit.split('/')[-1]) | shquote }}
       if_changed: "/etc/systemd/system/{{ name or unit.split('/')[-1] }}"
