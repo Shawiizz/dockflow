@@ -2,7 +2,7 @@
 
 Each milestone ends with a usable tool and **one or more real projects migrated to it**, by hand ([ADR-0001](adr/0001-clean-break.md)). Exit criteria are checked by tests, not by reading code. Dates are not fixed. v1.0 ships when every row of [parity.md](parity.md) is provided, deferred or dropped by decision.
 
-**Current state:** milestones M0 to M5 are done. The current release is 1.0.0-alpha.5. The work left is the v1.0 milestone below.
+**Current state:** milestones M0 to M5 are done; releases are listed on GitHub. The work left is the v1.0 milestone below.
 
 ## M0: Design
 
