@@ -5,6 +5,8 @@ WORKDIR /site
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY . .
+# the current release, which the image build cannot read from git (lib/version.ts)
+ARG DOCKFLOW_RELEASE
 RUN bun run build
 
 FROM caddy:2-alpine

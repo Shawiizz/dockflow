@@ -1,6 +1,10 @@
 services:
   docs:
-    build: .
+    build:
+      context: .
+      args:
+        # the release the site shows: PRODUCTION_DOCKFLOW_RELEASE, set by .github/workflows/docs.yml
+        DOCKFLOW_RELEASE: ${DOCKFLOW_RELEASE}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
       interval: 30s

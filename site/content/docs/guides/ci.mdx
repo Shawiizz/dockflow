@@ -9,7 +9,7 @@ In CI, Dockflow recognises the provider and reads the tag, branch and commit of 
 
 ```yaml
 # .github/workflows/deploy.yml (the deploy job)
-- run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.5
+- run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v{{version}}
 - run: dockflow deploy --wait-lock 10m
   env:
     DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
@@ -167,7 +167,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dockflow
-        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.5
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v{{version}}
       - name: Build
         run: dockflow build production
         env:
@@ -179,7 +179,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dockflow
-        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.5
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v{{version}}
       - name: Deploy
         run: dockflow deploy --wait-lock 10m
         env:
@@ -192,7 +192,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dockflow
-        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.5
+        run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v{{version}}
       - name: Back up
         run: dockflow backup run production --wait-lock 10m && dockflow backup run production --server
         env:
@@ -215,7 +215,7 @@ default:
     - docker:27-dind
   before_script:
     - apk add --no-cache curl
-    - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.5
+    - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v{{version}}
 
 variables:
   DOCKER_TLS_CERTDIR: "/certs"
@@ -263,7 +263,7 @@ pipeline {
   stages {
     stage('Install dockflow') {
       steps {
-        sh 'curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.5 --dir "$HOME/.local/bin"'
+        sh 'curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v{{version}} --dir "$HOME/.local/bin"'
       }
     }
     stage('Build') {
@@ -301,14 +301,14 @@ steps:
   - label: "Build"
     if: build.tag == null
     command: |
-      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.5 --dir ~/.local/bin
+      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v{{version}} --dir ~/.local/bin
       export PRODUCTION_DB_PASSWORD="$$(buildkite-agent secret get PRODUCTION_DB_PASSWORD)"
       ~/.local/bin/dockflow build production
 
   - label: "Deploy"
     if: build.tag != null
     command: |
-      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.5 --dir ~/.local/bin
+      curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v{{version}} --dir ~/.local/bin
       export PRODUCTION_CONNECTION="$$(buildkite-agent secret get PRODUCTION_CONNECTION)"
       export PRODUCTION_DB_PASSWORD="$$(buildkite-agent secret get PRODUCTION_DB_PASSWORD)"
       ~/.local/bin/dockflow deploy --wait-lock 10m
@@ -331,7 +331,7 @@ pipelines:
           name: Build
           services: [docker]
           script:
-            - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.5
+            - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v{{version}}
             - dockflow build production
   tags:
     "*":
@@ -340,7 +340,7 @@ pipelines:
           deployment: production
           services: [docker]
           script:
-            - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.5
+            - curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v{{version}}
             - dockflow deploy --wait-lock 10m
 ```
 
@@ -373,7 +373,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Shawiizz/dockflow@v1.0.0-alpha.5
+      - uses: Shawiizz/dockflow@v{{version}}
         with:
           env: production # the environment a pull request's plan is for
           command: ${{ github.event_name == 'push' && 'deploy --wait-lock 10m' || '' }}

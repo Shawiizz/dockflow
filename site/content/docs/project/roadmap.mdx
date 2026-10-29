@@ -3,7 +3,7 @@ title: Roadmap
 description: What the current alpha of Dockflow does, what is left before 1.0.0, and how releases are numbered.
 ---
 
-The current release is **1.0.0-alpha.5**. It delivers milestones M1 to M5, listed under [available now](#available-now). What is left is listed under [before 1.0.0](#before-100).
+The current release is **{{version}}**. It delivers milestones M1 to M5, listed under [available now](#available-now). What is left is listed under [before 1.0.0](#before-100).
 
 <Callout type="warn">
 Until 1.0.0, releases are alphas. The configuration (`version: 1`), the server state (`schema: 1`) and the event stream (`v: 1`) are designed to stay, but they are frozen only at 1.0.0.
@@ -99,5 +99,5 @@ Considered, not committed: a local web UI (`dockflow ui`), preview environments 
 To pin the version your CI installs:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v1.0.0-alpha.5
+curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh -s -- --version v{{version}}
 ```

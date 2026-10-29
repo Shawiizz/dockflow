@@ -1,4 +1,9 @@
 import { createMDX } from 'fumadocs-mdx/next';
+import { currentVersion } from './lib/version.ts';
+
+// resolved here, before any page, so that a missing version fails the build with its own message;
+// the build's workers inherit it
+process.env.DOCKFLOW_RELEASE = currentVersion();
 
 const withMDX = createMDX();
 

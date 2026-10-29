@@ -2,11 +2,13 @@ name: Docs
 
 # The documentation site (site/) deploys with Dockflow itself, from main, once the repository
 # variable DOCS_DEPLOY is "true" (Settings → Secrets and variables → Actions → Variables): it
-# needs the server prepared and the PRODUCTION_CONNECTION secret first.
+# needs the server prepared and the PRODUCTION_CONNECTION secret first. A release tag redeploys
+# it, so that it shows the new version.
 on:
   push:
     branches: [main]
     paths: ['site/**', '.github/workflows/docs.yml']
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -22,9 +24,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the tags, for the current release
+      - name: Current release
+        run: echo "DOCKFLOW_RELEASE=$(git describe --tags --abbrev=0 --match 'v[0-9]*')" >>"$GITHUB_ENV"
       - name: Install Dockflow
         run: curl -fsSL https://raw.githubusercontent.com/Shawiizz/dockflow/main/install.sh | sh
       - name: Deploy
         env:
           PRODUCTION_CONNECTION: ${{ secrets.PRODUCTION_CONNECTION }}
+          # Dockflow reads only the environment's own variables: ${DOCKFLOW_RELEASE} in site/compose.yml
+          PRODUCTION_DOCKFLOW_RELEASE: ${{ env.DOCKFLOW_RELEASE }}
         run: dockflow -C site deploy production --wait-lock 10m

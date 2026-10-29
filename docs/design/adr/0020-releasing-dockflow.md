@@ -51,6 +51,7 @@ The CLI ships its own Linux binary to servers ([ADR-0004](0004-ephemeral-agent.m
 - A release holds `dockflow-agent-linux-amd64` and `-arm64`, built first, and the CLIs built with their checksums (`Makefile`, `snapshot`). The CLI checks the agent it downloads against them.
 - `install.ps1` installs on Windows, as `install.sh` does. Both are attached to each release.
 - After the release, the workflow writes `Formula/dockflow.rb` from `SHA256SUMS`, installs it with Homebrew on Linux, and commits it on `main`.
+- A release is a tag and nothing else: no file in the repository holds the version. The documentation site reads the newest tag at build time (`site/lib/version.ts`, or `DOCKFLOW_RELEASE` in the image build), shows it on its landing page and in place of `{{version}}` in the pages, and `.github/workflows/docs.yml` redeploys it on every tag.
 - The npm packages are built from the release's binaries by `packaging/npm/pack.sh` and published with provenance by `.github/workflows/npm.yml`, which the release starts as a run of its own. It holds no token: npm trusts that workflow by its file name (trusted publishing), set in each package's settings on npmjs.com. `@dockflow-tools/cli` runs the binary of `@dockflow-tools/cli-<os>-<arch>`, its optional dependency for the platform, from a Node script, without a postinstall script.
 
 ## Embedding the Linux binaries
