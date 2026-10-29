@@ -40,6 +40,9 @@ const (
 // backupTmp holds each run's restic environment, on the secrets' tmpfs; tests replace it.
 var backupTmp = filepath.Dir(domain.SecretsRoot)
 
+// inMemory tells whether a directory is on a tmpfs; tests replace it.
+var inMemory = onTmpfs
+
 // repo is a restic repository, opened for one run.
 type repo struct {
 	image  string
@@ -90,6 +93,15 @@ func (r *runner) openRepo(ctx context.Context, create bool) (*repo, error) {
 	rp.dir = dir
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, errs.Internal("create %s: %v", dir, err)
+	}
+	// the password and the storage's credentials stay in memory, as secret files do
+	if ok, err := inMemory(dir); err != nil || !ok {
+		os.RemoveAll(dir)
+		if err != nil {
+			return nil, errs.Internal("check %s: %v", dir, err)
+		}
+		return nil, errs.Newf("secret.not_tmpfs", errs.ExitPlan, "%s is not on a tmpfs: the backups' password and credentials are kept in memory only", backupTmp).
+			WithHint("mount a tmpfs on /run/dockflow (systemd mounts one on /run)")
 	}
 	keys := make([]string, 0, len(env))
 	for k := range env {

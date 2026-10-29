@@ -717,6 +717,8 @@ var backupServices = []string{"db", "maria", "cache", "files", "game"}
 // newBackupHarness is a server where backupApp runs, with its data at v1.
 func newBackupHarness(t *testing.T) *harness {
 	backupTmp = t.TempDir()
+	inMemory = func(string) (bool, error) { return true, nil }
+	t.Cleanup(func() { inMemory = onTmpfs })
 	h := newHarness(t)
 	h.w.bk = &backupWorld{
 		data: map[string]string{}, db: map[string]string{}, files: map[string]map[string]string{},
@@ -752,6 +754,20 @@ func (h *harness) dataOf(service string) string {
 		return h.w.bk.data[testStack+"_world"]
 	}
 	return h.w.bk.db[service]
+}
+
+// Restic's environment, which holds the repository's password, is written to memory only: off a
+// tmpfs, a backup fails before writing it.
+func TestBackupEnvironmentOnTmpfsOnly(t *testing.T) {
+	h := newBackupHarness(t)
+	inMemory = func(string) (bool, error) { return false, nil }
+	res, _ := h.backup(OpBackupRun, nil, 0, "")
+	if res == nil || res.Outcome == events.OutcomeSuccess || res.Error == nil || res.Error.Code != "secret.not_tmpfs" {
+		t.Fatalf("a backup off a tmpfs must fail with secret.not_tmpfs: %+v", res)
+	}
+	if ents, _ := os.ReadDir(backupTmp); len(ents) != 0 {
+		t.Fatalf("restic's environment was written: %v", ents)
+	}
 }
 
 func (h *harness) backup(op string, b *BackupRequest, at int, how string) (*events.RunFinishedData, *proc) {

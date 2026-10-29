@@ -103,7 +103,7 @@ backups:
 
 The databases' credentials never leave their containers. The dump and restore commands read them from the image's variables, and pass them to the tool in a temporary file, never on a command line.
 
-The repository's password and the storage's credentials reach restic through a file on the server's tmpfs, readable by root and removed at the end of the run. They never appear on a command line, in a container's configuration or on disk.
+The repository's password and the storage's credentials reach restic through a file on the server's tmpfs, readable by root and removed at the end of the run. They never appear on a command line, in a container's configuration or on disk: when `/run/dockflow` is not a tmpfs, the backup fails with `secret.not_tmpfs` before writing them.
 
 ## How a backup runs
 
