@@ -391,7 +391,7 @@ func untarTo(r io.Reader, target string) (skipped []string, err error) {
 	var root *os.Root
 	defer func() {
 		if root != nil {
-			root.Close()
+			_ = root.Close()
 		}
 	}()
 	top, base := "", "."
