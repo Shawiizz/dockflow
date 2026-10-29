@@ -7,7 +7,7 @@ Every deploy that changes something creates a **release**: a numbered record, ke
 
 ## What a release records
 
-Releases are numbered per environment: 1, 2, 3, and so on, never reused. Each one is a file on the server, `/var/lib/dockflow/apps/<app>-<env>/releases/<seq>.json.gz`, written by the agent and never changed once the run is over. It records:
+Releases are numbered per environment: 1, 2, 3, and so on, never reused. Each one is a file on the server, `/var/lib/dockflow/apps/<app>-<env>/releases/<seq>.json.gz`. The agent writes it, and never changes it once the run is over. It records:
 
 - **the desired app**: every service with its full container spec, as sent to Docker (image pinned by digest, environment, ports, mounts, networks, healthcheck, restart policy), plus its strategy, replicas and routes;
 - **the uploads**: each destination with the digest of its file manifest;
@@ -35,7 +35,7 @@ Only `active` and `superseded` releases went live, so only they can be restored 
 
 ### Version labels
 
-Besides its number, a release carries a free label, `version`, shown by `dockflow releases`, `dockflow version <env>` and available as `${DOCKFLOW_VERSION}` in the configuration. It is the first of:
+Besides its number, a release carries a free label, `version`. `dockflow releases` and `dockflow version <env>` show it, and the configuration can use it as `${DOCKFLOW_VERSION}`. It is the first of:
 
 1. `--version <label>` on `dockflow deploy`;
 2. in CI, for a run started by a tag, the tag without its environment suffix: `1.2.0` for the tags `1.2.0` and `1.2.0-staging`;
@@ -51,7 +51,7 @@ After each successful run, the agent keeps:
 - the newest `releases.keep` releases that went live (`active` or `superseded`), 10 by default;
 - every release newer than the oldest of those, whatever its status.
 
-It deletes the other release files, then the images, the server-local registry's manifests and the previous upload contents that no kept release uses. So every kept release can be restored from what is on the server.
+It deletes the other release files. Then it deletes the images, the server-local registry's manifests and the previous upload contents that no kept release uses. So every kept release can be restored from what is on the server.
 
 ```yaml title="dockflow.yml"
 version: 1
@@ -68,7 +68,7 @@ The registry's storage is freed separately by `dockflow prune --registry`. See [
 
 ## When a deploy fails
 
-A deploy keeps the old containers until it commits. New containers start next to them (or after them, with `stop-first`), and the old ones are only stopped, never removed, before the release becomes active. So when something fails before the commit, the agent:
+A deploy keeps the old containers until it commits. New containers start next to them (or after them, with `stop-first`). Until the release becomes active, the old containers are only stopped, never removed. So when something fails before the commit, the agent:
 
 1. starts the old containers again if they were stopped, and waits until they are healthy;
 2. points the switch back at them, which takes about a second for routed services;
@@ -87,27 +87,53 @@ What counts as a failure:
 - the release cannot be recorded as live on the server, at the very end (a full disk): `state.commit_failed`;
 - the run is cancelled with Ctrl+C or `dockflow cancel`: it rolls back and exits with code 130.
 
-A deploy reports a failure only once the previous release serves again: a deploy reported failed never leaves the new release serving. The other way round, once the release is recorded as live (one write, the commit), it stays live: what is left to do (marking the previous release `superseded`, removing the old containers) is completed by the next run if the agent cannot.
+A deploy reports a failure only once the previous release serves again. A deploy reported failed never leaves the new release serving.
 
-A failure before anything changed on the server stops the run with nothing to undo: a build that fails (exit code 7), a fatal `before_build` or `before_deploy` hook (exit code 11), a lock held by another run (exit code 5).
+The other way round, once the release is recorded as live (one write, the commit), it stays live. If the agent cannot finish what is left (marking the previous release `superseded`, removing the old containers), the next run completes it.
+
+Some failures happen before anything changed on the server. They stop the run with nothing to undo:
+
+- a build that fails (exit code 7);
+- a fatal `before_build` or `before_deploy` hook (exit code 11);
+- a lock held by another run (exit code 5).
 
 If the rollback itself fails, the release ends `failed`, the environment is marked **degraded**, and the command exits with code 9. `dockflow status` shows the flag until a run succeeds.
 
-A fatal `after_deploy` hook that runs on your machine or the server fails after the release became active. The CLI then runs `dockflow rollback` to the previous release.
+A fatal `after_deploy` hook, on your machine or the server, fails after the release became active. The CLI then runs `dockflow rollback` to the previous release.
 
 ### on_failure
 
-`on_failure` in `dockflow.yml` decides what a failed **HTTP check** does: the internal check of a service (`x-dockflow.health.http`) or a public endpoint (`health.endpoints`).
+`on_failure` decides what a failed **HTTP check** does: the internal check of a service (`x-dockflow.health.http`) or a public endpoint (`health.endpoints`). Set it in `dockflow.yml`, or per environment.
 
 | Value | A failed HTTP check |
 |---|---|
-| `rollback` (default) | Rolls back, as any other failure |
+| `rollback` (default) | Rolls the whole app back to the previous release, as any other failure |
 | `fail` | Leaves the run where it stopped, with the release marked `failed`; the environment is degraded; exit code 9 |
-| `ignore` | Is reported as a warning, and the release becomes active |
+| `ignore` | Is reported as a warning; the deploy goes on and the release becomes active |
 
-`fail` is for looking at a failed release, not for keeping it: it stays in place only until the next run that takes the environment's lock. That run, whatever it is (a deploy, a rollback, but also a `restart` or a `scale`), first rolls the failed release back to the current one, then plans from it; `dockflow plan` warns about it (`run.unfinished`). The watchdog leaves it alone. To keep the new version, fix the check and deploy again.
+```yaml title="dockflow.yml"
+version: 1
+app: shop
 
-A failure of the rollout itself (a container that crashes, stays unhealthy or times out, a failed job) always rolls back, whatever `on_failure` says: a service left half-switched is never useful. `dockflow deploy --no-rollback` behaves as `on_failure: fail` for one run, to debug a failing check. See [Rollouts](/concepts/rollouts/#what-happens-on-failure).
+on_failure: rollback
+
+environments:
+  production: {}
+  staging:
+    on_failure: ignore
+```
+
+`fail` is for looking at a failed release, not for keeping it. The release stays in place only until the next run that takes the environment's lock:
+
+- That run, whatever it is (a deploy, a rollback, but also a `restart` or a `scale`), first rolls the failed release back to the current one, then plans from it.
+- `dockflow plan` warns about it (`run.unfinished`).
+- The watchdog leaves it alone.
+
+To keep the new version, fix the check and deploy again.
+
+A failure of the rollout itself always rolls back, whatever `on_failure` says: a container that crashes, stays unhealthy or times out, or a failed job. A service left half-switched is never useful.
+
+`dockflow deploy --no-rollback` behaves as `on_failure: fail` for one run, to debug a failing check. See [Rollouts](/concepts/rollouts/#what-happens-on-failure).
 
 ## dockflow rollback
 
@@ -118,7 +144,12 @@ dockflow rollback production --to 1.4.0            # the newest release of a ver
 dockflow rollback production --to 41 --service web # only web, as release 41 had it
 ```
 
-`--to` takes a release number, as listed by `dockflow releases`, or a version label, for the newest release of that version that went live. The target must be a release that went live (`active` or `superseded`), still kept, and not the current one.
+`--to` takes either:
+
+- a release number, as listed by `dockflow releases`;
+- or a version label, for the newest release of that version that went live.
+
+The target must be a release that went live (`active` or `superseded`), still kept, and not the current one.
 
 A rollback is a deploy whose desired state is the recorded release, so it goes through the same plan and rollout as a deploy:
 
@@ -127,26 +158,28 @@ A rollback is a deploy whose desired state is the recorded release, so it goes t
 - uploads get back the files of that release, kept on the server by content;
 - unchanged services keep their containers, and routed services switch without downtime.
 
-The images are still on the server, as long as the release is kept, so nothing is built, pushed or downloaded. A rollback works even when your registry or your CI is down.
+The images are still on the server as long as the release is kept, so nothing is built, pushed or downloaded. A rollback works even when your registry or your CI is down.
 
-A rollback is always a move forward: it creates a new release, with the target's version label, shown as `active (rollback to 41)`. Rolling back the rollback is another `dockflow rollback`.
+A rollback always moves forward: it creates a new release with the target's version label, shown as `active (rollback to 41)`. To undo a rollback, run `dockflow rollback` again.
 
 With `--service`, only that service goes back; the others keep what they run now, and the new release keeps the current version label.
 
 <Callout type="warn">
-A rollback runs no jobs: it does not replay old migrations, and it does not undo the ones the newer release ran. It does not restore the data in volumes either. If a release changed a database schema, check that the previous version of your app works with it before rolling back.
+A rollback runs no jobs. It does not replay old migrations, and it does not undo the ones the newer release ran. It does not restore the data in volumes either. If a release changed a database schema, check that the previous version of your app works with it before rolling back.
 </Callout>
 
 ## Interrupted runs
 
-If the agent dies in the middle of a run (the server reboots, Docker restarts, its container is killed or runs out of memory), its release stays `applying`, and the kernel releases the lock. Nothing is left locked.
+The agent can die in the middle of a run: the server reboots, Docker restarts, its container is killed or runs out of memory. Its release then stays `applying`, and the kernel releases the lock. Nothing is left locked.
 
-What happens next depends on one write, the commit: the agent records the release as live in `env.json` once everything else is done.
+What happens next depends on one write, the commit. The agent records the release as live in `env.json` once everything else is done.
 
 - **Before the commit**, the run is rolled back. Its release ends `abandoned`, and the previous release serves again.
-- **After the commit**, the release is live and stays so: it is marked `active`, the previous one `superseded`, and the old containers are removed.
+- **After the commit**, the release is live and stays so. It is marked `active`, the previous one `superseded`, and the old containers are removed.
 
-The [watchdog](/guides/health-checks/#after-the-deploy-the-watchdog) does this as soon as the agent's container has stopped, within 10 seconds. That matters for `stop-first` services: the dead run had stopped the old container on purpose, so Docker does not start it again on its own. Without the watchdog (`server init --no-watchdog`), the next run that takes the lock (a deploy, a rollback, a restart…) does it first. Either way:
+The [watchdog](/guides/health-checks/#after-the-deploy-the-watchdog) does this within 10 seconds of the agent's container stopping. That matters for `stop-first` services: the dead run had stopped the old container on purpose, so Docker does not start it again on its own.
+
+Without the watchdog (`server init --no-watchdog`), the next run that takes the lock (a deploy, a rollback, a restart…) does it first. Either way:
 
 1. the containers and jobs the dead run had created are removed;
 2. the containers of the current release get their names back, and those the dead run had stopped start again;
@@ -154,7 +187,9 @@ The [watchdog](/guides/health-checks/#after-the-deploy-the-watchdog) does this a
 4. the unfinished release is marked `abandoned`;
 5. then the next run plans from what is actually running, as usual.
 
-Because a plan always starts from the actual state, there is no journal to replay: the next deploy converges whatever the dead run had done. Losing the CLI or the CI runner, on the other hand, interrupts nothing: the agent finishes the run on its own.
+A plan always starts from the actual state, so the next deploy brings the app to the desired state whatever the dead run had done.
+
+Losing the CLI or the CI runner interrupts nothing: the agent finishes the run on its own.
 
 ## Seeing the history
 

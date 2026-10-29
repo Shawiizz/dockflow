@@ -3,7 +3,9 @@ title: Notifications
 description: Send a signed JSON webhook when a deploy, a rollback or another change to an environment finishes.
 ---
 
-`notify:` lists webhooks that Dockflow calls when a run that changes an environment ends: a deploy, a rollback, a restart. Each call is an HTTP `POST` with a JSON body, signed with HMAC-SHA256 when you give it a secret. Use it to post to a chat, open an incident, or record deploys in another system.
+Use `notify:` to post to a chat, open an incident, or record deploys in another system. It lists webhooks that Dockflow calls when a run that changes an environment ends, such as a deploy, a rollback or a restart.
+
+Each call is an HTTP `POST` with a JSON body. When you give the webhook a secret, the body is signed with HMAC-SHA256.
 
 ## Example
 
@@ -34,7 +36,9 @@ The first webhook receives every outcome, signed with the `WEBHOOK_SECRET` secre
 | `headers` | map | none | Extra request headers |
 | `timeout` | duration | `10s` | How long to wait for the response |
 
-String values are interpolated like the rest of `dockflow.yml`, so `${WEBHOOK_SECRET}` reads a secret, and a missing one stops the command with exit code 3. Secret values are masked wherever Dockflow prints them. `notify:` can also be set inside an environment, where it replaces the top-level list for that environment.
+String values are interpolated like the rest of `dockflow.yml`, so `${WEBHOOK_SECRET}` reads a secret. A missing secret stops the command with exit code 3. Secret values are masked wherever Dockflow prints them.
+
+`notify:` can also be set inside an environment. There it replaces the top-level list for that environment.
 
 ## When webhooks fire
 
@@ -45,9 +49,9 @@ A webhook fires at the end of a run of the agent on the server, for these operat
 - for failures before the agent runs: a failed build, a fatal `before_*` local or `host` [hook](/guides/hooks/), an invalid configuration;
 - for read commands (`status`, `plan`, `logs`…) and for `prune`.
 
-A deploy whose local `after_deploy` hook fails and triggers a rollback sends two webhooks: one for the deploy (`success`), one for the rollback run that follows.
+When a local `after_deploy` hook fails and triggers a rollback, two webhooks are sent: one for the deploy (`success`), and one for the rollback run that follows.
 
-Webhooks are sent by the CLI, after the agent reports the result. If the CLI is stopped before that, they are not sent.
+The CLI sends the webhooks, after the agent reports the result. If the CLI is stopped before that, they are not sent.
 
 ## Request
 
@@ -89,7 +93,7 @@ Your `headers` are added after these, and replace one of them when they share a 
 | `server` | The server's name (`main` unless the environment names it) |
 | `op` | `deploy`, `rollback`, `restart`, `stop`, `scale` or `destroy` |
 | `run` | The run's ID, for `dockflow attach <env> <run-id>` |
-| `version` | The version label the CLI computed for the run (`--version`, the CI tag, or the commit). For a deploy, the release's version. For other operations it is that of the local checkout, not necessarily what runs: `dockflow releases` shows that |
+| `version` | The version label the CLI computed for the run (`--version`, the CI tag, or the commit). For a deploy, the release's version. For other operations, the version of the local checkout, which is not necessarily what runs (`dockflow releases` shows what runs) |
 | `release` | The release number the run created; absent when it created none |
 | `outcome` | `success`, `rolled_back`, `failed`, `cancelled`, `lock_lost` or `hook_failed` (see [events](/reference/events/)) |
 | `status` | `success` when `outcome` is `success`, `failure` otherwise. This is what `on` filters on |
@@ -216,4 +220,6 @@ The payload has no unique delivery ID. To ignore replays, check that `at` is rec
 
 ## Failures
 
-A webhook that cannot be reached, times out, or answers with a status of 300 or more is reported as a warning (`notify.failed` in `--json` output). It never changes the outcome or the exit code of the run, and it is not retried. Each webhook is called once per run, one after the other.
+Each webhook is called once per run, one after the other.
+
+A webhook that cannot be reached, times out, or answers with a status of 300 or more is reported as a warning (`notify.failed` in `--json` output). It is not retried, and it never changes the outcome or the exit code of the run.

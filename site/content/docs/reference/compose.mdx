@@ -3,7 +3,12 @@ title: Compose
 description: How Dockflow reads your Compose files, key by key, and every option of the x-dockflow extension.
 ---
 
-Your services are described in standard Compose files, loaded with compose-go, the loader Docker Compose itself uses. Dockflow's own per-service settings go under the `x-dockflow` extension. Nothing is dropped silently: a key this version cannot apply is refused with exit code 3 (see [exit codes](/reference/exit-codes/)), and a key that has no meaning on one server is ignored with a warning.
+Your services are described in standard Compose files, read with the same loader as Docker Compose. Dockflow's own per-service settings go under the `x-dockflow` extension.
+
+This page lists how each Compose key is handled, then every option of `x-dockflow`. Nothing is dropped silently:
+
+- a key this version cannot apply is refused with exit code 3 (see [exit codes](/reference/exit-codes/));
+- a key that has no meaning on one server is ignored with a warning.
 
 ## Example
 
@@ -109,7 +114,7 @@ worker    shop/worker         1         start-first
 | `ports` | Honoured, host IP included (`127.0.0.1:5432:5432`). Reachable from outside only when listed under [`firewall.public_ports`](/reference/dockflow-yml/#firewall). A service that publishes a fixed host port uses `stop-first`, since two containers cannot hold the same port. |
 | `expose` | Honoured. |
 | `networks` | Bridge networks, with `aliases`, `ipv4_address` and `ipv6_address`. The service name is always an alias, as in Compose. Top-level networks keep their `driver`, `internal` and `labels`; `external: true` uses an existing network of the server, such as a [shared network](/guides/shared-servers/#shared-networks). |
-| `network_mode` | `host`, `none` and `bridge`. A service on the host network uses `stop-first` and cannot be routed. `service:…` and `container:…` are refused: Dockflow replaces containers at each release, and a container that joined another's network would lose it at the other's next deploy. Put both on a network instead. |
+| `network_mode` | `host`, `none` and `bridge`. A service on the host network uses `stop-first` and cannot be routed. `service:…` and `container:…` are refused: Dockflow replaces containers at each release, so a container that joined another's network would lose it at the other's next deploy. Put both on a network instead. |
 | `volumes` | Named volumes (with `nocopy` and `subpath`), anonymous volumes, bind mounts (with `create_host_path` and `propagation`) and `tmpfs` mounts (with `size`). Top-level volumes keep their `driver`, `driver_opts` and `labels`; a `driver` other than `local` is a [volume plugin](/guides/shared-servers/#volume-plugins) the server must have. The bind option `selinux` is refused, because the Engine API cannot relabel a mount: label the directory once with `chcon` on the server. |
 | `volumes_from` | Refused, for the same reason as `network_mode: service:`: mount the same named volume in both services. |
 | `links` | A link orders the services, as `depends_on` would; the linked service is reached by its name already. A link with an alias (`db:database`) is refused: give the alias under `networks.<name>.aliases`. |
@@ -129,7 +134,7 @@ Bind mount sources are paths on the server, so write them absolute. A relative s
 
 ## Build
 
-Services with `build` are built with `docker buildx bake` (or Podman, with `build.engine: podman`) on your machine, or on the server with `build.builder: remote`. See [`build`](/reference/dockflow-yml/#build) and the [building images guide](/guides/building-images/).
+Services with `build` are built with `docker buildx bake`, or with Podman when `build.engine: podman` is set. The build runs on your machine, or on the server with `build.builder: remote`. See [`build`](/reference/dockflow-yml/#build) and the [building images guide](/guides/building-images/).
 
 | Build key | Handling |
 |---|---|
@@ -156,7 +161,7 @@ Files listed under [`templates`](/reference/dockflow-yml/#templates) are rendere
 
 ## `x-dockflow`
 
-Dockflow's settings for one service. Values are interpolated like the rest of the file. Keys are matched exactly, in lower case: an unknown key, or a known one written in another case (`Stateful`), is an error.
+Dockflow's settings for one service. Values are interpolated like the rest of the file. Keys are matched exactly, in lower case. An unknown key, or a known one written in another case (`Stateful`), is an error.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -208,11 +213,11 @@ services:
             reverse_proxy @ws {upstream}:4327
 ```
 
-The options are applied by the switch, in every edge mode, behind nginx too. Changing them reloads the switch's configuration once; an ordinary deploy does not.
+The switch applies these options with every edge, behind nginx too. Changing them reloads the switch's configuration once; an ordinary deploy does not reload it.
 
-A domain and path pair can be routed only once per server: a second app or service claiming it makes the plan fail with `plan.domain_conflict`, before anything changes. Routes need a switch on the server, installed by [`dockflow server init`](/reference/cli/#server-init).
+A domain and path pair can be routed only once per server. When a second app or service claims it, the plan fails with `plan.domain_conflict`, before anything changes. Routes need a switch on the server, installed by [`dockflow server init`](/reference/cli/#server-init).
 
-Routes that point elsewhere than a service, redirects, proxies and files, go in [`routes:` of dockflow.yml](/reference/dockflow-yml/#routes).
+Routes that do not target a service (redirects, proxies and files) go in [`routes:` of dockflow.yml](/reference/dockflow-yml/#routes).
 
 ### `rollout`
 
@@ -258,7 +263,9 @@ A failed `http` check follows [`on_failure`](/reference/dockflow-yml/#on_failure
 
 ### `stateful`
 
-`stateful: true` marks a service that holds data: it runs as a single container and is replaced with `stop-first`, so two containers never write the same volume. A deploy updates the stateful services before the others, after what they depend on, so the data is there before what uses it. Only stateful services take [`backup`](#backup), and `destroy` keeps their volumes unless `--volumes`.
+`stateful: true` marks a service that holds data. It runs as a single container and is replaced with `stop-first`, so two containers never write the same volume.
+
+A deploy updates the stateful services before the others (but after what they depend on), so the data is there before what uses it. Only stateful services take [`backup`](#backup), and `destroy` keeps their volumes unless `--volumes` is given.
 
 ### `run`
 
@@ -269,11 +276,11 @@ A job is a service run to completion on each deploy, in one container, never res
 | `before` | After networks and volumes are created, before any service is updated, like a database migration. |
 | `after` | After every service is updated. |
 
-A service that another one waits for with `depends_on: { condition: service_completed_successfully }` is a `before` job without `run`. Jobs run on a `deploy` that changes something, in `depends_on` order; not on `rollback`, `restart` or `scale`. See the [jobs guide](/guides/jobs/).
+A service that another one waits for with `depends_on: { condition: service_completed_successfully }` is a `before` job, even without `run`. Jobs run on a `deploy` that changes something, in `depends_on` order. They do not run on `rollback`, `restart` or `scale`. See the [jobs guide](/guides/jobs/).
 
 ### `backup`
 
-How a `stateful` service is backed up with restic: `type` (`postgres`, `mysql`, `mongo`, `redis`, `volume` or `command`), `database`, `dump_options`, `restore_options`, `volumes`, `quiesce` (`stop`, `none` or `{ exec: { pre, post } }`), `dump` and `restore`, and the retention `keep`. Every option is in the [backups guide](/guides/backups/#what-is-backed-up).
+How a `stateful` service is backed up with restic. The keys are `type` (`postgres`, `mysql`, `mongo`, `redis`, `volume` or `command`), `database`, `dump_options`, `restore_options`, `volumes`, `quiesce` (`stop`, `none` or `{ exec: { pre, post } }`), `dump`, `restore`, and the retention `keep`. Each option is described in the [backups guide](/guides/backups/#what-is-backed-up).
 
 ```yaml
 # compose.yml (fragment)

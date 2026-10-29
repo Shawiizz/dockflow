@@ -3,11 +3,14 @@ title: Several apps on one server
 description: Run several apps on one server, let them talk through shared networks, mount remote storage with Docker volume plugins, and keep one app from starving the others.
 ---
 
-One server can run any number of apps and environments. They share the server's switch, registry, watchdog and port filter, and each keeps its own Compose project, `<app>-<env>`, with its own networks, volumes, releases and lock. A deploy of one app never touches another's containers.
+One server can run any number of apps and environments. A deploy of one app never touches another app's containers.
+
+- **Shared by all apps:** the server's switch, registry, watchdog and port filter.
+- **Kept by each app environment:** its own Compose project, `<app>-<env>`, with its own networks, volumes, releases and lock.
 
 ## Shared networks
 
-Each app has its own networks, so apps cannot reach each other by default. When they must, say a game server writing to the backend's Postgres, create a network that belongs to the server, and let both apps join it:
+Each app has its own networks, so by default apps cannot reach each other. When they must (say, a game server that writes to the backend's Postgres), create a network that belongs to the server, and let both apps join it:
 
 ```sh
 dockflow server network create shared
@@ -39,7 +42,9 @@ networks:
   shared: { external: true }
 ```
 
-The game server reaches `backend-db:5432`, an alias the backend chose, without knowing the backend's project name. A deploy of an app that joins a shared network the server does not have fails before changing anything, with the command that creates it.
+The game server reaches `backend-db:5432`, an alias the backend chose. It does not need to know the backend's project name.
+
+If an app joins a shared network the server does not have, its deploy fails before changing anything, and prints the command that creates the network.
 
 | Command | What it does |
 |---|---|
@@ -51,7 +56,7 @@ The game server reaches `backend-db:5432`, an alias the backend chose, without k
 
 ## Volume plugins
 
-A Docker volume plugin mounts storage that lives elsewhere, as a volume: S3 or SFTP with rclone's plugin, NFS, and others. Install the plugin once per server:
+A Docker volume plugin mounts storage that lives elsewhere as a volume: S3 or SFTP with rclone's plugin, NFS, and others. Install the plugin once per server:
 
 ```sh
 dockflow server plugin install rclone/docker-volume-rclone:amd64 --alias rclone \
@@ -80,17 +85,19 @@ volumes:
 | `dockflow server plugin list [<env>]` | The plugins, enabled or not, with their types and the names of their settings. |
 | `dockflow server plugin remove [<env>] <plugin>` | Disables and removes a plugin. It refuses while volumes use it. |
 
-A deploy whose volume needs a plugin the server does not have fails before changing anything, with the command that installs it.
+If a volume needs a plugin the server does not have, the deploy fails before changing anything, and prints the command that installs it.
 
 <Callout type="warn">
-A plugin runs as root, with the privileges it asked for, which `install` prints. Install only plugins you trust. The values of settings are masked in Dockflow's output, and `plugin list` shows only their names, but Docker keeps them in the plugin's configuration, readable by anyone with Docker access on the server. Prefer `driver_opts` with secrets for credentials, as above.
+A plugin runs as root, with the privileges it asked for, which `install` prints. Install only plugins you trust.
+
+The values of settings are masked in Dockflow's output, and `plugin list` shows only their names. But Docker keeps the values in the plugin's configuration, readable by anyone with Docker access on the server. For credentials, prefer `driver_opts` with secrets, as above.
 </Callout>
 
 These are Docker's plugins, not [Dockflow plugins](/guides/plugins/), which bundle uploads and hooks.
 
 ## Resource limits
 
-On a server that runs several app environments, a service without limits can take the memory of all of them. The plan warns about such services (`plan.no_limits`) as soon as another app environment runs on the server. Set limits in Compose:
+On a server that runs several app environments, a service without limits can take the memory of all of them. Set limits in Compose:
 
 ```yaml
 # compose.yml (fragment)
@@ -101,6 +108,8 @@ services:
         limits: { memory: 512m, cpus: "1.0" }
 ```
 
+As soon as another app environment runs on the server, the plan warns about each service without limits (`plan.no_limits`).
+
 ## Isolation
 
-Apps on one server are separated by project and network, not by a security boundary: anyone who can deploy one app can reach the server's Docker, and so every other app. Give each client its own server when that matters. See [security](/project/security/).
+Apps on one server are separated by project and network, not by a security boundary. Anyone who can deploy one app can reach the server's Docker, and so every other app. When that matters, give each client its own server. See [security](/project/security/).

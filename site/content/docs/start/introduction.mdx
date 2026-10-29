@@ -1,11 +1,18 @@
 ---
 title: Introduction
-description: What Dockflow is, who it is for, the principles it follows, what it deliberately leaves out, and what works today.
+description: What Dockflow is, who it is for, how it works in a few lines, what it leaves out, and its current status.
 ---
 
-Dockflow deploys a Docker Compose app to your own server over SSH. You keep your `compose.yml`, add a small `dockflow.yml`, and run `dockflow deploy` from your laptop or from CI. Dockflow builds what changed, shows a plan, starts the new containers next to the old ones, moves the traffic once they are healthy, and rolls back on its own when something fails.
+Dockflow deploys a Docker Compose app to your own server over SSH.
 
-On the server, an app is a real Compose project: `docker compose -p <app>-<env> ps` and `logs` work on it.
+You keep your `compose.yml`, add a short `dockflow.yml`, and run `dockflow deploy` from your laptop or from CI. Dockflow builds what changed and shows a plan. It starts the new containers next to the old ones and moves the traffic once they are healthy. When something fails, it rolls back on its own.
+
+On the server, each app is a plain Compose project: `docker compose -p <app>-<env> ps` and `logs` work on it.
+
+<Cards>
+	<Card title="Quickstart" description="From a server to a first deploy in about ten minutes." href="/start/quickstart/" />
+	<Card title="Install the CLI" description="curl, Homebrew, npm or PowerShell." href="/start/installation/" />
+</Cards>
 
 ## Who it is for
 
@@ -15,62 +22,54 @@ On the server, an app is a real Compose project: `docker compose -p <app>-<env> 
 | A small team | One server per environment, a few apps, CI | A plan before every change, a lock against concurrent deploys, rollback in one command |
 | An agency | Several servers, many client apps sharing them | One switch per server in front of every app, each app in its own Compose project |
 
-If you already deploy with `docker compose up` over SSH, Dockflow keeps that model and adds zero-downtime rollouts, releases, rollback, secrets from CI and TLS.
+If you already deploy with `docker compose up` over SSH, Dockflow keeps that model. It adds zero-downtime rollouts, releases, rollback, secrets from CI and HTTPS.
 
 ## Principles
 
-**Compose as written.** The Compose file that runs with `docker compose up` on your laptop is the one Dockflow deploys. Dockflow adds a `dockflow.yml` and per-service settings under `x-dockflow`, a key Compose ignores. Compose features that need a single host, such as `depends_on`, `127.0.0.1:` port bindings, `devices` and `network_mode`, work as Docker defines them.
+**Your Compose file, as written.** The file that runs with `docker compose up` on your laptop is the one Dockflow deploys. Dockflow's own settings go in `dockflow.yml` and, per service, under `x-dockflow`, a key Compose ignores. Single-host features such as `depends_on`, `127.0.0.1:` port bindings, `devices` and `network_mode` work as Docker defines them.
 
-**Zero downtime by default.** A service with a route gets new containers next to the old ones. Traffic moves only once the new containers are healthy, and the old ones get time to finish the requests in flight. See [Rollouts](/concepts/rollouts/).
+**A plan before every change.** Dockflow compares your files with what the server actually runs. `dockflow plan` prints the difference. `dockflow deploy` shows it and, on a terminal, asks before applying it. A service whose definition did not change keeps its containers.
 
-**Plan before change.** Every change is computed as a plan from what the server is actually running. `dockflow plan` prints it; `dockflow deploy` shows it and asks before applying it on a terminal. A deploy touches only what changed: a service whose spec is unchanged keeps its containers.
+**Zero downtime by default.** A service with a route gets new containers next to the old ones. The switch, a Caddy proxy on the server, moves traffic only once the new containers are healthy. The old ones get time to finish the requests in flight. See [rollouts](/concepts/rollouts/).
 
-**A rollback that finishes.** The deploy runs on the server, in a short-lived agent container. If your laptop sleeps, the network drops or the CI runner dies, the agent still finishes the run or rolls it back. See [Releases and rollbacks](/concepts/releases-and-rollbacks/).
+**A deploy that always finishes.** The deploy runs on the server, in a short-lived container called the agent. If your laptop sleeps, the network drops or the CI runner dies, the agent still finishes the deploy or rolls it back. Each deploy is recorded as a release you can roll back to. See [releases and rollbacks](/concepts/releases-and-rollbacks/).
 
-**One server per environment.** An environment is one Linux server running Docker Engine. There is no cluster and no orchestrator. Scaling up means a bigger server first.
+**One server per environment.** An environment, such as `production` or `staging`, is one Linux server running Docker Engine. There is no cluster and no orchestrator. Scaling up means a bigger server first.
 
-**Nothing but Docker on the server.** Dockflow installs no daemon on the host. It reaches Docker through the Engine API over SSH, and what it runs on the server are containers: the switch (Caddy), a local registry, and an agent per run. Its state is a few files under `/var/lib/dockflow`. See [How it works](/concepts/how-it-works/).
+**Only Docker on the server.** Dockflow installs no daemon on the host. It talks to Docker through the Engine API over SSH. What it runs there are containers: the switch, a local registry, and the agent during a deploy. Its state is a few files under `/var/lib/dockflow`. See [how it works](/concepts/how-it-works/).
 
-**Everything from a laptop or CI.** The `dockflow` CLI is a single binary. The same commands work on your machine and in any CI provider; in CI, one secret per environment holds the connection to the server.
+**The same from a laptop or CI.** The `dockflow` CLI is a single binary. The same commands work on your machine and in any CI. In CI, one secret per environment holds the connection to the server.
 
-**Fail loudly.** An unknown key, a variable with no value, an unsupported Compose feature or an unverified SSH host key is an error, never a silent default.
+**Errors, not guesses.** An unknown key, a variable with no value, an unsupported Compose feature or an unverified SSH host key stops Dockflow with an error. It never falls back to a silent default.
 
 ## What Dockflow does not do
 
-These are deliberate choices, not missing features:
+These are deliberate choices:
 
 - **No orchestrator.** No Swarm, no Kubernetes, no Nomad. Dockflow drives plain Docker containers on one host.
-- **One server per environment.** Dockflow does not schedule containers across servers or build a network between them. Several independent servers per environment may come after version 1.0.
-- **No server creation.** Dockflow does not call cloud provider APIs. You bring a server that runs Docker.
-- **No metrics or log storage.** `dockflow logs` streams logs from the server; storing them is the job of the tools you already use.
-- **No user management.** Whoever holds an environment's SSH key can deploy it. Access to the Docker socket is root on the server, and Dockflow does not pretend otherwise. See [Security](/project/security/).
-- **No platform on the server.** No database, no web UI and no daemon to operate on the server.
+- **No multi-server environments.** Dockflow does not schedule containers across servers or build a network between them. Several independent servers per environment may come after 1.0.
+- **No server creation.** Dockflow does not call cloud provider APIs. You bring the server.
+- **No metrics or log storage.** `dockflow logs` streams logs from the server. Storing them is the job of the tools you already use.
+- **No user management.** Whoever holds an environment's SSH key can deploy to it. Access to Docker is root on the server, and Dockflow does not pretend otherwise. See [security](/project/security/).
+- **No platform on the server.** No database, web UI or daemon to operate.
 
 ## Status
 
-<Badge text="Alpha" variant="caution" /> The current release is **1.0.0-alpha.5**. The configuration format is `version: 1`, and it may still change before the 1.0 release.
+<Badge text="Alpha" variant="caution" /> The current release is **1.0.0-alpha.5**.
 
 What works today:
 
-- deploying a Compose app to one server with zero downtime, with the `switch`, `start-first` and `stop-first` rollout strategies, health gating and automatic rollback;
-- the switch with the `builtin` edge (ports 80 and 443, automatic HTTPS), the `external` edge behind your own proxy such as nginx, and `none`;
-- building images with buildx bake or Podman, locally or on the server, pushed to a registry on the server or to an external registry;
-- jobs (migrations) through `depends_on` conditions, internal and public health checks, `on_failure`;
-- hooks, templates, incremental uploads, webhooks;
-- releases, `dockflow rollback`, locks, and the day-2 commands: `logs`, `exec`, `run`, `cp`, `ssh`, `ps`, `status`, `details`, `diagnose`, `restart`, `stop`, `scale`, `prune`, `destroy`;
-- deploys from CI with the version and environment taken from the tag;
-- Compose `secrets:` and `configs:`, SOPS files, the published-port filter, plugins with the built-in `nginx` and `systemd`, the watchdog, shared networks and volume plugins, the `cloudflare` edge, route options and error pages, redirect, proxy and files routes, and full provisioning: SSH hardening, `--nginx`, `server cloud-init`, `server status`, `check`, `edge`, `upgrade` and `uninstall`, and `dockflow init` with CI workflows;
-- backups with restic: Postgres, MySQL, MongoDB and Redis dumps, volumes with application-aware quiesce and custom dump commands, to a repository on the server or off-site, with retention, and restores, including production's data into staging (`backup run`, `list`, `restore`, `prune`).
+- zero-downtime deploys with the `switch`, `start-first` and `stop-first` strategies, health checks, automatic rollback, releases and `dockflow rollback`;
+- HTTPS with automatic certificates (the `builtin` edge), behind your own nginx (`external`), or behind Cloudflare (`cloudflare`);
+- image builds with buildx bake or Podman, locally or on the server, pushed to a registry on the server or an external one;
+- jobs such as migrations, health checks, hooks, templates, file uploads and webhooks;
+- secrets from CI, Compose `secrets:` and `configs:`, and SOPS files;
+- server setup in one command, with SSH hardening, a port filter and a watchdog;
+- several apps on one server, with shared networks and volume plugins;
+- backups with restic, and restores, including production's data into staging;
+- day-2 commands: `logs`, `exec`, `run`, `cp`, `ssh`, `ps`, `status`, `restart`, `scale` and more;
+- deploys from any CI, a [GitHub Action](/guides/ci/#the-github-action), and an [MCP server](/guides/ai-agents/) for AI assistants.
 
+The configuration (`version: 1`), server state and event formats are specified and stable. They are frozen from 1.0.0, after which they change only by additions. The [roadmap](/project/roadmap/) lists what is left before 1.0.0.
 
-Also there: the MCP server, for AI assistants ([AI agents](/guides/ai-agents/)), and the GitHub Action, which comments the plan on pull requests ([CI](/guides/ci/#the-github-action)).
-
-What comes next is 1.0.0: the formats frozen, signed releases and installers, and the documentation complete.
-
-The [roadmap](/project/roadmap/) has the details.
-
-<Cards>
-	<Card title="Install the CLI" href="/start/installation/" />
-	<Card title="Quickstart" description="From a server with Docker to a first deploy." href="/start/quickstart/" />
-	<Card title="Migrating from the earlier Dockflow" description="Move a 1.x project, built on Swarm, by hand." href="/start/migrating/" />
-</Cards>
+Coming from the earlier Dockflow, built on Docker Swarm? This version is a rewrite: see [migrating](/start/migrating/).

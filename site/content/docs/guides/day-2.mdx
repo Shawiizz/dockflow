@@ -3,11 +3,16 @@ title: Operating an environment
 description: The commands that inspect, troubleshoot and change a running environment, grouped by task.
 ---
 
-Once an environment is deployed, these commands show what runs on the server, get you into a container, and change services between deploys. This page gives each one's purpose and a typical use; the [CLI reference](/reference/cli/) lists every option.
+Once an environment is deployed, these commands show what runs on the server, get you into a container, and change services between deploys. This page gives each command's purpose and a typical use. The [CLI reference](/reference/cli/) lists every option.
 
 ## Choosing the environment
 
-Most commands take `[<env>]` as their first argument. You can leave it out when `dockflow.yml` has a single environment, and a unique prefix is enough (`prod` for `production`). The examples below always name it.
+Most commands take `[<env>]` as their first argument:
+
+- you can leave it out when `dockflow.yml` has a single environment;
+- a unique prefix is enough (`prod` for `production`).
+
+The examples below always name it.
 
 Every command reaches the server the way a deploy does: through the `<ENV>_CONNECTION` secret, the environment's `server:` block, or `--connection`.
 
@@ -33,7 +38,7 @@ dockflow list images production
 
 ## Read logs
 
-`logs` prints the logs of the containers that serve the environment, all services or one, each line prefixed with its container when there are several.
+`logs` prints the logs of the containers that serve the environment, for all services or one. When there are several containers, each line is prefixed with its container.
 
 ```sh
 dockflow logs production web -f
@@ -41,7 +46,12 @@ dockflow logs production web --since 10m --timestamps
 dockflow logs production worker -n all --all
 ```
 
-`-n` sets the lines per container (100 by default, 20 with `-f`, or `all`). `--all` adds the previous release's and stopped containers, `--pick` lets you choose one container, `--no-prefix` removes the prefix. Secret values are masked in the output.
+- `-n` sets the lines per container: 100 by default, 20 with `-f`, or `all`.
+- `--all` adds the previous release's containers and stopped containers.
+- `--pick` lets you choose one container.
+- `--no-prefix` removes the prefix.
+
+Secret values are masked in the output.
 
 <Callout type="warn">
 With a single argument, `logs` reads it as the environment. To select a service, name the environment first: `dockflow logs production web`.
@@ -87,7 +97,7 @@ dockflow diagnose production
 
 It exits with code 0 when it finds nothing, and with code 9 when it finds at least one problem, so a script or a monitor can call it.
 
-`attach` follows a run in progress, for example a deploy started from CI, or replays a finished one. Without a run ID it picks the environment's latest run; the ID is in the `--json` events and in [notifications](/guides/notifications/).
+`attach` follows a run in progress, for example a deploy started from CI, or replays a finished one. Without a run ID, it picks the environment's latest run. The ID is in the `--json` events and in [notifications](/guides/notifications/).
 
 ```sh
 dockflow attach production
@@ -96,7 +106,7 @@ dockflow attach production 01JBF3K9Q2M8XW4T6Y7Z1N5R0C
 
 ## Change services between deploys
 
-These commands take the environment's lock, change the current release's services, and record what they did as a new release (shown as `(restart)`, `(stop)`… in `dockflow releases`). The next deploy brings the services back to what the Compose file says.
+These commands take the environment's lock and change the current release's services. Each records what it did as a new release, shown as `(restart)`, `(stop)`… in `dockflow releases`. The next deploy brings the services back to what the Compose file says.
 
 | Command | Purpose |
 |---|---|
@@ -122,7 +132,7 @@ To go back to an earlier release, use `dockflow rollback`, described in [release
 
 ## Lock an environment by hand
 
-A manual lock holds an environment during a maintenance window: until it is released, every command that takes the lock (`deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`) is refused with exit code 5. A manual lock never expires.
+A manual lock holds an environment during a maintenance window. Until it is released, every command that takes the lock (`deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`) is refused with exit code 5. A manual lock never expires.
 
 ```sh
 dockflow lock acquire production -m "database migration"
@@ -130,4 +140,6 @@ dockflow lock status production
 dockflow lock release production
 ```
 
-`dockflow deploy --force` deploys despite a manual lock. `lock acquire --force` takes over someone else's manual lock. `status` shows who holds the lock, since when, and why.
+- `dockflow deploy --force` deploys despite a manual lock.
+- `lock acquire --force` takes over someone else's manual lock.
+- `status` shows who holds the lock, since when, and why.

@@ -3,7 +3,9 @@ title: Server layout
 description: What Dockflow puts on a server - the /var/lib/dockflow state directory, its containers, images, labels, networks, volumes and ports - and how to remove all of it by hand.
 ---
 
-Dockflow keeps no database and no service of its own besides the switch, the registry and the watchdog: all of its state for a server lives on that server, in `/var/lib/dockflow`, and in labels on the Docker objects it creates. This page lists everything it creates, so you can inspect it, back it up or remove it.
+Dockflow keeps no database. Besides the switch, the registry and the watchdog, it runs no service of its own. All of its state for a server lives on that server: in `/var/lib/dockflow`, and in labels on the Docker objects it creates.
+
+This page lists everything Dockflow creates on a server, so you can inspect it, back it up or remove it. The state format is specified in the [state specification](https://github.com/Shawiizz/dockflow/blob/main/docs/design/spec/state-v1.md).
 
 ## The state directory
 
@@ -40,11 +42,22 @@ Dockflow keeps no database and no service of its own besides the switch, the reg
 /usr/local/libexec/dockflow-cloudflare-refresh the script it runs: an agent run
 ```
 
-`<stack>` is `<app>-<env>`, for example `shop-production`. `<seq>` is the release number, written with 6 digits in file names (`000042.json.gz`). `<repository>` is `local` for the `dockflow-backups` volume, or the first 16 hex digits of the sha256 of the repository's URL.
+In these paths:
+
+- `<stack>` is `<app>-<env>`, for example `shop-production`;
+- `<seq>` is the release number, written with 6 digits in file names (`000042.json.gz`);
+- `<repository>` is `local` for the `dockflow-backups` volume, or the first 16 hex digits of the sha256 of the repository's URL.
+
+About the files under `/var/lib/dockflow`:
+
+- **Owner.** Only agent containers write here, as root. The directory is `0700` and its files `0600`: only root on the server can read them.
+- **Atomic writes.** Every file is written to `<name>.tmp-<run-id>`, synced, then renamed, so a crash never leaves a half-written file.
+- **Format.** Every JSON document carries `"schema": 1`. The format changes only in a major release of Dockflow.
+- **Clocks.** Timestamps are informational, in UTC, from the server's clock. No decision depends on them.
 
 ### Files `server init` writes outside the state
 
-Preparing a server (`server init <admin>@<host>`, `sudo dockflow server init`, or the user-data of `server cloud-init`) also writes these. `server uninstall` leaves them in place, with the boot units above (it removes the filter's rules, so the filter unit then loads nothing):
+Preparing a server (`server init <admin>@<host>`, `sudo dockflow server init`, or the user-data of `server cloud-init`) also writes the files below. `server uninstall` leaves them in place, as it does the boot units above. It removes the filter's rules, so the filter unit then loads nothing.
 
 | Path | What it is |
 |---|---|
@@ -54,11 +67,6 @@ Preparing a server (`server init <admin>@<host>`, `sudo dockflow server init`, o
 | `/etc/apt/keyrings/docker.asc`, `/etc/apt/sources.list.d/docker.list` | Docker's apt repository, when Dockflow installed Docker |
 | `/etc/nginx/conf.d/00-dockflow-default.conf` | With `--nginx`: the default server that refuses unknown host names (Debian's `sites-enabled/default` link is removed) |
 | `/etc/sudoers.d/dockflow-nginx` | With `--nginx`: the sudo rules of the nginx plugin, `0440` |
-
-- **Owner.** Only agent containers write here, as root. The directory is `0700` and its files `0600`: only root on the server can read them.
-- **Atomic writes.** Every file is written to `<name>.tmp-<run-id>`, synced, then renamed, so a crash never leaves a half-written file.
-- **Format.** Every JSON document carries `"schema": 1`. The format changes only in a major release of Dockflow.
-- **Clocks.** Timestamps are informational, in UTC, from the server's clock. No decision depends on them.
 
 ### server.json
 
@@ -81,11 +89,18 @@ Written by `dockflow server init`:
 }
 ```
 
-`acme_email` and `acme_ca` are present when `server init --acme-email` or `--acme-ca` set them. `switch_listen` and `trusted_proxies` are present with the `external` edge only, and `switch_image` or `registry_image` are absent when the server runs no switch (`--edge none`) or no registry (`--no-registry`). `no_port_filter` and `no_watchdog` record that `server init` was asked to leave the filter or the watchdog out, and `watchdog_image` is absent without the watchdog; `filter_rules` is the digest of the [port filter](/project/security/#the-port-filter)'s rules last applied, so a deploy that changes no port leaves the filter alone.
+Fields that are not always present:
+
+- `acme_email` and `acme_ca` are present when `server init --acme-email` or `--acme-ca` set them.
+- `switch_listen` and `trusted_proxies` are present with the `external` edge only.
+- `switch_image` is absent when the server runs no switch (`--edge none`), and `registry_image` when it runs no registry (`--no-registry`).
+- `no_port_filter` and `no_watchdog` record that `server init` was asked to leave the filter or the watchdog out. `watchdog_image` is absent without the watchdog.
+
+`filter_rules` is the digest of the [port filter](/project/security/#the-port-filter)'s rules last applied, so a deploy that changes no port leaves the filter alone.
 
 ### Locks
 
-- `apps/<stack>/lock` is an empty file. A run takes it with `flock` and holds it until the agent exits; if the agent dies, the kernel releases it. A second run fails with `lock.held` (exit code 5), or waits with `--wait-lock`.
+- `apps/<stack>/lock` is an empty file. A run takes it with `flock` and holds it until the agent exits. If the agent dies, the kernel releases it. A second run fails with `lock.held` (exit code 5), or waits with `--wait-lock`.
 - `apps/<stack>/lock.json` names the holder, for the error message:
 
   ```json
@@ -102,11 +117,13 @@ Written by `dockflow server init`:
 { "schema": 1, "last_seq": 42, "current": 42, "previous": 41, "degraded": false }
 ```
 
-Each `releases/<seq>.json.gz` is a gzipped JSON record of one release: who made it and from which commit, its status, and the complete desired state of the app, every container's specification with images pinned by digest. A rollback recreates containers from it. Values interpolated into a container's environment are part of that specification, as they are in `docker inspect`.
+`env.json` points to the current and previous release.
+
+Each `releases/<seq>.json.gz` is a gzipped JSON record of one release. It holds who made it and from which commit, its status, and the complete desired state of the app: every container's specification, with images pinned by digest. A rollback recreates containers from it. Values interpolated into a container's environment are part of that specification, as they are in `docker inspect`.
 
 A release's status is `applying` while a run works on it, then `active`, then `superseded` when a newer one goes live. A failed run leaves `rolled_back` or `failed`, and a run whose agent died is marked `abandoned` by the next run.
 
-After a successful run, the agent keeps the newest `releases.keep` releases that went live, and every release newer than the oldest of those. It deletes the other records, then the images, registry manifests and upload contents that no kept release uses.
+After a successful run, the agent keeps the newest `releases.keep` releases that went live, and every release newer than the oldest of those. It deletes the other records. It then deletes the images, registry manifests and upload contents that no kept release uses.
 
 ## Containers
 
@@ -204,7 +221,9 @@ The switch's admin API listens on no port at all, only on a unix socket.
 
 ## Removing everything by hand
 
-`dockflow destroy` removes one environment: its containers, routes, networks and state, and with `--volumes` its data. [`dockflow server uninstall`](/reference/cli/#server-uninstall) removes Dockflow from a server entirely, in one command. By hand, it does this:
+`dockflow destroy` removes one environment: its containers, routes, networks and state, and with `--volumes` its data. [`dockflow server uninstall`](/reference/cli/#server-uninstall) removes Dockflow from a server entirely, in one command.
+
+To do the same by hand:
 
 <Steps>
 

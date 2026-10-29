@@ -3,7 +3,9 @@ title: Backups
 description: Back up databases and volumes with restic, encrypted and deduplicated, on the server or off-site, with retention, and without stopping a game server.
 ---
 
-Dockflow backs up the stateful services of an app with [restic](https://restic.net): each backup is a snapshot, encrypted, deduplicated (a second backup stores only what changed) and checked. A service opts in with `x-dockflow.backup`, and `dockflow backup run` backs it up.
+Dockflow backs up the stateful services of an app with [restic](https://restic.net). Each backup is a snapshot: encrypted, deduplicated (a second backup stores only what changed) and checked.
+
+To back up a service, declare `x-dockflow.backup` on it, then run `dockflow backup run`:
 
 ```yaml title="compose.yml"
 services:
@@ -45,6 +47,8 @@ A service is backed up when it is `stateful` and declares `backup`. Its `type` s
 | `mongo` | `mongodump --archive`, of `database` or every database, as `MONGO_INITDB_ROOT_USERNAME` |
 | `redis` | `redis-cli --rdb`, with `REDIS_PASSWORD` when it is set |
 
+The options of `backup`:
+
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `type` | string | required | See above. |
@@ -55,7 +59,7 @@ A service is backed up when it is `stateful` and declares `backup`. Its `type` s
 | `dump`, `restore` | argument lists | required for `command` | The commands of the `command` type. |
 | `keep` | map | `{ last: 7, daily: 14, weekly: 8, monthly: 6 }` | The snapshots kept: `last`, `hourly`, `daily`, `weekly`, `monthly`, as restic's `forget --keep-*`. |
 
-A game server is backed up without stopping it:
+To back up a game server without stopping it, pause its saves around the copy with `quiesce.exec`:
 
 ```yaml title="compose.yml"
 services:
@@ -75,9 +79,11 @@ services:
 
 ## Where backups go
 
-Without configuration, backups go to a restic repository on the server, in the `dockflow-backups` volume. Its password is generated on the first backup and stored in `/var/lib/dockflow/backups/local.password`, readable by root only. The first backup says so: **keep a copy of that password elsewhere**, the backups cannot be read without it.
+Without configuration, backups go to a restic repository on the server, in the `dockflow-backups` volume.
 
-A repository on the same disk as the data does not survive the loss of the server. Send backups off-site with `backups` in `dockflow.yml`, with the storage's credentials from your [secrets](/guides/secrets/):
+Its password is generated on the first backup. It is stored in `/var/lib/dockflow/backups/local.password`, readable by root only, and the first backup tells you so. **Keep a copy of that password elsewhere**: the backups cannot be read without it.
+
+A repository on the same disk as the data does not survive the loss of the server. To send backups off-site, set `backups` in `dockflow.yml`, with the storage's credentials taken from your [secrets](/guides/secrets/):
 
 ```yaml title="dockflow.yml"
 backups:
@@ -88,28 +94,40 @@ backups:
     AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
 ```
 
-`repository` is any restic repository reachable from the server: `s3:` (AWS and S3-compatible storage such as OVH, Scaleway or MinIO), `b2:`, `azure:`, `gs:`, `sftp:`, `rest:`. `env` is passed to restic. The first backup creates the repository, and its bucket when the credentials allow it. Without `password`, Dockflow generates one, as for the local repository, in `/var/lib/dockflow/backups/<id>.password`.
+- `repository` is any restic repository reachable from the server: `s3:` (AWS and S3-compatible storage such as OVH, Scaleway or MinIO), `b2:`, `azure:`, `gs:`, `sftp:`, `rest:`.
+- `env` is passed to restic.
+- The first backup creates the repository, and its bucket when the credentials allow it.
+- Without `password`, Dockflow generates one, as for the local repository, in `/var/lib/dockflow/backups/<id>.password`.
 
-The credentials of the databases never leave their containers: the dump and restore commands read them from the image's variables and pass them to the tool in a temporary file, never on a command line. The repository's password and the storage's credentials reach restic through a file on the server's tmpfs, readable by root and removed at the end of the run: never on a command line, in a container's configuration or on disk.
+### Where credentials go
+
+The databases' credentials never leave their containers. The dump and restore commands read them from the image's variables, and pass them to the tool in a temporary file, never on a command line.
+
+The repository's password and the storage's credentials reach restic through a file on the server's tmpfs, readable by root and removed at the end of the run. They never appear on a command line, in a container's configuration or on disk.
 
 ## How a backup runs
 
 <Steps>
 
-1. `dockflow backup run [<env>] [<service>]` takes the environment's lock: a backup and a deploy never run at the same time (`--wait-lock` on a deploy waits for the backup).
-2. The agent opens the repository, creating it on the first backup, and backs up each service of the **current release** that declares `backup`, or the one named: what the server runs, not your working tree.
-3. A dump streams from the service's container into restic, without a temporary file. A failed dump keeps no snapshot.
-4. Each snapshot is tagged with the app, the environment, the service and the release, and gets the server's name as its host.
-5. The service's retention is applied (`restic forget`), and once a day the space of forgotten snapshots is reclaimed (`--prune`).
-6. `restic check` reads 1% of the repository's data, chosen at random, to catch corruption early.
+1. `dockflow backup run [<env>] [<service>]` takes the environment's lock. A backup and a deploy never run at the same time (`--wait-lock` on a deploy waits for the backup).
+2. The agent opens the repository, and creates it on the first backup.
+3. It backs up each service of the **current release** that declares `backup`, or the one you named. This is what the server runs, not your working tree.
+4. A dump streams from the service's container into restic, without a temporary file. A failed dump keeps no snapshot.
+5. Each snapshot is tagged with the app, the environment, the service and the release. Its host is the server's name.
+6. The service's retention is applied (`restic forget`). Once a day, the space of forgotten snapshots is reclaimed (`--prune`).
+7. `restic check` reads 1% of the repository's data, chosen at random, to catch corruption early.
 
 </Steps>
 
-A backup that fails exits with code 12, after backing up the other services. `backup run` needs only the connection string and the repository's secrets: it reads `dockflow.yml`, not the Compose files.
+When a service's backup fails, the other services are still backed up, and the command exits with code 12.
+
+`backup run` needs only the connection string and the repository's secrets. It reads `dockflow.yml`, not the Compose files.
 
 ## Scheduling
 
-Nothing runs on a schedule on the server. Run `dockflow backup run` from your CI on a schedule, or from any cron that has the connection string. The workflow `dockflow init --ci github` writes does it every night, and `--ci gitlab` when a pipeline schedule runs it; in an existing workflow:
+Nothing runs on a schedule on the server. Run `dockflow backup run` on a schedule from your CI, or from any cron that has the connection string.
+
+The GitHub workflow that `dockflow init --ci github` writes runs it every night. The GitLab pipeline that `--ci gitlab` writes runs it when a pipeline schedule triggers it. To add it to an existing workflow:
 
 ```yaml title=".github/workflows/backup.yml"
 on:
@@ -134,18 +152,29 @@ dockflow backup restore production db --snapshot 2026-10-20    # the newest one 
 dockflow backup restore staging db --from production           # production's data into staging
 ```
 
-`backup restore` restores a snapshot into the service of the **current release**, under the environment's lock. It asks for confirmation on a terminal, and needs `--yes` without one.
+`backup restore` restores a snapshot into the service of the **current release**, under the environment's lock. It asks for confirmation on a terminal; without a terminal, it needs `--yes`.
 
-- **A dump** streams from the snapshot into the running service, with options that stop at the first error: `pg_restore --clean --if-exists --single-transaction --exit-on-error` for Postgres, which also rolls back what it did; the `mysql` (or `mariadb`) client for MySQL; `mongorestore --archive --drop --stopOnError` for MongoDB; `restore` for the `command` type. `restore_options` adds arguments.
-- **Redis** loads its data when it starts: the service is stopped, the dump becomes `/data/dump.rdb` in its container (the official image's data directory), and it starts again. With `appendonly yes`, Redis loads its append-only file instead: turn it off, or back Redis up as a `volume`.
+How each kind of backup is restored:
+
+- **A dump** streams from the snapshot into the running service, with options that stop at the first error:
+  - Postgres: `pg_restore --clean --if-exists --single-transaction --exit-on-error`, which also rolls back what it did;
+  - MySQL: the `mysql` (or `mariadb`) client;
+  - MongoDB: `mongorestore --archive --drop --stopOnError`;
+  - the `command` type: its `restore` command.
+
+  `restore_options` adds arguments.
+- **Redis** loads its data when it starts. The service is stopped, the dump becomes `/data/dump.rdb` in its container (the official image's data directory), and the service starts again. With `appendonly yes`, Redis loads its append-only file instead: turn it off, or back Redis up as a `volume`.
 - **Volumes** are restored with the service stopped, then started again. Each volume gets the snapshot's files, and loses those the snapshot does not have.
-- **`--from <env>`** restores a snapshot of another environment of the same app, read from that environment's repository with its secrets: the one on the server when both run on the same server, or its off-site `backups.repository`.
+
+`--from <env>` restores a snapshot of another environment of the same app. It reads that environment's repository, with that environment's secrets: the repository on the server when both run on the same server, or its off-site `backups.repository`.
 
 A restore that fails exits with code 12, and says why.
 
 ## Retention and pruning
 
-After each backup, the service's `keep` is applied: restic forgets the snapshots it does not keep, and once a day reclaims their space. `backup prune` does it now, with the services' retention or the one you give:
+After each backup, the service's `keep` is applied: restic forgets the snapshots it does not keep. Once a day, it reclaims their space.
+
+`backup prune` does it now, with each service's retention or the one you give:
 
 ```sh
 dockflow backup prune production                   # each service's keep
@@ -156,7 +185,7 @@ Options: `--keep-last`, `--keep-hourly`, `--keep-daily`, `--keep-weekly`, `--kee
 
 ## The server's state
 
-`/var/lib/dockflow` holds every release record, so the history `rollback` and `releases` read, the uploads, the routes and the server's settings. `--server` backs it up to the environment's repository:
+`/var/lib/dockflow` holds the server's state: every release record (the history that `rollback` and `releases` read), the uploads, the routes and the server's settings. `--server` backs it up to the environment's repository:
 
 ```sh
 dockflow backup run production --server     # /var/lib/dockflow, to production's repository
@@ -164,16 +193,26 @@ dockflow backup list production --server
 dockflow backup prune production --server --keep-last 7
 ```
 
-The snapshots are tagged with the server's name, apart from the services'; the default retention applies. The passwords in `/var/lib/dockflow/backups/` stay out: a snapshot that holds its own repository's password protects nothing. The point is to rebuild a lost server, so send these backups off-site.
+- The snapshots are tagged with the server's name, separately from the services' snapshots.
+- The default retention applies.
+- The passwords in `/var/lib/dockflow/backups/` are left out: a snapshot that holds its own repository's password protects nothing.
 
-On a new server, after `dockflow server init`, restic puts the state back:
+These backups exist to rebuild a lost server, so send them off-site.
+
+To rebuild, run `dockflow server init` on the new server, then put the state back with restic:
 
 ```sh
 restic -r <repository> restore latest --tag server=<name> --target /
 ```
 
-Then `dockflow deploy` of each app runs on its history.
+The next `dockflow deploy` of each app then runs on its history.
 
 ## Without Dockflow
 
-The repository is a standard restic repository. With its password, restic reads it on its own: `restic -r <repository> snapshots`, `restic restore <id> --target <dir>`, or `restic dump <id> /db.pgdump > db.pgdump` for a dump. The repository on the server is in the `dockflow-backups` volume.
+The repository is a standard restic repository. With its password, restic reads it on its own:
+
+- `restic -r <repository> snapshots` lists the snapshots;
+- `restic restore <id> --target <dir>` restores one;
+- `restic dump <id> /db.pgdump > db.pgdump` extracts a dump.
+
+The repository on the server is in the `dockflow-backups` volume.

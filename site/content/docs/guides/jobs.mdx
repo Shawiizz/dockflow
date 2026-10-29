@@ -3,7 +3,7 @@ title: Jobs and migrations
 description: Run one-off containers such as database migrations before or after the services of a deploy, with Compose's depends_on or x-dockflow.run.
 ---
 
-A job is a service that runs to completion instead of staying up: a database migration, a cache warm-up, an index rebuild. Dockflow runs it as a one-off container on the new release's image, streams its output, and stops or rolls back the deploy if it fails.
+A job is a service that runs to completion instead of staying up: a database migration, a cache warm-up, an index rebuild. Dockflow runs it as a one-off container on the new release's image and streams its output. If the job fails, the deploy stops or rolls back.
 
 ```yaml title="compose.yml"
 services:
@@ -18,11 +18,11 @@ services:
         condition: service_completed_successfully
 ```
 
-`web` waits for `migrate` to complete successfully, so `migrate` is a job that runs before the services, as `docker compose up` would run it. The same file works locally with Compose.
+`web` waits for `migrate` to complete successfully. That makes `migrate` a job that runs before the services, as `docker compose up` would run it. The same file works locally with Compose.
 
 ## Declaring a job
 
-There are two ways, and both can be used in one file:
+There are two ways, and one file can use both:
 
 | How | Kind of job |
 |---|---|
@@ -43,7 +43,7 @@ A job takes the rest of its spec from Compose as written: image or build, comman
 
 ## When jobs run
 
-Jobs run in a `dockflow deploy` that changes services: one that creates, updates or removes a service, or changes routes. They don't run:
+Jobs run in a `dockflow deploy` that changes services, that is, one that creates, updates or removes a service, or changes routes. They don't run:
 
 - in a deploy whose plan is empty, or that only changes uploaded files;
 - in `dockflow rollback`: a rollback does not replay old migrations;
@@ -56,16 +56,17 @@ A change to the job alone does not make a plan. In practice, a job usually share
 Within a deploy:
 
 1. Networks, volumes and [uploads](/guides/uploads/) are created or updated, so a job can read uploaded files.
-2. The services and the `before` jobs run in `depends_on` order: a `before` job runs once the services it depends on are up (a migration after its database), and before the services that depend on it. A `before` job that depends on nothing runs before every service. `before_deploy` hooks of the `exec` kind run right before the first service changes.
+2. The services and the `before` jobs run in `depends_on` order. A `before` job runs once the services it depends on are up (a migration after its database), and before the services that depend on it. A `before` job that depends on nothing runs before every service. `before_deploy` [hooks](/guides/hooks/) of the `exec` kind run right before the first service changes.
 3. The `after` jobs run, once every service has switched.
 4. The [public checks](/guides/health-checks/#public-checks-healthendpoints) run, then the release is committed.
 
-Jobs of the same kind run in `depends_on` order, and alphabetically when nothing orders them. A service a `before` job depends on is created or updated first, and is healthy when the job starts: on the very first deploy of an app, a migration that depends on its database (`condition: service_healthy`) runs once the database is up. Services the job does not depend on, but that depend on it, start after it.
+Jobs of the same kind run in `depends_on` order, and alphabetically when nothing orders them.
 
+A service that a `before` job depends on is created or updated first, and is healthy when the job starts. On the very first deploy of an app, a migration that depends on its database (`condition: service_healthy`) runs once the database is up. Services that depend on the job start after it.
 
 ## Output, timeout and failure
 
-Each line the job writes is a `job.log` event, shown as `migrate │ <line>`, and a `job.finished` event gives its exit code. The container is removed once it has exited.
+Each line the job writes is a `job.log` event, shown as `migrate │ <line>`. A `job.finished` event gives its exit code. The container is removed once it has exited.
 
 | Outcome | What happens | Exit code |
 |---|---|---|
@@ -85,7 +86,9 @@ environments:
       timeout: 20m
 ```
 
-`deploy.timeout` also replaces the health timeout of every service; see [Health checks](/guides/health-checks/#the-container-healthcheck). `on_failure` does not apply to jobs: a failed job always stops or rolls back the deploy.
+`deploy.timeout` also replaces the health timeout of every service; see [Health checks](/guides/health-checks/#the-container-healthcheck).
+
+`on_failure` does not apply to jobs: a failed job always stops or rolls back the deploy.
 
 ## Refused combinations
 
@@ -161,22 +164,27 @@ volumes:
 
 ## Migrations that survive a rollback
 
-A deploy rolls back containers, never data. If `migrate` fails, nothing has switched and the schema is whatever the migration left. If `migrate` succeeds and the new web containers then fail their checks, or the agent dies, the deploy goes back to the **previous code on the new schema**. The same happens with `dockflow rollback`, which runs no job. And while `migrate` runs, and for a moment after it, the previous web containers keep serving on the new schema anyway.
+A deploy rolls back containers, never data:
 
-So write each migration so that the previous release still works on the schema it leaves, in two steps, *expand* then *contract*:
+- If `migrate` fails, nothing has switched, and the schema is whatever the migration left.
+- If `migrate` succeeds and the new web containers then fail their checks, or the agent dies, the deploy goes back to the **previous code on the new schema**.
+- `dockflow rollback` runs no job, so it also leaves the previous code on the new schema.
+- While `migrate` runs, and for a moment after it, the previous web containers keep serving on the new schema anyway.
+
+So write each migration so that the previous release still works on the schema it leaves. Do it in two steps, *expand* then *contract*:
 
 1. **Expand**, in one release: add what the new code needs (new tables, new columns that are nullable or have a default, new indexes), and keep everything the previous code reads and writes. The new code writes both the old and the new shape when they differ.
 2. **Contract**, in a later release, once nothing runs the old code any more: drop the old columns and tables, and add the constraints the expand step could not.
 
-A rename is an expand (add the new column, copy, write both) followed by a contract (drop the old one). With this rule, every rollback lands on code that works with the schema in place, and a failed deploy never needs a database restore.
+A rename is an expand (add the new column, copy, write both) followed by a contract (drop the old one). With this rule, every rollback lands on code that works with the schema in place. A failed deploy never needs a database restore.
 
 To run a command by hand with a service's spec, such as a console or a one-time script, use `dockflow run`; see [Day-2 operations](/guides/day-2/).
 
 ## Workers and recurring tasks
 
-Jobs run during deploys only. Dockflow has no scheduler of its own: nothing runs on a timetable on the server. Two ways cover background work.
+Jobs run during deploys only. Dockflow has no scheduler of its own: nothing runs on a timetable on the server. Background work takes one of two forms.
 
-**A worker** is a long-running service without routes, such as a queue consumer. It gets the `start-first` strategy: the new container starts and becomes healthy before the old one stops, so for a moment both run. A worker that must never run twice, such as one that runs its own scheduler (`supercronic`, `node-cron`), asks for `stop-first`:
+**A worker** is a long-running service without routes, such as a queue consumer. It gets the `start-first` [strategy](/concepts/rollouts/): the new container starts and becomes healthy before the old one stops, so for a moment both run. A worker that must never run twice, such as one that runs its own scheduler (`supercronic`, `node-cron`), asks for `stop-first`:
 
 ```yaml title="compose.yml"
 services:
@@ -196,7 +204,7 @@ services:
         grace: 10s
 ```
 
-**A recurring task** can also run from your CI on a schedule, with `dockflow run`, which starts a one-off container with the service's spec and the image it currently runs, and exits with the command's exit code:
+**A recurring task** can run from your CI on a schedule, with `dockflow run`. It starts a one-off container with the service's spec and the image the service currently runs, and exits with the command's exit code:
 
 ```yaml title=".github/workflows/nightly.yml"
 on:
@@ -212,4 +220,4 @@ jobs:
           DOCKFLOW_SECRETS: ${{ toJSON(secrets) }}
 ```
 
-`run` reads `dockflow.yml` and the Compose files, so the job checks out the repository and gets every secret they use, as a deploy does.
+`run` reads `dockflow.yml` and the Compose files. The CI job therefore checks out the repository and gets every secret they use, as a deploy does. See [Deploying from CI](/guides/ci/#secrets-as-ci-variables).

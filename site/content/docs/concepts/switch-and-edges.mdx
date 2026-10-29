@@ -3,22 +3,26 @@ title: The switch and edges
 description: The Caddy container Dockflow runs in front of every app, how routes and TLS work, and the edge modes that decide how traffic reaches it.
 ---
 
-Every server that routes traffic runs one **switch**: a Caddy container managed by Dockflow, in front of every app on the server. It sends each request to the containers currently serving its route, and moves traffic from old containers to new ones during a deploy without dropping a request. The **edge** is how traffic reaches the switch: directly on ports 80 and 443, or through a proxy you already run.
+Every server that routes traffic runs one **switch**: a Caddy container managed by Dockflow, in front of every app on the server. It sends each request to the containers currently serving its route. During a deploy, it moves traffic from old containers to new ones without dropping a request.
+
+The **edge** is how traffic reaches the switch: directly on ports 80 and 443, or through a proxy you already run.
 
 ## The switch
 
-`dockflow server init` installs the switch as a container named `dockflow-switch`, from the official Caddy image (`caddy:2` by default), pinned by digest.
+`dockflow server init` installs the switch as a container named `dockflow-switch`. It runs the official Caddy image (`caddy:2` by default), pinned by digest.
 
-- **Routes come from your Compose files.** A service declares the domains it serves under `x-dockflow.routes`. The switch's configuration is the union of the routes of every app on the server, each app's part changed only by its own deploys.
+- **Routes come from your Compose files.** A service declares the domains it serves under `x-dockflow.routes`. The switch's configuration is the union of the routes of every app on the server. Each app's part changes only with its own deploys.
 - **It reaches your containers on their networks.** When an app with routes deploys, the agent connects the switch to the app's network, without restarting it. Your routed services do not need to publish any port.
-- **Its admin API is not on a network.** It listens on a unix socket in a volume that only agent containers mount. App containers share networks with the switch, and cannot reach its configuration.
-- **It survives a reboot.** Caddy saves each configuration it loads and resumes it when it starts, so the switch serves the same routes after a reboot, before any deploy.
+- **Its admin API is not on a network.** It listens on a unix socket in a volume that only agent containers mount. App containers share networks with the switch, but cannot reach its configuration.
+- **It survives a reboot.** Caddy saves each configuration it loads and resumes it when it starts. So the switch serves the same routes after a reboot, before any deploy.
 
 ### Moving traffic without reloading
 
-Reloading a proxy's configuration can close connections it accepted shortly before the reload. So the switch is not reloaded when traffic moves. Each route's upstreams are small files that Caddy reads on every request; to switch a route to new containers, the agent rewrites those files atomically. The next request goes to the new containers, and requests in flight finish on the old ones while they [drain](/concepts/rollouts/#drain).
+The switch is not reloaded when traffic moves, because a reload can close connections the proxy accepted shortly before.
 
-The configuration is reloaded only when routes themselves change: a domain, a path or a number of replicas. An ordinary deploy that only changes an image does not reload it.
+Instead, each route's upstreams are small files that Caddy reads on every request. To switch a route to new containers, the agent rewrites those files atomically. The next request goes to the new containers, and requests in flight finish on the old ones while they [drain](/concepts/rollouts/#drain).
+
+The configuration is reloaded only when routes themselves change: a domain, a path or a number of replicas. A deploy that only changes an image does not reload it.
 
 ## Routes
 
@@ -79,7 +83,12 @@ Route options (`headers`, `encode`, `max_body`, `timeouts`, `error_pages`, `auth
 
 ## TLS
 
-With the `builtin` edge, the switch terminates TLS with Caddy's automatic HTTPS. For each domain of a route with `tls: true`, it obtains a certificate from Let's Encrypt, renews it, and redirects plain HTTP requests to HTTPS. Certificates are kept in the `dockflow-switch-data` volume, so they survive a restart or a reinstall of the switch.
+With the `builtin` edge, the switch terminates TLS with Caddy's automatic HTTPS. For each domain of a route with `tls: true`, it:
+
+- obtains a certificate from Let's Encrypt and renews it;
+- redirects plain HTTP requests to HTTPS.
+
+Certificates are kept in the `dockflow-switch-data` volume, so they survive a restart or a reinstall of the switch.
 
 For this to work:
 
@@ -115,10 +124,16 @@ For domains proxied by Cloudflare (the orange cloud):
 dockflow server init production --edge cloudflare
 ```
 
-The switch works as with `builtin`, and the [port filter](/project/security/#the-port-filter) opens ports 80 and 443 to Cloudflare's address ranges only: nobody reaches your origin around Cloudflare, by its IP address. The switch takes the client's address from Cloudflare's `CF-Connecting-IP` header, and believes it only from those ranges, so your apps see the real client in `X-Forwarded-For`.
+The switch works as with `builtin`. In addition:
+
+- The [port filter](/project/security/#the-port-filter) opens ports 80 and 443 to Cloudflare's address ranges only. Nobody can reach your origin directly by its IP address, around Cloudflare.
+- The switch takes the client's address from Cloudflare's `CF-Connecting-IP` header, and trusts it only from those ranges. Your apps see the real client in `X-Forwarded-For`.
+
+Notes:
 
 - **SSL/TLS mode.** With Cloudflare's *Full (strict)* mode, keep the routes' default `tls: true`: the switch gets certificates from Let's Encrypt, whose HTTP challenge passes through Cloudflare. With *Flexible*, Cloudflare reaches the origin over plain HTTP: set `tls: false` on the routes.
-- **The ranges.** Dockflow downloads Cloudflare's published lists at `server init`, and again every week with the `dockflow-cloudflare` systemd timer that `server init <admin>@<host>` installs. A download that fails keeps the ranges the server has, or uses the list this version of Dockflow knows. The filter must be on: with `--no-port-filter`, ports 80 and 443 are open to everyone.
+- **The ranges.** Dockflow downloads Cloudflare's published lists at `server init`. It downloads them again every week with the `dockflow-cloudflare` systemd timer that `server init <admin>@<host>` installs. If a download fails, the server keeps the ranges it has, or uses the list this version of Dockflow knows.
+- **The port filter must be on.** With `--no-port-filter`, ports 80 and 443 are open to everyone.
 
 ### external
 
@@ -128,7 +143,9 @@ For a server where another proxy already owns ports 80 and 443, such as the host
 dockflow server init production --edge external
 ```
 
-The switch listens on `127.0.0.1:8080`, in plain HTTP, and routes by the `Host` header and the path, as with the `builtin` edge. Your front proxy sends every routed domain to that one address, once, and keeps the `Host` header. Deploys never touch the front proxy: the switch moves the traffic behind it.
+The switch listens on `127.0.0.1:8080`, in plain HTTP. It routes by the `Host` header and the path, as with the `builtin` edge.
+
+Configure your front proxy once: send every routed domain to that one address, and keep the `Host` header. Deploys never touch the front proxy: the switch moves the traffic behind it.
 
 ```nginx title="/etc/nginx/sites-enabled/shop.conf"
 server {
@@ -145,7 +162,9 @@ server {
 }
 ```
 
-The switch believes the `X-Forwarded-For` header only from the addresses in `--trusted-proxy`. By default these are loopback and the private ranges (`127.0.0.0/8`, `::1/128`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fd00::/8`): the front proxy reaches the published port through Docker, so the switch sees a bridge address rather than loopback. `--switch-listen` changes the address:
+The switch trusts the `X-Forwarded-For` header only from the addresses in `--trusted-proxy`. By default these are loopback and the private ranges (`127.0.0.0/8`, `::1/128`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fd00::/8`). The private ranges are needed because the front proxy reaches the published port through Docker, so the switch sees a bridge address rather than loopback.
+
+`--switch-listen` changes the address:
 
 ```sh
 dockflow server init production --edge external --switch-listen 127.0.0.1:9080 --trusted-proxy 172.17.0.0/16
@@ -159,13 +178,22 @@ The complete setup, with TLS in nginx, is in [Behind nginx](/guides/behind-nginx
 dockflow server init production --edge none
 ```
 
-No switch is installed, and nothing of Dockflow runs on the server between deploys except the registry (and not even that with `--no-registry`). Apps publish their own ports with Compose `ports:`, and services that publish fixed host ports use `stop-first`, with a brief downtime on each deploy. A deploy of an app that declares routes is refused with `plan.routes_without_switch`.
+No switch is installed. Between deploys, nothing of Dockflow runs on the server except the registry, and not even that with `--no-registry`.
+
+- Apps publish their own ports with Compose `ports:`.
+- Services that publish fixed host ports use `stop-first`, with a brief downtime on each deploy.
+- A deploy of an app that declares routes is refused with `plan.routes_without_switch`.
 
 Moving a server to `none` is refused while apps on it still have routes (`server.routes_in_use`).
 
 ## server init
 
-`dockflow server init <admin>@<host>` prepares a server (Docker, the deploy user and its key) and then installs the switch and the server-local registry; `dockflow server init [<env>]` installs or updates them on the server of an environment, reached as a deploy reaches it. See the [CLI reference](/reference/cli/#server-init). It is safe to run again: a container whose settings did not change is kept.
+`server init` has two forms:
+
+- `dockflow server init <admin>@<host>` prepares a server (Docker, the deploy user and its key), then installs the switch and the server-local registry.
+- `dockflow server init [<env>]` installs or updates the switch and the registry on the server of an environment, reached as a deploy reaches it.
+
+It is safe to run again: a container whose settings did not change is kept. See the [CLI reference](/reference/cli/#server-init).
 
 | Option | Default | Description |
 |---|---|---|
@@ -178,4 +206,6 @@ Moving a server to `none` is refused while apps on it still have routes (`server
 | `--acme-email <address>` | none | The address Let's Encrypt writes to about the switch's certificates. `""` removes it |
 | `--acme-ca <url>` | Let's Encrypt, then ZeroSSL | Another ACME directory, such as Let's Encrypt's staging for a test server. `""` goes back to the default |
 
-To change the edge of a server, run `dockflow server edge <env> <mode>`, or `server init` again with another `--edge`. The switch container is replaced, which interrupts traffic for a moment, and every app's routes are loaded into the new one. `dockflow server upgrade` pulls the switch's image again, and `dockflow server status` shows the edge and the switch's state.
+To change the edge of a server, run `dockflow server edge <env> <mode>`, or `server init` again with another `--edge`. The switch container is replaced, which interrupts traffic for a moment, and every app's routes are loaded into the new one.
+
+`dockflow server upgrade` pulls the switch's image again. `dockflow server status` shows the edge and the switch's state.

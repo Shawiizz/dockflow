@@ -3,7 +3,11 @@ title: Rollouts
 description: How Dockflow replaces the containers of a service, the three strategies and how each service gets one, health gating, draining, timeouts and what happens on failure.
 ---
 
-A rollout replaces the containers of one service with those of the new release. Dockflow picks a strategy per service from its Compose definition, waits for the new containers to be healthy before they get traffic, and keeps the old containers until the whole deploy succeeds, so it can go back to them.
+A rollout replaces the containers of one service with those of the new release. For each service, Dockflow:
+
+- picks a strategy from its Compose definition;
+- waits for the new containers to be healthy before they get traffic;
+- keeps the old containers until the whole deploy succeeds, so it can go back to them.
 
 ```yaml title="compose.yml"
 services:
@@ -73,7 +77,7 @@ worker   shop/worker              1         start-first
 | `start-first` | Start the new containers, wait until they are healthy, move the routes if any, stop the old ones | None. Old and new versions run side by side for a moment: a worker must tolerate it |
 | `stop-first` | Stop the old containers (with their `stop_grace_period`), start the new ones, wait until they are healthy | Brief: from the stop to the new container being healthy |
 
-Containers are named `<app>-<env>-<service>-<release>-<n>`, so the containers of a new release never collide with those of the previous one. Inside the app's networks, every container also answers to its service name, so other services keep reaching `db` or `api` by name, as with Compose.
+Containers are named `<app>-<env>-<service>-<release>-<n>`, so the containers of a new release never collide with those of the previous one. Inside the app's networks, every container also answers to its service name. Other services keep reaching `db` or `api` by name, as with Compose.
 
 ### How a service gets its strategy
 
@@ -106,7 +110,7 @@ A web service behind the switch does not need to publish ports at all: the switc
 
 ### Example: a stateful service on a fixed public port
 
-A game server keeps its world on a volume and is reached on a fixed port, without the switch. It gets `stop-first`, and the [port filter](/project/security/#the-port-filter) opens its port once [`firewall.public_ports`](/reference/dockflow-yml/#firewall) lists it:
+A game server keeps its world on a volume and is reached on a fixed port, without the switch. It gets `stop-first`. The [port filter](/project/security/#the-port-filter) opens its port once [`firewall.public_ports`](/reference/dockflow-yml/#firewall) lists it:
 
 ```yaml title="compose.yml"
 services:
@@ -130,19 +134,23 @@ firewall:
     - { port: 25565, protocol: tcp }
 ```
 
-Each deploy stops the old container, giving it `stop_grace_period` to save, then starts the new one on the same volume: the server is down from the stop until the new container is healthy. Without the `firewall` entry, the port stays published but only the server and its containers reach it, and the plan warns about it. To back the world up while it runs, see [backups](/guides/backups/#what-is-backed-up).
+Each deploy stops the old container, giving it `stop_grace_period` to save, then starts the new one on the same volume. The game server is down from the stop until the new container is healthy.
+
+Without the `firewall` entry, the port stays published but only the server and its containers reach it, and the plan warns about it. To back the world up while it runs, see [backups](/guides/backups/#what-is-backed-up).
 
 ### Order
 
-Within a deploy, services are created or updated one after the other, in `depends_on` order, then by name. Each service is healthy before the next one starts, so a dependency is up before its dependents, as with `docker compose up`. `before` jobs run before the services, `after` jobs after them. See [Jobs](/guides/jobs/).
+Within a deploy, services are created or updated one after the other, in `depends_on` order, then by name. Each service is healthy before the next one starts, so a dependency is up before its dependents, as with `docker compose up`.
+
+`before` jobs run before the services, `after` jobs after them. See [Jobs](/guides/jobs/).
 
 ## Health gating
 
 A new container gets traffic, and the rollout moves on, only once it is healthy.
 
-**Docker's `HEALTHCHECK` is the main signal**: the `healthcheck` of the Compose file, or the one built into the image. The container is ready when Docker reports it `healthy`, and fails the rollout as soon as Docker reports it `unhealthy`.
+**Docker's `HEALTHCHECK` is the main signal**: the `healthcheck` of the Compose file, or the one built into the image. The container is ready when Docker reports it `healthy`. It fails the rollout as soon as Docker reports it `unhealthy`.
 
-**Without a healthcheck**, a container counts as healthy once it has been running for `x-dockflow.health.grace`, 10 seconds by default. A routed service without a healthcheck or an internal HTTP check gets a warning from `validate` and `plan`: running is not the same as ready to serve.
+**Without a healthcheck**, a container counts as healthy once it has been running for `x-dockflow.health.grace`, 10 seconds by default. Running is not the same as ready to serve, so `validate` and `plan` warn about a routed service without a healthcheck or an internal HTTP check.
 
 **Whatever the healthcheck**, the rollout fails when a new container:
 
@@ -152,7 +160,7 @@ A new container gets traffic, and the rollout moves on, only once it is healthy.
 
 ### Internal HTTP check
 
-`x-dockflow.health.http` adds an HTTP check that the agent runs against each new container, from inside the app's network, once the container is healthy and before any traffic moves to it. It is useful for images without a `HEALTHCHECK`, or without `curl` or `wget` to write one.
+`x-dockflow.health.http` adds an HTTP check that the agent runs against each new container. It runs from inside the app's network, once the container is healthy and before any traffic moves to it. Use it for images without a `HEALTHCHECK`, or without `curl` or `wget` to write one.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -163,7 +171,7 @@ A new container gets traffic, and the rollout moves on, only once it is healthy.
 | `retries` | integer | `10` | How many requests before the check fails |
 | `interval` | duration | `3s` | The time between two requests |
 
-A failed internal check follows [`on_failure`](#on_failure). Public checks, on full URLs through DNS and TLS after the switch, are `health.endpoints` in `dockflow.yml`. Both are covered in [Health checks](/guides/health-checks/).
+A failed internal check follows [`on_failure`](/concepts/releases-and-rollbacks/#on_failure). Public checks, on full URLs through DNS and TLS after the switch, are `health.endpoints` in `dockflow.yml`. Both are covered in [Health checks](/guides/health-checks/).
 
 ### Timeouts
 
@@ -190,9 +198,11 @@ environments:
 
 ## Drain
 
-With the `switch` strategy, traffic moves to the new containers in one step: the next request goes to them. Requests already in flight on the old containers are not cut: the old containers keep running for the drain time, `x-dockflow.rollout.drain`, 30 seconds by default, and are then stopped with their `stop_grace_period`. Connections still open at that point, such as WebSockets, are closed.
+With the `switch` strategy, traffic moves to the new containers in one step: the next request goes to them.
 
-The drain starts when the service switches. When several services switch, the run waits for the longest drain once, at the end, not one drain per service.
+Requests already in flight on the old containers are not cut. The old containers keep running for the drain time, `x-dockflow.rollout.drain`, 30 seconds by default. Then they are stopped with their `stop_grace_period`. Connections still open at that point, such as WebSockets, are closed.
+
+The drain starts when the service switches. When several services switch, the run waits once for the longest drain, at the end, not one drain per service.
 
 ```yaml title="compose.yml"
 services:
@@ -206,43 +216,25 @@ services:
         drain: 5s        # short requests only
 ```
 
-`start-first` and `stop-first` have no drain: old containers are stopped with their `stop_grace_period` (10 seconds by default, as in Compose), and they handle `SIGTERM` as they would with `docker compose up`.
+`start-first` and `stop-first` have no drain. Old containers are stopped with their `stop_grace_period` (10 seconds by default, as in Compose), and they handle `SIGTERM` as they would with `docker compose up`.
 
 ## What happens on failure
 
-Old containers are stopped, never removed, until the whole run commits. When anything fails before that, the agent starts them again if needed, waits until they are healthy, moves the routes back to them, and removes the new containers: for a `switch` service, traffic is back on the old containers in about a second. The release ends `rolled_back`, and the command exits with code 8. [Releases and rollbacks](/concepts/releases-and-rollbacks/#when-a-deploy-fails) lists what counts as a failure. If the agent itself dies, the watchdog does the same within seconds ([Interrupted runs](/concepts/releases-and-rollbacks/#interrupted-runs)).
+Old containers are stopped, never removed, until the whole run commits. When anything fails before that, the agent:
 
-### on_failure
+1. starts the old containers again if needed, and waits until they are healthy;
+2. moves the routes back to them: for a `switch` service, traffic is back on the old containers in about a second;
+3. removes the new containers.
 
-`on_failure`, in `dockflow.yml` or per environment, applies to failed **HTTP checks** only: the internal check (`x-dockflow.health.http`) and the public endpoints (`health.endpoints`).
+The release ends `rolled_back`, and the command exits with code 8. If the agent itself dies, the watchdog does the same within seconds ([Interrupted runs](/concepts/releases-and-rollbacks/#interrupted-runs)).
 
-| Value | A failed HTTP check |
-|---|---|
-| `rollback` (default) | Rolls the whole app back to the previous release |
-| `fail` | Stops the run where it is, marks the release `failed` and the environment degraded, and exits with code 9, to let you look at it. The next run that takes the lock (a deploy, a rollback, a restart, a scale…) rolls it back first, and `dockflow plan` says so |
-| `ignore` | Becomes a warning; the deploy goes on and the release becomes active |
-
-```yaml title="dockflow.yml"
-version: 1
-app: shop
-
-on_failure: rollback
-
-environments:
-  production: {}
-  staging:
-    on_failure: ignore
-```
-
-A failure of the rollout itself always rolls back, whatever `on_failure` says: a container that exits, crash-loops, stays unhealthy or times out, a failed job. `dockflow deploy --no-rollback` acts as `on_failure: fail` for one run.
+A failure of the rollout itself always rolls back: a container that exits, crash-loops, stays unhealthy or times out, or a failed job. A failed HTTP check follows [`on_failure`](/concepts/releases-and-rollbacks/#on_failure), which can also leave the release in place or ignore the failure. [Releases and rollbacks](/concepts/releases-and-rollbacks/#when-a-deploy-fails) lists everything that counts as a failure.
 
 ## Unchanged services are left alone
 
-The plan compares each service's spec (image digest, environment, ports, mounts, networks, healthcheck, replicas, routes…) with the spec of the containers running on the server. A service whose spec did not change is listed as `unchanged` and keeps its containers: it is not restarted, even if other services of the app are.
+The plan compares each service's spec (image digest, environment, ports, mounts, networks, healthcheck, replicas, routes…) with the spec of the containers running on the server. A service whose spec did not change is listed as `unchanged` and keeps its containers. It is not restarted, even if other services of the app are.
 
-<Callout type="warn">
-Interpolating `${DOCKFLOW_VERSION}` or `${DOCKFLOW_GIT_SHA}` into a service, for example in its environment, changes its spec on every commit, so that service is restarted by every deploy.
-</Callout>
+Interpolating `${DOCKFLOW_VERSION}` or `${DOCKFLOW_GIT_SHA}` into a service changes its spec on every commit, so every deploy restarts it. See [the version label](/concepts/configuration/#the-version-label).
 
 Services without a `restart` policy (nor `deploy.restart_policy`) get `unless-stopped`, so they come back after a crash or a reboot of the server.
 

@@ -3,7 +3,9 @@ title: Templates
 description: Render configuration files and scripts with Jinja before they are built into images or uploaded to the server.
 ---
 
-Some files need values that depend on the environment: an nginx vhost with the environment's domain, an entrypoint script with a worker count. List them under `templates:` and Dockflow renders them with Jinja before it builds images and uploads files. The rendering happens in a temporary copy: your project is never modified.
+Some files need values that depend on the environment: an nginx vhost with the environment's domain, an entrypoint script with a worker count. List them under `templates:`, and Dockflow renders them with Jinja before it builds images and uploads files.
+
+The rendering happens in a temporary copy. Your project is never modified.
 
 ## Example
 
@@ -92,18 +94,18 @@ Each entry of `templates:` is one of:
 
 Both paths are relative to the project directory and must stay inside it. Only the files listed are rendered: nothing else is ever treated as a template.
 
-`templates:` can also be set inside an environment, where it replaces the top-level list for that environment.
+`templates:` can also be set inside an environment. There, it replaces the top-level list for that environment.
 
 ## When templates are rendered
 
-Templates are rendered once per command, by the commands that read build contexts or upload sources:
+The commands that read build contexts or upload sources render templates, once per command:
 
-- `dockflow deploy` and `dockflow plan`, after the `before_build` hooks and before the images are built and the [uploads](/guides/uploads/) are described;
+- `dockflow deploy` and `dockflow plan`, after the `before_build` hooks, and before the images are built and the [uploads](/guides/uploads/) are described;
 - `dockflow build`.
 
 `dockflow validate` does not render templates. To catch a template error before a deploy, run `dockflow build` (when the app builds images) or `dockflow plan`.
 
-A rendered file is read by builds and uploads only. [Hooks](/guides/hooks/) run from the project directory and see the source file, not the rendered one.
+Only builds and uploads read rendered files. [Hooks](/guides/hooks/) run from the project directory and see the source file, not the rendered one. The exception is a hook `script:` that is itself listed under `templates:`: it runs rendered (see [Hooks](/guides/hooks/#environment-variables)).
 
 ## Variables
 
@@ -115,12 +117,12 @@ A template sees the same values as the rest of the configuration, as top-level v
 | The environment's secrets, by their unprefixed name | `{{ API_KEY }}` for `PRODUCTION_API_KEY` |
 | The environment's `vars` | `{{ DOMAIN }}` |
 
-When a name exists in several places, a built-in variable comes first, then a secret, then `vars`. See [environment variables](/reference/environment-variables/) for where secrets come from.
+When a name exists in several places, a built-in variable wins over a secret, and a secret over `vars`. See [environment variables](/reference/environment-variables/) for where secrets come from.
 
 Every value is a string. Compare with strings (`WORKERS == "4"`), or convert first (`WORKERS | int`).
 
 <Callout type="error" title="Secrets in rendered files">
-A secret rendered into a file ends up in that file: inside the image when the file is part of a build context, or on the server when it is uploaded. Render secrets only into files that are meant to hold them.
+A secret rendered into a file ends up in that file: inside the image when the file is part of a build context, or on the server when it is uploaded. Render secrets only into files meant to hold them.
 </Callout>
 
 ### Undefined variables are errors
@@ -132,13 +134,13 @@ error: templates: nginx/site.conf.j2 cannot be rendered: …
 hint: every variable must be defined: built-in, secret or vars of the environment
 ```
 
-An empty value is never substituted silently. For an optional value, give a default:
+Dockflow never silently substitutes an empty value. For an optional value, give a default:
 
 ```jinja
 worker_processes {{ WORKERS | default("2") }};
 ```
 
-A template file listed under `templates:` that does not exist is an error too.
+A file listed under `templates:` that does not exist is also an error.
 
 ## Jinja basics
 
@@ -171,11 +173,13 @@ groups:
 Dockflow renders every template first, then builds a temporary directory:
 
 - Each build context and each upload source that holds a rendered file is copied into it, with hard links where the filesystem allows. The copy leaves out `.git` and what the context's `.dockerignore` excludes, since the build would not read them.
-- The rendered files are written into the copy, replacing the hard link, so the source file is never written to.
+- The rendered files are written into the copy and replace the hard links, so the source files are never written to.
 - Build contexts and upload sources without a rendered file are read in place, without a copy.
 
-The build and the uploads then read from the copy, which is deleted when the command ends.
+The build and the uploads read from the copy. It is deleted when the command ends.
 
 <Callout type="warn" title="File modes">
-A file rendered in place keeps its mode, so an executable `entrypoint.sh` stays executable. A file rendered to a new `dest` takes the mode of the file at `dest` if the project has one, and `644` otherwise. For a script rendered to a new path, render it in place instead, or set the mode in the Dockerfile (`COPY --chmod=755`).
+A file rendered in place keeps its mode, so an executable `entrypoint.sh` stays executable.
+
+A file rendered to a new `dest` takes the mode of the file at `dest` if the project has one, and `644` otherwise. For a script that must stay executable, render it in place instead, or set the mode in the Dockerfile (`COPY --chmod=755`).
 </Callout>

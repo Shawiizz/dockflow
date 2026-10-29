@@ -3,19 +3,31 @@ title: Migrating from the earlier Dockflow
 description: Move a project and a server from the earlier Dockflow, built on Docker Swarm, to this one, by hand.
 ---
 
-This version of Dockflow is a rewrite. It shares nothing with the earlier Dockflow, the TypeScript tool built on Docker Swarm whose releases went up to 3.1.1 and which the design documents call **1.x**: not the configuration format, not the CLI, not what it keeps on the server. Dockflow never reads a 1.x file or server, and has no `migrate` command. Moving a project is done by hand, with the table below.
+This page moves a project from the earlier Dockflow to this one. The earlier Dockflow is the TypeScript tool built on Docker Swarm, with releases up to 3.1.1; this page calls it **1.x**.
+
+This version is a rewrite and shares nothing with 1.x: not the configuration format, not the CLI, not what it keeps on the server. It never reads a 1.x file or server, and has no `migrate` command. You move a project by hand, with the table below.
 
 <Callout type="warn">
-Do not deploy this Dockflow to a server that 1.x still manages. 1.x's Traefik holds ports 80 and 443, which the switch needs, and its Swarm stacks and port filter are unknown to this version.
+Do not deploy this Dockflow to a server that 1.x still manages. 1.x's Traefik holds ports 80 and 443, which the switch needs. This version does not know about 1.x's Swarm stacks and port filter.
 </Callout>
 
 ## The server
 
-The cleanest path is a fresh server, prepared with `dockflow server init` as in the [quickstart](/start/quickstart/): you keep the old one running until the new one serves the app, then move the DNS.
+The simplest path is a fresh server, prepared with `dockflow server init` as in the [quickstart](/start/quickstart/). Keep the old server running until the new one serves the app, then move the DNS.
 
-To reuse the 1.x server, remove 1.x from it first: its Swarm stacks (`docker stack rm`), its Traefik, its port filter rules and units, and leave the swarm (`docker swarm leave --force`). Copy what you want to keep out of `/var/lib/dockflow` before removing it: this version writes its own state there and does not read 1.x's. Then run `dockflow server init` as for a new server. A network a Swarm stack left behind with the name your app uses is refused by the plan until you remove it.
+To reuse the 1.x server, remove 1.x from it first:
 
-The data in your named volumes stays where it is, but its name may not be the one this version gives it: volumes are named `<app>-<env>_<volume>` here. Copy the data across with a backup and [`dockflow backup restore`](/guides/backups/#restoring), or with `dockflow cp`, or declare the old volume with `external: true` and its name.
+1. Copy what you want to keep out of `/var/lib/dockflow`. This version writes its own state there and does not read 1.x's.
+2. Remove the Swarm stacks (`docker stack rm`), Traefik, and the port filter rules and units.
+3. Leave the swarm: `docker swarm leave --force`.
+4. Run `dockflow server init` as for a new server.
+
+If a Swarm stack left behind a network with the name your app uses, the plan refuses it until you remove it.
+
+The data in your named volumes stays where it is, but the volume names may change: this version names volumes `<app>-<env>_<volume>`. To keep the data, either:
+
+- copy it across with a backup and [`dockflow backup restore`](/guides/backups/#restoring), or with `dockflow cp`;
+- or declare the old volume with `external: true` and its name.
 
 ## The project
 
@@ -35,13 +47,19 @@ The data in your named volumes stays where it is, but its name may not be the on
 | `build.dockerfile` relative to the Compose file's folder (`context: ../..` with `dockerfile: Dockerfile.app` in `.dockflow/docker/`) | Relative to the build context, as Compose defines it: `dockerfile: .dockflow/docker/Dockerfile.app`. |
 | `deploy` failing on a held lock in CI, worked around with a concurrency group | [`deploy --wait-lock 10m`](/guides/ci/#overlapping-runs---wait-lock). |
 
-A few Compose keys that only Swarm used change meaning, since there is no Swarm: `deploy.placement`, `deploy.endpoint_mode` and `deploy.rollback_config` are ignored with a warning, `deploy.mode: global` runs one container, and `external` secrets and configs are refused: give them a `file`, `environment` or `content` source. The [Compose reference](/reference/compose/#service-keys) lists every key.
+There is no Swarm, so a few Compose keys that only Swarm used change meaning:
+
+- `deploy.placement`, `deploy.endpoint_mode` and `deploy.rollback_config` are ignored with a warning;
+- `deploy.mode: global` runs one container;
+- `external` secrets and configs are refused: give them a `file`, `environment` or `content` source.
+
+The [Compose reference](/reference/compose/#service-keys) lists every key.
 
 ## Step by step
 
 <Steps>
 
-1. Install this Dockflow next to, or instead of, 1.x: see [installation](/start/installation/). Both are called `dockflow`: make sure the one on your `PATH`, and in CI, is this one.
+1. Install this Dockflow next to, or instead of, 1.x: see [installation](/start/installation/). Both binaries are called `dockflow`, so check that the one on your `PATH`, and in CI, is this one.
 2. Write `dockflow.yml` from the old configuration with the table above, and move what `accessories.yml` deployed into a Compose file. `dockflow init` writes a starting `dockflow.yml` when the directory has none.
 3. Run `dockflow validate production` until it passes: it checks the files and every variable without a server.
 4. Prepare the server and store its connection string as `PRODUCTION_CONNECTION` in your CI (and in `.env.dockflow` to deploy by hand).
@@ -53,7 +71,7 @@ A few Compose keys that only Swarm used change meaning, since there is no Swarm:
 
 ## A complete example
 
-A backend with Postgres, which 1.x deployed as an app and an accessory, joined by another app through a shared network:
+A backend with Postgres, which 1.x deployed as an app and an accessory. Both services also join a network shared with another app:
 
 ```yaml title="compose.yml"
 services:
@@ -63,7 +81,7 @@ services:
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/app
       QUARKUS_DATASOURCE_USERNAME: app
       QUARKUS_DATASOURCE_PASSWORD: ${DB_PASSWORD}
-      GAME_SERVER_API_KEY: ${GAME_SERVER_API_KEY}
+      PAYMENT_API_KEY: ${PAYMENT_API_KEY}
     networks: [default, shared]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/q/health"]

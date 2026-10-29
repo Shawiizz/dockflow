@@ -3,13 +3,18 @@ title: JSON events
 description: The event stream dockflow prints with --json - the envelope, every event type and its data, run outcomes, guarantees and an example.
 ---
 
-Every operation reports its progress as a stream of events. The agent on the server writes them, the CLI relays them, and with `--json` it prints them as they are: one JSON object per line ([JSON Lines](https://jsonlines.org/)). Use this stream to drive a CI job, a dashboard or a bot without parsing human output.
+Every operation reports its progress as a stream of events. The agent on the server writes them and the CLI relays them. With `--json`, the CLI prints them as they are: one JSON object per line ([JSON Lines](https://jsonlines.org/)). Use this stream to drive a CI job, a dashboard or a bot without parsing human output.
 
 ```sh
 dockflow deploy production --json > deploy.jsonl
 ```
 
-The commands that change something print events: `plan`, `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `cancel`, `attach`, `build`, `backup run`, `backup restore`, `backup prune`, `secrets revoke`, and the `server` commands that change the server (`init`, `edge`, `upgrade`, `uninstall`, `network create|remove`, `plugin install|remove`). The read commands (`init`, `validate`, `config show`, `status`, `releases`, `version`, `ps`, `details`, `diagnose`, `list envs|services|images`, `lock`, `prune`, `backup list`, `secrets list`, `plugins list`, `server status`, `server check`, `server network list`, `server plugin list`, `server connection`) print a single JSON document instead.
+This page describes the envelope every line shares, then every event type, the outcomes of a run, and what stays stable between versions. It mirrors the [events specification](https://github.com/Shawiizz/dockflow/blob/main/docs/design/spec/events-v1.md).
+
+Which commands print events:
+
+- **Events.** The commands that change something: `plan`, `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `cancel`, `attach`, `build`, `backup run`, `backup restore`, `backup prune`, `secrets revoke`, and the `server` commands that change the server (`init`, `edge`, `upgrade`, `uninstall`, `network create|remove`, `plugin install|remove`).
+- **A single JSON document.** The read commands: `init`, `validate`, `config show`, `status`, `releases`, `version`, `ps`, `details`, `diagnose`, `list envs|services|images`, `lock`, `prune`, `backup list`, `secrets list`, `plugins list`, `server status`, `server check`, `server network list`, `server plugin list`, `server connection`.
 
 ## Envelope
 
@@ -44,7 +49,7 @@ Fields marked `?` are present only when they apply.
 | `run.finished` | info or error | `outcome`, `exit_code`, `release_seq?`, `duration_ms`, `error?`; see [below](#runfinished) |
 | `result` | info | The document of a read operation, as the agent returns it. The CLI prints it alone, so you rarely see this type in a stream |
 | `config.loaded` | debug | `files` (the Compose files, `dockflow.yml` and the secrets file), `services`: emitted once connected, by the commands that reach the server |
-| `cancel.requested` | warn | `by`: `signal` (this version emits no other value; the spec reserves `cancel`) |
+| `cancel.requested` | warn | `by`: `signal` (this version emits no other value; `cancel` is reserved) |
 | `log` | info or debug | `line`: anything else worth showing (an image pull, the agent being installed, files received) |
 
 `op` is the operation the agent runs, a dotted name:
@@ -130,7 +135,7 @@ An action's `kind` is one of `network.create`, `volume.create`, `secret.create`,
 | `hook.started` | info | `phase`, `name`, `kind` (`local`, `host` or `exec`), `target` |
 | `hook.log` | info | `name`, `target`, `line` |
 | `hook.finished` | info | `name`, `target`, `exit_code`, `fatal` |
-| `upload.progress` | debug | `files_sent`, `files_total`, `bytes_sent`, `bytes_total`: from the CLI, at most once a second and once at the end. It counts the files of every destination, sent together: only those the server lacks. The spec reserves a `dest` field, which this version does not set |
+| `upload.progress` | debug | `files_sent`, `files_total`, `bytes_sent`, `bytes_total`: from the CLI, at most once a second and once at the end. It counts the files of every destination, sent together: only those the server lacks. A `dest` field is reserved; this version does not set it |
 | `upload.finished` | info | `dest`, `files_changed`, `files_deleted` |
 
 A hook's `target` is `local` for a local hook, `server` for a `host` hook, and the container's name for an `exec` hook, which emits one `hook.started` and `hook.finished` per container.
@@ -152,7 +157,7 @@ A hook's `target` is `local` for a local hook, `server` for a `host` hook, and t
 
 | Type | `data` | |
 |---|---|---|
-| `lock.lost` | `scope`, `new_holder` | Never emitted: the lock is a kernel `flock` held until the agent exits, so it cannot be lost while its holder lives. The outcome `lock_lost` is reserved for the same reason |
+| `lock.lost` | `scope`, `new_holder` | Never emitted: the lock is held until the agent exits, so it cannot be lost while its holder lives. The outcome `lock_lost` is reserved for the same reason |
 
 ## run.finished
 
@@ -186,10 +191,10 @@ The agent's last event says how its run ended:
 - **One agent run, one `run.finished`.** Each agent run starts with `run.started` and ends with `run.finished`. A stream with `run.started` and no `run.finished` was cut off; the run may still be going on, and `dockflow attach` follows it.
 - **Events around the agent's run.** In a `deploy`, the CLI's own events come before the agent's run (builds, pushes, `before_*` hooks, files sent) and after it (`after_deploy` and `after_failure` hooks, webhook warnings). Read the outcome from `run.finished`, and the final result from the process's exit code.
 - **Errors before the agent.** When a command fails before the agent starts (an invalid configuration, a failed build, a refused connection), there is no `run.finished`: the last line is the error document `{"error":{…},"exit_code":N}` described in [error format](/reference/exit-codes/#error-format).
-- **Masking.** No event carries a secret value. The emitter replaces every occurrence of a secret's value with `***` in `msg` and in `data`, before the line is written. Values shorter than 4 characters are not masked, because they would hide ordinary words.
+- **Masking.** No event carries a secret value. Every occurrence of a secret's value is replaced with `***` in `msg` and in `data`, before the line is written. Values shorter than 4 characters are not masked, because masking them would hide ordinary words.
 - **Compatibility.** Within `v: 1`, fields and types are only added, never renamed or removed, and their meaning does not change. Ignore types and fields you do not know.
-- **Open enumerations.** A minor release may add values to `level`, `outcome`, a `container.state`'s `state`, a `service.failed`'s `reason`, an action's `kind`, `op`, and error and warning codes. Treat a value you do not know as opaque: show it, do not act on it. Count an unknown `level` as `info`. A new outcome always comes with an existing exit code: new exit codes only come with a major release.
-- **What is stable.** The event stream, the exit codes and the [error document](/reference/exit-codes/#json-output) are covered by these rules. The single JSON documents that read commands print (`status`, `releases`, `config show`, `server status`, `server connection`, …) are not: a minor release may add, rename or remove their fields. Scripts should rely on the event stream and the exit codes.
+- **Open enumerations.** A minor release may add values to `level`, `outcome`, a `container.state`'s `state`, a `service.failed`'s `reason`, an action's `kind`, `op`, and error and warning codes. Treat a value you do not know as opaque: show it, but do not act on it. Count an unknown `level` as `info`. A new outcome always comes with an existing exit code; new exit codes only come with a major release.
+- **What is stable.** These rules cover the event stream, the exit codes and the [error document](/reference/exit-codes/#json-output). They do not cover the single JSON documents that read commands print (`status`, `releases`, `config show`, `server status`, `server connection`, …): a minor release may add, rename or remove their fields. Scripts should rely on the event stream and the exit codes.
 
 <Callout type="warn">
 `dockflow exec`, `dockflow run` and `dockflow ssh` connect your terminal to the command they run. Their output is the command's own: it is neither an event stream nor masked.

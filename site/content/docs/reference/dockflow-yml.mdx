@@ -3,9 +3,11 @@ title: dockflow.yml
 description: Every key of dockflow.yml, with its type, default and meaning, the naming rules and the order in which variables are looked up.
 ---
 
-`dockflow.yml` sits at the root of your project and describes the app and its environments. Your services are described in standard [Compose files](/reference/compose/); `dockflow.yml` holds what Compose has no place for: the environments, the registry, the hooks, the checks and the uploads.
+`dockflow.yml` sits at the root of your project and describes the app and its environments. Your services stay in standard [Compose files](/reference/compose/). `dockflow.yml` holds what Compose has no place for: the environments, the registry, the hooks, the checks and the uploads.
 
-The format is strict. An unknown key is an error (exit code 3, see [exit codes](/reference/exit-codes/)). Later 1.x versions may add keys, never remove or rename one; a file that uses a newer key says so with [`requires`](#top-level). `dockflow validate <env>` checks the file, the Compose files and the variables without contacting a server.
+This page lists every key, section by section, starting with the [top level](#top-level). A [complete example](#a-complete-example) is at the end.
+
+The format is strict: an unknown key is an error (exit code 3, see [exit codes](/reference/exit-codes/)). Later 1.x versions may add keys, but never remove or rename one. A file that uses a newer key says so with [`requires`](#top-level). `dockflow validate <env>` checks the file, the Compose files and the variables without contacting a server.
 
 ## Conventions
 
@@ -46,7 +48,7 @@ These top-level keys can also be set inside an environment, where they **replace
 
 ## `templates`
 
-Each entry is either a path, rendered in place, or a `src`/`dest` pair. Templates are rendered into a temporary copy of the build contexts and the upload sources; your source tree is never written to. Undefined variables are errors. The template syntax is described in the [templates guide](/guides/templates/).
+Each entry is either a path, rendered in place, or a `src`/`dest` pair. Templates are rendered into a temporary copy of the build contexts and the upload sources: your source tree is never written to. An undefined variable is an error. The template syntax is in the [templates guide](/guides/templates/).
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -92,7 +94,7 @@ A failure of the rollout itself (a container that exits, stays unhealthy or time
 
 ## `health`
 
-Public checks, run from the server after the traffic has moved to the new release. They complement the per-service checks of [`x-dockflow.health`](/reference/compose/#health).
+Public checks, run from the server after traffic has moved to the new release. They add to the per-service checks of [`x-dockflow.health`](/reference/compose/#health).
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -127,7 +129,7 @@ Files and directories copied to the server on each deploy, before the containers
 
 ## `hooks`
 
-Commands run at fixed points of a deploy. Hook commands are **not** interpolated: the built-in variables, the environment's `vars` and the secrets the hook lists arrive as environment variables. See the [hooks guide](/guides/hooks/).
+Commands run at fixed points of a deploy. Hook commands are **not** interpolated. Instead, the built-in variables, the environment's `vars` and the secrets the hook lists arrive as environment variables. See the [hooks guide](/guides/hooks/).
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -165,7 +167,7 @@ Webhooks sent when a run finishes. See the [notifications guide](/guides/notific
 
 ## `firewall`
 
-The ports your services publish that the [port filter](/project/security/#the-port-filter) lets in from outside. A port published on every interface (`5432:5432`) and not listed here is dropped; the plan warns about it.
+The ports your services publish that the [port filter](/project/security/#the-port-filter) lets in from outside. A port published on every interface (`5432:5432`) and not listed here is dropped, and the plan warns about it.
 
 ```yaml
 firewall:
@@ -182,7 +184,7 @@ An entry of `public_ports` is a port number, or a map:
 | `protocol` | string | both | `tcp` or `udp`. |
 | `from` | list of strings | anywhere | Addresses or CIDRs, IPv4 or IPv6, the port is open to. |
 
-The filter is one per server: a port an app lists is open for that port, whichever container publishes it. It follows each app environment's current release, so a rollback restores the ports of the release it returns to.
+There is one filter per server. A port that one app lists is open, whichever container publishes it. The filter follows each app environment's current release, so a rollback restores the ports of the release it returns to.
 
 ## `plugins`
 
@@ -234,7 +236,9 @@ routes:
 | `network` | string | none | With `proxy`: a [shared network](/guides/shared-servers/#shared-networks) the switch joins to reach the URL's host. |
 | `files` | map | | Serve a directory: `host_path`, an absolute path on the server, or `volume`, a volume of the Compose file; `browse: true` lists directories. The route's path is stripped: `/builds-raw/a.zip` is `a.zip` of the directory. |
 
-A route also takes every option of a service's route: `headers`, `encode`, `max_body`, `timeouts`, `auth`, `caddy` and `error_pages`. A `files` route runs a small file server, `files-<name>` (or `files-<n>`), in the switch's image, which mounts the directory read-only: the switch itself mounts nothing.
+A route also takes every option of a service's route: `headers`, `encode`, `max_body`, `timeouts`, `auth`, `caddy` and `error_pages`.
+
+A `files` route runs a small file server, `files-<name>` (or `files-<n>`), in the switch's image. That file server mounts the directory read-only; the switch itself mounts nothing.
 
 ## `environments`
 
@@ -260,7 +264,7 @@ How Dockflow finds the server of an environment, first match wins:
 2. the `<ENV>_CONNECTION` secret (`PRODUCTION_CONNECTION`), printed by [`dockflow server connection`](/reference/cli/#server-connection);
 3. the `server` block, with the private key from `DOCKFLOW_SSH_KEY_<ENV>`, `DOCKFLOW_SSH_KEY` (the key itself, or a path to it), ssh-agent, or the `IdentityFile` your `~/.ssh/config` gives the host.
 
-Dockflow reads `~/.ssh/config` as OpenSSH does for `HostName`, `Port`, `User` and `IdentityFile`: `Host` patterns (with `*`, `?` and `!`), `Include`, and the first value of each keyword. `Match` blocks are skipped. What `server:` sets wins over the file.
+Dockflow reads `HostName`, `Port`, `User` and `IdentityFile` from `~/.ssh/config` as OpenSSH does: `Host` patterns (with `*`, `?` and `!`), `Include`, and the first value of each keyword. `Match` blocks are skipped. What `server:` sets wins over the file.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -272,7 +276,7 @@ Dockflow reads `~/.ssh/config` as OpenSSH does for `HostName`, `Port`, `User` an
 
 ## `backups`
 
-Where the environment's [backups](/guides/backups/) go. Without it, a restic repository on the server, in the `dockflow-backups` volume, with a password Dockflow generates.
+Where the environment's [backups](/guides/backups/) go. Without this block, backups go to a restic repository on the server, in the `dockflow-backups` volume, with a password Dockflow generates.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -335,7 +339,7 @@ For an environment, here `production`, a variable is looked up in this order, an
    3. the environment's [SOPS file](/guides/secrets/#secrets-in-a-sops-file), when there is one.
 3. **The environment's `vars`.**
 
-Names with a double underscore right after the environment's prefix, such as `PRODUCTION__DB__PASSWORD`, are reserved for per-server values, which come with several servers per environment. Do not define such variables.
+Names with a double underscore right after the environment's prefix, such as `PRODUCTION__DB__PASSWORD`, are reserved for per-server values, for when an environment has several servers. Do not define such variables.
 
 <Callout type="warn">
 Other process variables are never read: `${HOME}` or `${CI}` are undefined unless you set them in `vars` or as secrets. A Compose `.env` file is not read either.

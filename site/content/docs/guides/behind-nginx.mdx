@@ -3,7 +3,7 @@ title: Behind nginx or another proxy
 description: Run Dockflow on a server where nginx, Apache or another proxy already holds ports 80 and 443, with the external edge and a vhost that points at the switch.
 ---
 
-By default, Dockflow's switch listens on ports 80 and 443 and obtains certificates itself. If your server already runs nginx, Apache, HAProxy or another proxy on those ports, use the **external edge**: the switch listens on one local address, and your proxy sends every routed domain to it. Your proxy keeps TLS; Dockflow keeps zero-downtime deploys.
+If your server already runs nginx, Apache, HAProxy or another proxy on ports 80 and 443, use the **external edge**. By default, the switch listens on those ports and obtains certificates itself. With the external edge, it listens on one local address instead, and your proxy sends every routed domain to it. Your proxy keeps TLS; Dockflow keeps zero-downtime deploys.
 
 ```sh
 dockflow server init root@203.0.113.10 --edge external
@@ -17,7 +17,7 @@ location / {
 }
 ```
 
-You write the vhost once. Deploys and rollbacks move traffic inside the switch, so nginx is never reloaded by a deploy, and its configuration never names a container or a port that changes.
+You write the vhost once. Deploys and rollbacks move traffic inside the switch, so a deploy never reloads nginx. Its configuration never names a container or a port that changes.
 
 ## How it fits together
 
@@ -26,7 +26,7 @@ client ──TLS──▶ nginx :443 ──HTTP──▶ switch 127.0.0.1:8080 �
 ```
 
 - **nginx** terminates TLS, applies whatever you configure in it, and forwards each request to the switch with its `Host` header.
-- **The switch** routes by `Host` and path to the containers of the current release, as declared in each service's `x-dockflow.routes`. During a deploy it moves traffic to the new containers once they are healthy, and lets the old ones finish their requests. See [The switch and the edges](/concepts/switch-and-edges/).
+- **The switch** routes by `Host` and path to the containers of the current release, as declared in each service's `x-dockflow.routes`. During a deploy, it moves traffic to the new containers once they are healthy, and lets the old ones finish their requests. See [The switch and the edges](/concepts/switch-and-edges/).
 
 A request for a host name that no route declares gets a 404 from the switch.
 
@@ -40,7 +40,9 @@ A request for a host name that no route declares gets a 404 from the switch.
    dockflow server init root@203.0.113.10 --edge external
    ```
 
-   On a server already prepared for an environment, `dockflow server init production --edge external` does the same through the deploy user. The switch listens on `127.0.0.1:8080` on the server, reachable from the server only. Running `server init` again with another `--edge` changes the mode of an installed server.
+   The switch then listens on `127.0.0.1:8080`, reachable from the server only.
+
+   On a server already prepared for an environment, `dockflow server init production --edge external` does the same through the deploy user. Running `server init` again with another `--edge` changes the mode of an installed server.
 
 2. Keep your routes as they are. Each routed service declares its domains, and the switch matches them against the `Host` header nginx sends:
 
@@ -75,7 +77,11 @@ A request for a host name that no route declares gets a 404 from the switch.
 | `--switch-listen <ip:port>` | `127.0.0.1:8080` | The address the switch listens on, on the server. The host must be an IP address. Change the port if 8080 is taken; use a private address only when the proxy runs on another machine |
 | `--trusted-proxy <cidr>` | Loopback and private ranges | The networks whose `X-Forwarded-For` header the switch believes. Repeat the option for several ranges |
 
-The default trusted ranges are `127.0.0.0/8`, `::1/128`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` and `fd00::/8`. They are needed even with nginx on the same host: nginx reaches the published port through Docker, so the switch sees a Docker bridge address rather than `127.0.0.1`. `--trusted-proxy` replaces this list rather than adding to it, so only set it when the proxy sits on a known network of its own, and include the Docker bridge range if the proxy also runs on the server.
+The default trusted ranges are `127.0.0.0/8`, `::1/128`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` and `fd00::/8`.
+
+These ranges are needed even with nginx on the same host. nginx reaches the published port through Docker, so the switch sees a Docker bridge address rather than `127.0.0.1`.
+
+`--trusted-proxy` replaces this list rather than adding to it. Set it only when the proxy sits on a known network of its own. If the proxy also runs on the server, include the Docker bridge range.
 
 ## The nginx vhost
 
@@ -138,13 +144,19 @@ To get the certificate without letting certbot rewrite the vhost, use the `certo
 sudo certbot certonly --nginx -d shop.example.com -d www.shop.example.com
 ```
 
-`sudo certbot --nginx` also works if you prefer certbot to add the TLS lines to the vhost itself; don't combine it with a vhost [versioned in your repository](#versioning-the-vhost-in-your-repository), which would overwrite those lines.
+`sudo certbot --nginx` also works, if you prefer certbot to add the TLS lines to the vhost itself. Do not combine it with a vhost [versioned in your repository](#versioning-the-vhost-in-your-repository): the versioned file would overwrite those lines.
 
-Apache, HAProxy, Traefik or a load balancer are configured the same way: forward every routed domain to `127.0.0.1:8080`, keep the `Host` header, and set `X-Forwarded-For` and `X-Forwarded-Proto`.
+Apache, HAProxy, Traefik or a load balancer are configured the same way:
+
+- forward every routed domain to `127.0.0.1:8080`;
+- keep the `Host` header;
+- set `X-Forwarded-For` and `X-Forwarded-Proto`.
 
 ## Cloudflare in front of nginx
 
-When Cloudflare proxies the domains (the orange cloud) and your nginx receives its requests, nginx must take the client's address from Cloudflare, not from the connection. The [`nginx` plugin](/guides/plugins/#the-nginx-plugin) does it with `cloudflare: true`: the client's address from `CF-Connecting-IP`, trusted from Cloudflare's ranges only, and the scheme from Cloudflare's `X-Forwarded-Proto`.
+When Cloudflare proxies the domains (the orange cloud), nginx receives Cloudflare's requests. It must then take the client's address from Cloudflare, not from the connection.
+
+The [`nginx` plugin](/guides/plugins/#the-nginx-plugin) does this with `cloudflare: true`. It takes the client's address from `CF-Connecting-IP`, trusted from Cloudflare's ranges only, and the scheme from Cloudflare's `X-Forwarded-Proto`.
 
 ```yaml title="dockflow.yml"
 plugins:
@@ -152,9 +164,10 @@ plugins:
     with: { domain: "${DOMAIN}", cloudflare: true }
 ```
 
-With Cloudflare's *Flexible* SSL mode, the vhost listens on port 80 (the plugin's default, `tls: false`). With *Full (strict)*, give nginx a certificate Cloudflare accepts, such as a Cloudflare origin certificate, and set `tls: true`.
+- With Cloudflare's *Flexible* SSL mode, the vhost listens on port 80 (the plugin's default, `tls: false`).
+- With *Full (strict)*, give nginx a certificate Cloudflare accepts, such as a Cloudflare origin certificate, and set `tls: true`.
 
-The [port filter](/project/security/#the-port-filter) leaves alone the ports the host itself listens on, so it does not restrict nginx's ports 80 and 443 to Cloudflare's ranges, as the `cloudflare` edge does for the switch. To keep visitors from reaching the server around Cloudflare, limit those ports with the host's firewall, or use a Cloudflare Tunnel.
+The [port filter](/project/security/#the-port-filter) leaves alone the ports the host itself listens on. So, unlike the `cloudflare` edge for the switch, it does not restrict nginx's ports 80 and 443 to Cloudflare's ranges. To keep visitors from reaching the server around Cloudflare, limit those ports with the host's firewall, or use a Cloudflare Tunnel.
 
 ## Checking it
 
@@ -164,7 +177,9 @@ On the server (with `curl` installed there), ask the switch directly, as nginx d
 dockflow ssh production -- curl -sI -H 'Host: shop.example.com' http://127.0.0.1:8080/
 ```
 
-A response from your app means the switch serves the route; a 404 means no route declares that host name in the current release. Then check through nginx from your machine:
+A response from your app means the switch serves the route. A 404 means no route declares that host name in the current release.
+
+Then check through nginx from your machine:
 
 ```sh
 curl -I https://shop.example.com/
@@ -174,7 +189,7 @@ A 502 from nginx usually means the switch is not listening where `proxy_pass` po
 
 ## Versioning the vhost in your repository
 
-The built-in [`nginx` plugin](/guides/plugins/#the-nginx-plugin) writes this vhost from your domains, and checks and reloads nginx when it changed:
+The simplest way is the built-in [`nginx` plugin](/guides/plugins/#the-nginx-plugin). It writes this vhost from your domains, then checks and reloads nginx when the vhost changed:
 
 ```yaml title="dockflow.yml"
 plugins:
@@ -184,7 +199,9 @@ plugins:
       tls: true
 ```
 
-It takes your own vhost too, as a template: `template: deploy/nginx/shop.conf`. Without the plugin, the same is an [upload](/guides/uploads/) and a `host` [hook](/guides/hooks/):
+It also takes your own vhost, as a template: `template: deploy/nginx/shop.conf`.
+
+Without the plugin, do the same with an [upload](/guides/uploads/) and a `host` [hook](/guides/hooks/):
 
 ```yaml title="dockflow.yml"
 version: 1
@@ -203,8 +220,9 @@ environments:
 ```
 
 - The upload replaces `/etc/nginx/sites-enabled/shop.conf` atomically, and only when the file changed.
-- After the deploy, the hook checks the whole nginx configuration and reloads nginx. With `fatal: true`, a configuration that fails `nginx -t` rolls the deploy back, and the rollback restores the previous file. nginx keeps serving its previous configuration meanwhile, since it was never reloaded.
-- The hook runs on the server as the SSH user of the environment, without a terminal, so `sudo` must not ask for a password for these two commands. `server init --nginx` installs nginx and this rule for you. Add a rule with `sudo visudo -f /etc/sudoers.d/dockflow-nginx`, using your SSH user's name and the paths `command -v nginx systemctl` prints:
+- After the deploy, the hook checks the whole nginx configuration and reloads nginx.
+- With `fatal: true`, a configuration that fails `nginx -t` rolls the deploy back, and the rollback restores the previous file. Meanwhile nginx keeps serving its previous configuration, since it was never reloaded.
+- The hook runs on the server as the environment's SSH user, without a terminal, so `sudo` must not ask for a password for these two commands. `server init --nginx` installs nginx and this rule for you. Otherwise, add the rule with `sudo visudo -f /etc/sudoers.d/dockflow-nginx`, using your SSH user's name and the paths that `command -v nginx systemctl` prints:
 
   ```text
   dockflow ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx

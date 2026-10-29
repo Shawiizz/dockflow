@@ -3,17 +3,19 @@ title: CLI
 description: Every dockflow command, its arguments and its options, as the binary defines them.
 ---
 
-This page lists every command of `dockflow` 1.0.0-alpha.5, with the options its `--help` prints. Every command also accepts `-h, --help`. Exit codes are listed on the [exit codes](/reference/exit-codes/) page.
+This page lists every command of `dockflow` 1.0.0-alpha.5, with the options its `--help` prints. Start with the conventions and global options, which apply to every command, then look up a command by name. Every command also accepts `-h, --help`. Exit codes are on the [exit codes](/reference/exit-codes/) page.
 
 ## Conventions
 
-- **`<env>`** names an environment of [`dockflow.yml`](/reference/dockflow-yml/). It can be left out when the file has a single environment, and shortened to a unique prefix (`prod` for `production`); an ambiguous prefix lists the candidates. In CI, `deploy` without `<env>` takes the environment from the tag: `1.2.0` selects the environment whose `ci.tag_suffix` is empty (`production` by default), `1.2.0-staging` the one whose suffix is `staging`.
+- **`<env>`** names an environment of [`dockflow.yml`](/reference/dockflow-yml/). You can leave it out when the file has a single environment, or shorten it to a unique prefix (`prod` for `production`). An ambiguous prefix lists the candidates.
+- **`<env>` in CI.** `deploy` without `<env>` takes the environment from the tag. `1.2.0` selects the environment whose `ci.tag_suffix` is empty (`production` by default); `1.2.0-staging` selects the one whose suffix is `staging`.
 - **The project directory** is the current directory, or `-C <path>`.
 - **The server** of an environment comes from `--connection`, then the `<ENV>_CONNECTION` secret, then the environment's [`server`](/reference/dockflow-yml/#server) block.
-- **What is read.** `deploy`, `plan`, `build`, `rollback`, `run`, `validate`, `config show` and `list services` read `dockflow.yml` and the Compose files, so they need every variable these use. The commands that act on what the server already runs (`status`, `ps`, `logs`, `exec`, `cp`, `ssh`, `restart`, `stop`, `scale`, `destroy`, `cancel`, `releases`, `details`, `diagnose`, `images`, `secrets revoke` and the `server` commands) read `dockflow.yml` alone: on your machine, `<ENV>_CONNECTION` is enough.
-- **Prompts.** `deploy` shows its plan and asks for confirmation, and `destroy` asks before removing anything, when they run on a terminal. With `--yes`, `--json` or without a terminal, they never prompt. Declining exits with code 130 (`run.declined`) and changes nothing.
-- **Output.** Commands that change a server print [events](/reference/events/); with `--json`, as JSON Lines. Read commands print a table, or one JSON document with `--json`; the fields of these documents may change in a minor release, so scripts should rely on the event stream and the [exit codes](/reference/exit-codes/), which are stable for all of 1.x. Human output is not stable either. Secret values are masked in every output, except the output of `exec`, `run` and `ssh`, which is the command's own.
-- **Ctrl+C** cancels a command, except while the agent runs on the server: the first one asks the agent to stop and roll back, a second one detaches and leaves the run going. [`dockflow attach`](#attach) follows it again.
+- **What is read.** `deploy`, `plan`, `build`, `rollback`, `run`, `validate`, `config show` and `list services` read `dockflow.yml` and the Compose files, so they need every variable these files use. The commands that act on what the server already runs (`status`, `ps`, `logs`, `exec`, `cp`, `ssh`, `restart`, `stop`, `scale`, `destroy`, `cancel`, `releases`, `details`, `diagnose`, `images`, `secrets revoke` and the `server` commands) read `dockflow.yml` alone. On your machine, `<ENV>_CONNECTION` is enough for them.
+- **Prompts.** On a terminal, `deploy` shows its plan and asks for confirmation, and `destroy` asks before removing anything. With `--yes`, `--json` or without a terminal, they never prompt. Declining exits with code 130 (`run.declined`) and changes nothing.
+- **Output.** Commands that change a server print [events](/reference/events/), as JSON Lines with `--json`. Read commands print a table, or one JSON document with `--json`. The fields of these documents may change in a minor release, and human output is not stable either. Scripts should rely on the event stream and the [exit codes](/reference/exit-codes/), which are stable for all of 1.x.
+- **Masking.** Secret values are masked in every output, except the output of `exec`, `run` and `ssh`, which is the command's own.
+- **Ctrl+C** cancels a command, except while the agent runs on the server. There, the first Ctrl+C asks the agent to stop and roll back; a second one detaches and leaves the run going. [`dockflow attach`](#attach) follows it again.
 
 ## Global options
 
@@ -33,12 +35,12 @@ This page lists every command of `dockflow` 1.0.0-alpha.5, with the options its 
 dockflow init [flags]
 ```
 
-Start a project in the current directory (or `-C <dir>`):
+Start a project in the current directory (or `-C <dir>`). It writes:
 
 - `dockflow.yml`, with the app's name and a `production` environment whose `DOMAIN` is `--domain`;
-- `compose.yml`, when the directory has no Compose file: a `web` service built from the `Dockerfile`, on the port its `EXPOSE` gives (80 without one), or `nginx` when there is no `Dockerfile`, with a route to `${DOMAIN}`;
-- `.env.dockflow` added to `.gitignore`, which is created if needed;
-- with `--ci github`, `.github/workflows/deploy.yml`; with `--ci gitlab`, `.gitlab-ci.yml`. The workflow builds on every branch, deploys on tags, and backs up `production` on a schedule (every night on GitHub; on GitLab, when a pipeline schedule runs it), with the CLI pinned to the version that wrote it. See [Deploying from CI](/guides/ci/#complete-workflows); the other providers' workflows are there.
+- `compose.yml`, when the directory has no Compose file: a `web` service with a route to `${DOMAIN}`. The service is built from the `Dockerfile`, on the port its `EXPOSE` gives (80 without one), or runs `nginx` when there is no `Dockerfile`;
+- `.env.dockflow` in `.gitignore`, which is created if needed;
+- with `--ci github`, `.github/workflows/deploy.yml`; with `--ci gitlab`, `.gitlab-ci.yml`. The workflow builds on every branch, deploys on tags, and backs up `production` on a schedule (every night on GitHub; on GitLab, when a pipeline schedule runs it). It pins the CLI to the version that wrote it. Workflows for other providers are in [Deploying from CI](/guides/ci/#complete-workflows).
 
 On a terminal, it asks for the name, the domain and the CI provider, unless the flags give them. It replaces no file without `--force` (`init.exists`, exit code 2). Check the result with `dockflow validate`.
 
@@ -55,7 +57,9 @@ On a terminal, it asks for the name, the domain and the CI provider, unless the 
 dockflow validate [<env>] [flags]
 ```
 
-Check everything that can be checked without a server: `dockflow.yml`, the Compose files, the `x-dockflow` settings and every variable they use, for one environment. Warnings, such as ignored Compose keys, are printed first. It exits with code 0 when the environment is valid and 3 when it is not. It does not contact the server and does not render templates or build images.
+Check everything that can be checked without a server, for one environment: `dockflow.yml`, the Compose files, the `x-dockflow` settings and every variable they use. Warnings, such as ignored Compose keys, are printed first. It exits with code 0 when the environment is valid and 3 when it is not.
+
+It does not contact the server, render templates or build images.
 
 No options besides the global ones.
 
@@ -111,7 +115,13 @@ The app's images on the server; with `-a`, every image of the server.
 dockflow build [<env>] [flags]
 ```
 
-Build the images of the services that have `build`, without deploying. Without `--push`, images are built on this machine for `--platform` and the result is discarded: it checks that they build, and runs no hook. With `--push`, they are built for the server's architecture and pushed where a deploy would push them, with the `before_build` and `after_build` hooks around the build. With `build.builder: remote`, the build runs on the server, and `--push` is implied. A failed build exits with code 7.
+Build the images of the services that have `build`, without deploying.
+
+- Without `--push`, images are built on this machine for `--platform`, and the result is discarded. It only checks that they build, and runs no hook.
+- With `--push`, they are built for the server's architecture and pushed where a deploy would push them. The `before_build` and `after_build` hooks run around the build.
+- With `build.builder: remote`, the build runs on the server, and `--push` is implied.
+
+A failed build exits with code 7.
 
 | Option | Default | Description |
 |---|---|---|
@@ -126,7 +136,9 @@ Build the images of the services that have `build`, without deploying. Without `
 dockflow plan [<env>] [flags]
 ```
 
-Print what a deploy would change, without changing any container. The plan is computed on the server, from what really runs there. To compare images by content, `plan` builds and pushes the images first, as a deploy would; with `--no-build`, built services show as changed. A plan with nothing to do exits with code 0.
+Print what a deploy would change, without changing any container. The plan is computed on the server, from what really runs there.
+
+To compare images by content, `plan` builds and pushes the images first, as a deploy would. With `--no-build`, built services show as changed. A plan with nothing to do exits with code 0.
 
 | Option | Default | Description |
 |---|---|---|
@@ -142,15 +154,21 @@ Print what a deploy would change, without changing any container. The plan is co
 dockflow deploy [<env>] [flags]
 ```
 
-Plan, confirm and apply. In order: the `before_build` hooks, the build and push of images, the `after_build` hooks, the `before_deploy` hooks, then the plan. On a terminal, the plan is shown for confirmation, and the agent applies exactly that plan. On the server, the agent applies the uploads, the jobs, the rollouts, the switch of traffic and the checks. The `after_deploy` hooks run once the release is live. If the run fails, the previous release is restored (unless [`on_failure`](/reference/dockflow-yml/#on_failure) or `--no-rollback` say otherwise) and the `after_failure` hooks run. See [how it works](/concepts/how-it-works/) and [releases and rollbacks](/concepts/releases-and-rollbacks/).
+Plan, confirm and apply. The steps, in order:
 
-With `--only web,worker`, only those services move to the new version; every other service stays as the current release has it, even when `compose.yml` changed it, and is neither updated nor removed. The new release still records the whole app, so a later full deploy updates the services `--only` left out. Jobs come from the deployed version and run as on a full deploy. A named service that depends on a service the server does not run is refused (`plan.only_dependency`).
+1. the `before_build` hooks, the build and push of images, the `after_build` hooks, the `before_deploy` hooks, then the plan. On a terminal, the plan is shown for confirmation, and the agent applies exactly that plan;
+2. on the server, the agent applies the uploads, the jobs, the rollouts, the switch of traffic and the checks;
+3. once the release is live, the `after_deploy` hooks run.
 
-With `--skip-build`, nothing is built: each built service uses the image `dockflow build --push` pushed for the same version, so a CI pipeline can build in one job and deploy in another. The build hooks do not run. A version that was never pushed fails with `build.not_pushed` (exit code 7). Images built on the server (`build.builder: remote`) without an external registry are named after their content, so `--skip-build` cannot find them.
+If the run fails, the previous release is restored and the `after_failure` hooks run. [`on_failure`](/reference/dockflow-yml/#on_failure) or `--no-rollback` can keep the failed release in place instead. See [how it works](/concepts/how-it-works/) and [releases and rollbacks](/concepts/releases-and-rollbacks/).
 
-With `--plan plan.json`, the deploy applies a plan written by `dockflow plan --out plan.json`, as it was reviewed: it builds nothing (the plan pins the built images), asks for no confirmation, and is refused with `plan.stale` (exit code 6) if anything changed since, on the server or in the project, secrets included. The file holds no secret value; it is written for its owner only.
+**`--only web,worker`** moves only those services to the new version. Every other service stays as the current release has it, even when `compose.yml` changed it: it is neither updated nor removed. The new release still records the whole app, so a later full deploy updates the services `--only` left out. Jobs come from the deployed version and run as on a full deploy. A named service that depends on a service the server does not run is refused (`plan.only_dependency`).
 
-With `--detach`, the command returns as soon as the run started on the server, and prints its run ID: `dockflow attach <env> <run>` follows it. `after_deploy` and `after_failure` hooks that run on your machine or over SSH need the CLI until the end, so `--detach` refuses them; webhooks, sent by the CLI, are not sent for a detached run.
+**`--skip-build`** builds nothing: each built service uses the image `dockflow build --push` pushed for the same version. A CI pipeline can then build in one job and deploy in another. The build hooks do not run. A version that was never pushed fails with `build.not_pushed` (exit code 7). Images built on the server (`build.builder: remote`) without an external registry are named after their content, so `--skip-build` cannot find them.
+
+**`--plan plan.json`** applies a plan written by `dockflow plan --out plan.json`, exactly as it was reviewed. It builds nothing (the plan pins the built images) and asks for no confirmation. It is refused with `plan.stale` (exit code 6) if anything changed since, on the server or in the project, secrets included. The file holds no secret value, and is readable by its owner only.
+
+**`--detach`** returns as soon as the run has started on the server, and prints its run ID; `dockflow attach <env> <run>` follows it. `after_deploy` and `after_failure` hooks that run on your machine or over SSH need the CLI until the end, so `--detach` refuses them. Webhooks are sent by the CLI, so they are not sent for a detached run.
 
 Exit codes: 5 when another run holds the lock, 7 when the build fails, 8 when the run failed and was rolled back, 9 when it failed and was left in place, 11 when a fatal `before_*` hook failed. See [exit codes](/reference/exit-codes/).
 
@@ -172,7 +190,7 @@ Exit codes: 5 when another run holds the lock, 7 when the build fails, 8 when th
 dockflow rollback [<env>] [flags]
 ```
 
-Re-apply a recorded release, by default the previous one. The rollback is a new release in the history, applied with the same rollouts and checks as a deploy. Jobs and hooks do not run. It takes the environment's lock.
+Re-apply a recorded release, by default the previous one. The rollback becomes a new release in the history, applied with the same rollouts and checks as a deploy. Jobs and hooks do not run. It takes the environment's lock.
 
 | Option | Default | Description |
 |---|---|---|
@@ -344,7 +362,9 @@ No options besides the global ones.
 dockflow restart [<env>] [<service>…] [flags]
 ```
 
-Restart services with their rollout strategy, so routed services restart without downtime. Without a service, every service except jobs. It restarts the current release as recorded; it does not read your Compose files. It takes the environment's lock. The first argument is taken as the environment only when it is an environment's exact name.
+Restart services with their rollout strategy, so routed services restart without downtime. Without a service, it restarts every service except jobs.
+
+It restarts the current release as recorded, and does not read your Compose files. It takes the environment's lock. The first argument is taken as the environment only when it is an environment's exact name.
 
 No options besides the global ones.
 
@@ -354,7 +374,7 @@ No options besides the global ones.
 dockflow stop [<env>] [<service>…] [flags]
 ```
 
-Stop services until the next `deploy` or `restart`. Without a service, every service except jobs. It takes the environment's lock. The first argument is taken as the environment only when it is an environment's exact name.
+Stop services until the next `deploy` or `restart`. Without a service, it stops every service except jobs. It takes the environment's lock. The first argument is taken as the environment only when it is an environment's exact name.
 
 No options besides the global ones.
 
@@ -364,7 +384,7 @@ No options besides the global ones.
 dockflow scale [<env>] <service> <replicas> [flags]
 ```
 
-Change a service's number of containers until the next deploy, which restores the count of the Compose file. `<replicas>` is at least 1; `dockflow stop` stops a service. A stateful service, or one with `container_name`, cannot run more than once. It takes the environment's lock.
+Change a service's number of containers until the next deploy, which restores the count of the Compose file. `<replicas>` is at least 1; to stop a service, use `dockflow stop`. A stateful service, or one with `container_name`, cannot run more than once. It takes the environment's lock.
 
 No options besides the global ones.
 
@@ -374,7 +394,9 @@ No options besides the global ones.
 dockflow destroy [<env>] [flags]
 ```
 
-Remove an environment from the server: its containers, routes, networks and state. With `--only`, remove these services only; a remaining service that depends on one of them is an error. It asks for confirmation on a terminal. Volumes are kept unless `--volumes` is given.
+Remove an environment from the server: its containers, routes, networks and state. Volumes are kept unless `--volumes` is given. It asks for confirmation on a terminal.
+
+With `--only`, it removes these services only. A remaining service that depends on one of them is an error.
 
 | Option | Default | Description |
 |---|---|---|
@@ -391,7 +413,9 @@ Remove an environment from the server: its containers, routes, networks and stat
 dockflow prune [<env>] [flags]
 ```
 
-Without a kind, removes stopped containers, untagged images and networks that Dockflow does not manage, and runs the registry's garbage collection. Images of the releases in retention and app volumes are always kept; `--volumes` removes unused anonymous volumes only. See the [cleanup guide](/guides/cleanup/).
+Remove what the server no longer needs. Without a kind option, it removes stopped containers, untagged images and networks that Dockflow does not manage, and runs the registry's garbage collection.
+
+Images of the releases in retention and app volumes are always kept; `--volumes` removes unused anonymous volumes only. See the [cleanup guide](/guides/cleanup/).
 
 | Option | Default | Description |
 |---|---|---|
@@ -410,7 +434,11 @@ Without a kind, removes stopped containers, untagged images and networks that Do
 dockflow backup run [<env>] [<service>] [--server] [--wait-lock <duration>]
 ```
 
-Back up the services of the current release that declare [`x-dockflow.backup`](/reference/compose/#backup), or the one named, to the environment's restic repository, then apply each one's retention and check a sample of the repository. It takes the environment's lock; `--wait-lock 10m` waits for a deploy to finish. A failed backup exits with code 12, after the other services. `--server` backs up the server's state instead, `/var/lib/dockflow` without the backups' passwords, with no lock. See [backups](/guides/backups/) and [the server's state](/guides/backups/#the-servers-state).
+Back up the services of the current release that declare [`x-dockflow.backup`](/reference/compose/#backup), or the one named, to the environment's restic repository. It then applies each service's retention and checks a sample of the repository.
+
+It takes the environment's lock; `--wait-lock 10m` waits for a deploy to finish. When a service's backup fails, the other services are still backed up, and the command exits with code 12.
+
+`--server` backs up the server's state instead: `/var/lib/dockflow` without the backups' passwords, with no lock. See [backups](/guides/backups/) and [the server's state](/guides/backups/#the-servers-state).
 
 | Option | Default | Description |
 |---|---|---|
@@ -435,7 +463,7 @@ The environment's snapshots, or one service's, oldest first: id, time, service, 
 dockflow backup restore [<env>] <service> [--snapshot <id|latest|date>] [--from <env>] [--wait-lock <duration>]
 ```
 
-Restore a snapshot of the service into the current release, under the environment's lock: a dump with `pg_restore --single-transaction --exit-on-error` (or the `restore` command), volumes with the service stopped. It asks for confirmation on a terminal, and needs `--yes` without one. A failed restore exits with code 12. See [restoring](/guides/backups/#restoring).
+Restore a snapshot of the service into the current release, under the environment's lock. A dump is restored with `pg_restore --single-transaction --exit-on-error` (or the `restore` command); volumes are restored with the service stopped. It asks for confirmation on a terminal, and needs `--yes` without one. A failed restore exits with code 12. See [restoring](/guides/backups/#restoring).
 
 | Option | Default | Description |
 |---|---|---|
@@ -449,7 +477,9 @@ Restore a snapshot of the service into the current release, under the environmen
 dockflow backup prune [<env>] [<service>] [--server] [--keep-last n] [--keep-hourly n] [--keep-daily n] [--keep-weekly n] [--keep-monthly n]
 ```
 
-Apply the services' retention, or the one given, and reclaim the space of the forgotten snapshots. `--server` applies it to the snapshots of the server's state. With any `--keep-*` option, the options given replace the whole retention for this run; a rule not given keeps nothing.
+Apply the retention of the services, or of the one given, and reclaim the space of the forgotten snapshots. `--server` applies it to the snapshots of the server's state.
+
+With any `--keep-*` option, the options given replace the whole retention for this run: a rule not given keeps nothing.
 
 | Option | Default | Description |
 |---|---|---|
@@ -466,7 +496,11 @@ Apply the services' retention, or the one given, and reclaim the space of the fo
 dockflow lock status|acquire|release [<env>] [flags]
 ```
 
-Hold an environment's lock by hand, for a maintenance window. `acquire` sets a manual lock, which never expires: until `release`, every command that takes the lock (`deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`) is refused with exit code 5, except `deploy --force`. `acquire` fails with code 5 when a manual lock is already set, unless `--force` is given; `release` of a lock someone else set needs `--force` too. `status` shows the manual lock, who set it, when and why.
+Hold an environment's lock by hand, for a maintenance window.
+
+- `acquire` sets a manual lock, which never expires. Until `release`, every command that takes the lock (`deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`) is refused with exit code 5, except `deploy --force`. `acquire` fails with code 5 when a manual lock is already set, unless `--force` is given.
+- `release` removes the manual lock. Releasing a lock someone else set needs `--force`.
+- `status` shows the manual lock: who set it, when and why.
 
 | Option | Default | Description |
 |---|---|---|
@@ -547,24 +581,32 @@ sudo dockflow server init [flags]          # on the server, outside a project
 dockflow server init [<env>] [flags]
 ```
 
-With `<admin>@<host>`, prepares a server from an administrator's account (`root`, or a user with passwordless `sudo`), then prints the connection string for your CI:
+Prepare a server, or update one. The command has three forms, described below.
+
+**With `<admin>@<host>`**, it prepares a server from an administrator's account (`root`, or a user with passwordless `sudo`), then prints the connection string for your CI. The steps:
 
 1. installs Docker from Docker's repository when it is missing (Debian and Ubuntu; elsewhere, install Docker Engine 27 or later first, or pass `--skip-docker-install` to be told so);
 2. creates the deploy user (`dockflow`), adds it to the `docker` group, and installs a key generated on this machine, with `restrict,port-forwarding,pty`, and `from=` with `--from`;
-3. hardens SSH, unless `--no-hardening`: a drop-in that refuses passwords and lets root in by key only (passwords stay while the administrator's account has no key, so you are never locked out). The rest of the server's administration (fail2ban, automatic updates, time synchronisation) is left to you;
+3. hardens SSH, unless `--no-hardening`: a drop-in that refuses passwords and lets root in by key only. Passwords stay allowed while the administrator's account has no key, so you are never locked out. The rest of the server's administration (fail2ban, automatic updates, time synchronisation) is left to you;
 4. with `--nginx`, installs nginx, which refuses the host names no vhost serves, with the sudo rules of the [nginx plugin](/guides/plugins/#the-nginx-plugin);
 5. installs the boot units of the port filter and of Cloudflare's ranges;
 6. reconnects as the deploy user and installs the switch, the server-local registry and the watchdog.
 
-On a terminal, without `--edge` or `--nginx`, it asks how traffic reaches the server's apps; Enter keeps the server's choice, `builtin` for a new server. `--yes` or `--json` never ask.
+On a terminal, without `--edge` or `--nginx`, it asks how traffic reaches the server's apps. Enter keeps the server's choice, or `builtin` for a new server. With `--yes` or `--json`, it never asks.
 
-The server's host key must be known: in your `~/.ssh/known_hosts`, or given with `--host-key`. Every step can be run again; a new run adds a new key. `<host>` may be a `Host` alias of your `~/.ssh/config`, whose `HostName`, `Port`, `User` and `IdentityFile` apply where the target sets none; the connection string gets the real address.
+The server's host key must be known: in your `~/.ssh/known_hosts`, or given with `--host-key`. Every step can be run again; a new run adds a new key. `<host>` may be a `Host` alias of your `~/.ssh/config`. Its `HostName`, `Port`, `User` and `IdentityFile` apply where the target sets none, and the connection string gets the real address.
 
-Without an argument, in a directory without `dockflow.yml`, prepares the server it runs on, which must be Linux, as root: the same steps, with the key generated in memory and never written to disk. The connection string gives the server's public address (the source address of its route to the internet; a private address is refused, give `--host`), the SSH port of `sshd_config` (following its `Include` lines; 22 when it has none) and the fingerprint of `/etc/ssh/ssh_host_ed25519_key.pub` (`ecdsa`, then `rsa`, when there is no ed25519 key). The deploy user is then checked through the SSH server on `127.0.0.1`, as the CI will reach it.
+**Without an argument**, in a directory without `dockflow.yml`, it prepares the server it runs on, which must be Linux, as root. The steps are the same, with the key generated in memory and never written to disk. The connection string gives:
 
-With an environment, installs or updates the switch and the registry on the server of that environment, reached as for a deploy.
+- the server's public address: the source address of its route to the internet. A private address is refused; give `--host` instead;
+- the SSH port of `sshd_config`, following its `Include` lines (22 when it sets none);
+- the fingerprint of `/etc/ssh/ssh_host_ed25519_key.pub` (`ecdsa`, then `rsa`, when there is no ed25519 key).
 
-Running it again updates the server, and the switch keeps every app's routes. An option you don't give keeps what the server has: `sudo dockflow server init` alone, after a new Dockflow is installed, upgrades the watchdog and keeps the edge, its address, the registry and the filter as they were. Give an option to change it; `--no-registry=false`, `--no-port-filter=false` and `--no-watchdog=false` install again what an earlier run left out. See [the switch and edges](/concepts/switch-and-edges/).
+The deploy user is then checked through the SSH server on `127.0.0.1`, as the CI will reach it.
+
+**With an environment**, it installs or updates the switch and the registry on the server of that environment, reached as for a deploy.
+
+**Running it again** updates the server, and the switch keeps every app's routes. An option you don't give keeps what the server has. For example, `sudo dockflow server init` alone, after a new Dockflow is installed, upgrades the watchdog and keeps the edge, its address, the registry and the filter as they were. Give an option to change it. `--no-registry=false`, `--no-port-filter=false` and `--no-watchdog=false` install again what an earlier run left out. See [the switch and edges](/concepts/switch-and-edges/).
 
 | Edge | Effect |
 |---|---|
@@ -608,7 +650,15 @@ dockflow server init root@203.0.113.10 --edge external
 dockflow server status [<env>]
 ```
 
-The server as a whole: its settings (edge, port filter, the Dockflow version that last ran `server init`), the Docker version, the switch, the registry and the watchdog with their state and image, every app environment on the server with its current release and how many of its containers run, and the free disk space. `--json` prints it as one document. Without `<env>`, the server of the only environment of `dockflow.yml`, or of `--connection`.
+The server as a whole:
+
+- its settings: edge, port filter, the Dockflow version that last ran `server init`;
+- the Docker version;
+- the switch, the registry and the watchdog, with their state and image;
+- every app environment on the server, with its current release and how many of its containers run;
+- the free disk space.
+
+`--json` prints it as one document. Without `<env>`, it shows the server of the only environment of `dockflow.yml`, or of `--connection`.
 
 ### server check
 
@@ -634,7 +684,7 @@ It exits with code 0 when no check failed, and 9 (`check.failed`) when one did. 
 dockflow server edge [<env>] builtin|cloudflare|external|none [--switch-listen <addr:port>] [--trusted-proxy <cidr>…]
 ```
 
-Changes how traffic reaches the server's switch, and keeps every other setting: it is `server init <env> --edge <mode>`. The switch container is replaced, which interrupts traffic for a moment, and every app's routes are loaded into the new one. `none` is refused while routes go through the switch. See [the switch and edges](/concepts/switch-and-edges/).
+Changes how traffic reaches the server's switch, and keeps every other setting. It is the same as `server init <env> --edge <mode>`. The switch container is replaced, which interrupts traffic for a moment, and every app's routes are loaded into the new one. `none` is refused while routes go through the switch. See [the switch and edges](/concepts/switch-and-edges/).
 
 | Option | Default | Description |
 |---|---|---|
@@ -647,7 +697,9 @@ Changes how traffic reaches the server's switch, and keeps every other setting: 
 dockflow server upgrade [<env>]
 ```
 
-Pulls the images of the switch and of the registry again (the tags `server init` installed, `caddy:2` and `registry:3` unless you chose others) and replaces their containers when the image changed; the watchdog runs this CLI's agent. Every setting stays. When the server cannot pull an image, it keeps the one it has and warns (`upgrade.pull`). Run it after installing a new Dockflow, or to get Caddy's fixes.
+Pulls the images of the switch and of the registry again, and replaces their containers when the image changed. The tags pulled are the ones `server init` installed: `caddy:2` and `registry:3` unless you chose others. The watchdog runs this CLI's agent. Every setting stays.
+
+When the server cannot pull an image, it keeps the one it has and warns (`upgrade.pull`). Run it after installing a new Dockflow, or to get Caddy's fixes.
 
 ### server uninstall
 
@@ -655,7 +707,13 @@ Pulls the images of the switch and of the registry again (the tags `server init`
 dockflow server uninstall [<env>] [--volumes]
 ```
 
-Removes Dockflow from the server: every app environment (their containers, networks, Compose secrets and releases; with `--volumes`, their volumes and data), the switch with its certificates, the registry with its images, the watchdog, the shared networks, the port filter's rules, the finished agents and `/var/lib/dockflow`. The backups stay, with their passwords in `/var/lib/dockflow/backups/`, unless `--volumes` is given. The deploy user, Docker, the containers Dockflow did not create and Docker's volume plugins stay.
+Removes Dockflow from the server:
+
+- every app environment: their containers, networks, Compose secrets and releases, and with `--volumes`, their volumes and data;
+- the switch with its certificates, the registry with its images, and the watchdog;
+- the shared networks, the port filter's rules, the finished agents and `/var/lib/dockflow`.
+
+The backups stay, with their passwords in `/var/lib/dockflow/backups/`, unless `--volumes` is given. The deploy user, Docker, the containers Dockflow did not create and Docker's volume plugins always stay.
 
 On a terminal, it asks you to type the server's name. Without a terminal, it needs `--yes`. Running `server init` afterwards installs Dockflow again, on an empty server.
 
@@ -669,13 +727,13 @@ On a terminal, it asks you to type the server's name. Without a terminal, it nee
 dockflow server cloud-init --host <address> [flags] > user-data.yml
 ```
 
-Prints the cloud-init user-data of a new server, to give your provider (DigitalOcean, Hetzner, Scaleway, AWS) when you create it: on its first boot, it does what `server init` does before reconnecting (Docker, the deploy user and its key, hardening, `--nginx`). Then it prints the connection string, on the standard error.
+Prints the cloud-init user-data of a new server, to give your provider (DigitalOcean, Hetzner, Scaleway, AWS) when you create it. On its first boot, the server does what `server init` does before reconnecting: Docker, the deploy user and its key, hardening, `--nginx`. The command then prints the connection string on the standard error.
 
 - The deploy key is generated here; only its public part is in the user-data.
 - The server's SSH host key is generated here too, and is in the user-data: the connection string pins it before the server exists. Keep the user-data as you would the server's disk, or write it with `-o user-data.yml` (mode 600).
 - `--host` is required: the address the CI will reach the server at, a reserved IP or a domain name.
 
-Once the first boot has finished, install the switch, the registry and the watchdog with `dockflow server init <env>`. The first boot takes a few minutes, mostly to install Docker: `cloud-init status --wait` on the server returns when it is done. Before that, the deploy user does not exist yet.
+The first boot takes a few minutes, mostly to install Docker. `cloud-init status --wait` on the server returns when it is done; before that, the deploy user does not exist yet. Once it has finished, install the switch, the registry and the watchdog with `dockflow server init <env>`.
 
 | Option | Default | Description |
 |---|---|---|
@@ -697,7 +755,7 @@ Once the first boot has finished, install the switch, the registry and the watch
 dockflow server network create|list|remove [<env>] [<name>]
 ```
 
-Networks shared between the apps of a server, which their Compose files join as `external` networks. `create` makes a bridge network owned by the server; `remove` refuses while containers use it; `list` shows each one with its containers. See [several apps on one server](/guides/shared-servers/#shared-networks).
+Manage networks shared between the apps of a server, which their Compose files join as `external` networks. `create` makes a bridge network owned by the server. `remove` refuses while containers use it. `list` shows each one with its containers. See [several apps on one server](/guides/shared-servers/#shared-networks).
 
 ### server plugin
 
@@ -706,7 +764,7 @@ dockflow server plugin install [<env>] <plugin> [--alias <name>] [<key>=<value>�
 dockflow server plugin list|remove [<env>] [<plugin>]
 ```
 
-Docker volume plugins, which Compose volumes use with `driver`. `install` pulls the plugin, grants the privileges it asks for and prints them, applies its settings and enables it; `--alias` is its name on the server. `remove` refuses while volumes use it. Setting values are masked, and `list` shows only their names. See [several apps on one server](/guides/shared-servers/#volume-plugins).
+Manage Docker volume plugins, which Compose volumes use with `driver`. `install` pulls the plugin, grants the privileges it asks for and prints them, applies its settings and enables it; `--alias` is its name on the server. `remove` refuses while volumes use it. Setting values are masked, and `list` shows only their names. See [several apps on one server](/guides/shared-servers/#volume-plugins).
 
 | Option | Default | Description |
 |---|---|---|
@@ -718,7 +776,9 @@ Docker volume plugins, which Compose volumes use with `driver`. `install` pulls 
 dockflow server connection [<user@host[:port]>] [flags]
 ```
 
-Connects to the server, verifying its host key against `--host-key` or `known_hosts`, checks that the user can use Docker, and prints the connection string: the server, its host key and the private key. Without a target, uses the server of `--env`, as a deploy would. Store the result in the `<ENV>_CONNECTION` secret of your CI. The target's user defaults to `dockflow` and its port to 22.
+Connects to the server, verifying its host key against `--host-key` or `known_hosts`, and checks that the user can use Docker. It then prints the connection string: the server, its host key and the private key. Store it in the `<ENV>_CONNECTION` secret of your CI.
+
+The target's user defaults to `dockflow` and its port to 22. Without a target, it uses the server of `--env`, as a deploy would.
 
 ```sh
 dockflow server connection deploy@203.0.113.10 -k ~/.ssh/dockflow_ed25519
@@ -741,7 +801,7 @@ The connection string holds the private key. Store it as a CI secret, never in t
 dockflow completion [command]
 ```
 
-Generate the autocompletion script for dockflow for the specified shell: `bash`, `fish`, `powershell` or `zsh`. Each subcommand prints how to load the script in its `--help`.
+Generate the autocompletion script of dockflow for a shell: `bash`, `fish`, `powershell` or `zsh`. Each subcommand prints how to load the script in its `--help`.
 
 ### completion bash
 
@@ -801,4 +861,4 @@ Help about any command, the same as `dockflow <command> --help`.
 
 ## Not available yet
 
-This version does not have `ui`, a local web UI considered for after 1.0.0. See the [roadmap](/project/roadmap/).
+This version has no `ui` command. A local web UI may come after 1.0.0. See the [roadmap](/project/roadmap/).

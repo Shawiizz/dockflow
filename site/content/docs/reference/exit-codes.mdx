@@ -3,7 +3,9 @@ title: Exit codes and errors
 description: Every exit code of the dockflow CLI, the format of its errors, and every error and warning code, with what to do about each.
 ---
 
-Every `dockflow` command ends with an exit code that tells a script or a CI job what happened, without parsing text. When a command fails, it also prints an error with a stable code and a hint that says what to do next. This page lists every exit code and every error code.
+Every `dockflow` command ends with an exit code that tells a script or a CI job what happened, without parsing text. When a command fails, it also prints an error with a stable code and a hint that says what to do next.
+
+This page lists every exit code, the error format, every error code grouped by exit code, and the warning codes. To act on a failure in a script, check the exit code first, then the error code for detail.
 
 Exit codes are fixed for the whole of 1.x: a new one only comes with a major release. New error and warning codes may appear in a minor release, each mapped to an existing exit code.
 
@@ -21,7 +23,7 @@ Exit codes are fixed for the whole of 1.x: a new one only comes with a major rel
 | `7` | Build | Build or push failed; nothing was changed on the server | A failing Dockerfile, buildx or Podman missing, a registry that refuses the push |
 | `8` | Rolled back | The run failed and was rolled back: the previous release is running | A service that does not become healthy, a failed health check, a failed job, a fatal `after_deploy` hook |
 | `9` | Degraded | The run failed and was not rolled back: the environment is degraded | A failed health check with `on_failure: fail` or `--no-rollback`, a rollback that failed too; `dockflow diagnose` found a problem |
-| `10` | Lock lost | The lock was lost during the run | Reserved: the lock is a kernel `flock` held until the agent exits, so this version never reports it |
+| `10` | Lock lost | The lock was lost during the run | Reserved: the lock is held until the agent exits, so this version never reports it |
 | `11` | Hook | A fatal hook failed before anything changed | A fatal `before_build`, `after_build` or `before_deploy` hook that exited with a non-zero code |
 | `12` | Backup | A backup failed | A dump that exits with an error, a repository that cannot be opened or fails its check, a service that is not running |
 | `13` | State | The server's state needs another Dockflow; nothing was changed | A newer Dockflow changed this environment or this server, and recorded something this version does not know: a CI pinned to an older version, after a deploy with a newer one |
@@ -60,13 +62,15 @@ With `--json`, an error found by the CLI is printed on standard output as one JS
 {"error":{"code":"config.invalid","message":"Compose: variable API_KEY is not defined: error while interpolating services.web.environment.API_KEY: variable API_KEY is not defined","hint":"define it under environments.<env>.vars or as a secret, or write ${API_KEY:-default}"},"exit_code":3}
 ```
 
-When the error happens during the agent's run on the server, it is already in the event stream, in the `error` field of the [`run.finished`](/reference/events/#runfinished) event, and the CLI does not print it a second time. The `hint` field is left out when the error has none.
+The `hint` field is left out when the error has none.
+
+When the error happens during the agent's run on the server, it is already in the event stream, in the `error` field of the [`run.finished`](/reference/events/#runfinished) event. The CLI does not print it a second time.
 
 Errors from the argument parser itself (an unknown command or flag) are printed as `error: …` on standard error, also with `--json`, and exit with code 2.
 
 ## Error codes
 
-This section lists every error code. Each one maps to the exit code given here. A few errors use a generic code for their class: `config.invalid` (3), `usage.invalid` (2), `connect.failed` (4) and `internal` (1); their message says what went wrong. Later 1.x versions may add codes, always with one of the exit codes above: a script that meets a code it does not know can act on the exit code.
+Each error code below maps to the exit code given in its row. A few errors use a generic code for their class, and their message says what went wrong: `config.invalid` (3), `usage.invalid` (2), `connect.failed` (4) and `internal` (1). A script that meets a code it does not know can act on the exit code.
 
 ### Configuration and usage
 
@@ -206,7 +210,7 @@ Nothing was changed.
 
 ### Unexpected errors
 
-These exit with code 1. Most come from the server's Docker or files, not from your project; when the cause is not clear from the message, report it.
+These exit with code 1. Most come from the server's Docker or files, not from your project. When the cause is not clear from the message, report it.
 
 | Code | Exit | What it means | What to do |
 |---|---|---|---|
@@ -222,11 +226,14 @@ These exit with code 1. Most come from the server's Docker or files, not from yo
 | `filter.no_iptables`, `filter.failed` | 1 | The port filter cannot be applied: `iptables` or `ip6tables` is missing on the server, or refused the rules. | Install iptables on the server, or run `dockflow server init --no-port-filter`. |
 | `prune.registry` | 1 | The server-local registry's garbage collection failed. | Read the registry's error in the message. |
 
-Two codes never reach you as errors: `run.abandoned` is recorded in the `error` of a release whose agent died, and shown by `dockflow releases`; `command.exit` carries the exit code of the command `exec`, `run` or `ssh` ran.
+Two codes never reach you as errors:
+
+- `run.abandoned` is recorded in the `error` of a release whose agent died, and shown by `dockflow releases`;
+- `command.exit` carries the exit code of the command `exec`, `run` or `ssh` ran.
 
 ## Warning codes
 
-Warnings never change the exit code. New codes may appear in a minor release. They appear as [`warning` events](/reference/events/#warning) with a `code`:
+Warnings appear as [`warning` events](/reference/events/#warning) with a `code`. They never change the exit code. New codes may appear in a minor release.
 
 | Code | Meaning |
 |---|---|

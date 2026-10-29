@@ -3,7 +3,9 @@ title: Hooks
 description: Run commands around builds and deploys, on your machine, on the server, or inside a running container.
 ---
 
-Hooks run your own commands at fixed points of a deploy: generate a key before the build, reload a systemd unit on the server, tell a game server to save its world before its container is replaced. You declare them in `dockflow.yml` under `hooks:`, one list per phase.
+Hooks run your own commands at fixed points of a deploy. For example: generate a key before the build, reload a systemd unit on the server, or tell a game server to save its world before its container is replaced.
+
+Declare them in `dockflow.yml` under `hooks:`, one list per phase.
 
 ## A first example
 
@@ -44,7 +46,7 @@ Each entry has exactly one kind (`run`, `script`, `host` or `exec`) and runs in 
 | `after_deploy` | After every service is healthy and routes are switched |
 | `after_failure` | After a failed run, once the rollback is done |
 
-`hooks:` can also be set inside an environment, where it replaces the top-level `hooks:` for that environment.
+`hooks:` can also be set inside an environment. There, it replaces the top-level `hooks:` for that environment.
 
 ## Kinds
 
@@ -56,8 +58,9 @@ Each entry has exactly one kind (`run`, `script`, `host` or `exec`) and runs in 
 | `exec: [<argv>]` with `service: <name>` | Inside every running container of that service, through the Docker Engine API, as `docker exec` would | Flushing a cache, warning players, an application-level backup |
 
 - `exec` takes an argument list, not a shell string. Write `exec: ["sh", "-c", "…"]` when you need a shell inside the container.
-- `exec` hooks can only be used from `before_deploy` on: before that, nothing of the new release runs.
-- A `host` hook's command is sent to `sh -s` on the server's standard input, with its environment exported at the top of that script, so no value appears in a command line on the server. It runs without a terminal: a `sudo` call needs a rule that allows it without a password.
+- `exec` hooks can only be used from `before_deploy` on. Before that, nothing of the new release runs.
+- A `host` hook's command is sent to `sh -s` on the server's standard input, with its environment exported at the top of that script. No value appears in a command line on the server.
+- A `host` hook runs without a terminal: a `sudo` call needs a rule that allows it without a password.
 
 ## Options
 
@@ -73,11 +76,11 @@ Each entry has exactly one kind (`run`, `script`, `host` or `exec`) and runs in 
 | `timeout` | duration | `5m` | A hook still running after this is stopped and counts as failed |
 | `fatal` | boolean | `true` for `before_build` and `before_deploy`, `false` for the others | Whether a failure stops the run |
 
-`dockflow validate` checks the shape of each entry. It does not check that a `script` file exists, that an `exec` hook's `service` is in the Compose file, or that listed secrets have values: those errors appear when the hook is about to run (a missing secret stops the run with exit code 3 before anything happens).
+`dockflow validate` checks the shape of each entry. It does not check that a `script` file exists, that an `exec` hook's `service` is in the Compose file, or that listed secrets have values. Those errors appear when the hook is about to run. A missing secret stops the run with exit code 3, before anything happens.
 
 ## When each kind runs
 
-The agent on the server must be able to finish a deploy even if the CLI's connection drops, so it never waits on the CLI in the middle of a run. `exec` hooks run inside the agent; local and `host` hooks run in the CLI, around the agent's run.
+`exec` hooks run inside the agent, on the server. Local and `host` hooks run in the CLI, before the agent starts or after it finishes, never in the middle of the agent's run. This way the agent can finish a deploy even if the CLI's connection drops. Why: see [ADR-0022](https://github.com/Shawiizz/dockflow/blob/main/docs/design/adr/0022-hooks.md).
 
 <Steps>
 
@@ -91,9 +94,18 @@ The agent on the server must be able to finish a deploy even if the CLI's connec
 
 </Steps>
 
-If the agent's run fails, it rolls back, runs the `after_failure` `exec` hooks, and reports the failure. The CLI then runs the `after_failure` local and `host` hooks. `after_failure` does not run when the run stops on the CLI's side before the agent starts (a failed build, a fatal `before_*` local or `host` hook, a missing secret) or when another run holds the lock.
+If the agent's run fails, the agent rolls back, runs the `after_failure` `exec` hooks, and reports the failure. The CLI then runs the `after_failure` local and `host` hooks.
 
-Hooks run on `dockflow deploy`. `dockflow build --push`, and `dockflow build` with `build.builder: remote`, run the `before_build` and `after_build` hooks; `--skip-hooks` turns them off. A local `dockflow build` without `--push` runs no hooks. `dockflow plan`, `dockflow rollback` and the day-2 commands run none either.
+`after_failure` does not run:
+
+- when the run stops on the CLI's side before the agent starts (a failed build, a fatal `before_*` local or `host` hook, a missing secret);
+- when another run holds the lock.
+
+### Commands that run hooks
+
+- `dockflow deploy` runs every phase.
+- `dockflow build --push`, and `dockflow build` with `build.builder: remote`, run the `before_build` and `after_build` hooks. `--skip-hooks` turns them off.
+- A local `dockflow build` without `--push` runs no hooks. Neither do `dockflow plan`, `dockflow rollback` and the day-2 commands.
 
 <Callout type="warn" title="Hooks inside containers">
 - On the first deploy of a service, a `before_deploy` `exec` hook has nothing to run in: it is skipped, with a notice. In any other phase, an `exec` hook whose service has no running container fails.
@@ -117,9 +129,9 @@ Local hooks also inherit the environment of the CLI process itself. `host` hooks
 
 ### `$` in hook commands
 
-Hook commands (`run`, `host`, `exec`) are neither interpolated nor rendered as templates: `$NAME` reaches the shell as you wrote it, and the shell expands it from the environment the hook gets.
+Hook commands (`run`, `host`, `exec`) are neither interpolated nor rendered as templates. `$NAME` reaches the shell as you wrote it, and the shell expands it from the environment the hook gets.
 
-A `script:` that needs a real template is listed under [`templates:`](/guides/templates/): it then runs rendered, from a temporary copy made when the hook starts, so it sees what earlier hooks wrote. Your project's file is not modified.
+A `script:` that needs a real template must be listed under [`templates:`](/guides/templates/). It then runs rendered, from a temporary copy made when the hook starts, so it sees what earlier hooks wrote. Your project's file is not modified.
 
 ```yaml
 # dockflow.yml (fragment)
@@ -137,7 +149,6 @@ hooks:
     - run: echo "$DOCKFLOW_ENV is now on $DOCKFLOW_VERSION"   # the shell expands these
 ```
 
-
 ## Output and masking
 
 Each line a hook prints becomes a `hook.log` event, between `hook.started` and `hook.finished` (with the exit code). The terminal shows these lines prefixed with the hook's name; `--json` prints them as [events](/reference/events/).
@@ -146,7 +157,7 @@ Before any line is shown or stored, every value of the environment's secrets is 
 
 ## Failures and exit codes
 
-A failed hook is one that exits with a non-zero code, cannot start, or runs past its `timeout`. A non-fatal failure is shown as a warning and the run goes on. A fatal one does this:
+A hook fails when it exits with a non-zero code, cannot start, or runs past its `timeout`. A non-fatal failure is shown as a warning, and the run goes on. A fatal failure does this:
 
 | Phase | Kind | What happens | Exit code |
 |---|---|---|---|

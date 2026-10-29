@@ -7,9 +7,9 @@ Dockflow deploys by reaching your server's Docker Engine over SSH. This page say
 
 ## Docker access is root access
 
-Whoever can use the Docker Engine on a server is root on it: one `docker run` with a bind mount of `/` is enough. The SSH user Dockflow deploys with must be able to use Docker, so **that user, and every key that logs in as it, is root-equivalent on the server.**
+Whoever can use the Docker Engine on a server is root on it: one `docker run` with a bind mount of `/` is enough. The SSH user Dockflow deploys with must be able to use Docker. So **that user, and every key that logs in as it, is root-equivalent on the server.**
 
-Dockflow does not pretend otherwise with sudo rules, which would not contain anything. It limits who holds the keys:
+Sudo rules would not contain this, so Dockflow does not rely on them. Instead, limit who holds the keys:
 
 - Use a dedicated deploy user and a dedicated key per environment, not your personal key.
 - Store the key only where deploys run: your CI's secrets, and `.env.dockflow` on the machines of the people who deploy by hand.
@@ -35,7 +35,9 @@ environments:
       host_key: "SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s"
 ```
 
-`dockflow server connection` connects first, verifying the key against `--host-key` or `known_hosts`, then writes the key it verified into the connection string. Get the fingerprint from the server itself, over a channel you trust (your provider's console, for example):
+`dockflow server connection` connects first, verifying the key against `--host-key` or `known_hosts`. It then writes the key it verified into the connection string.
+
+Get the fingerprint from the server itself, over a channel you trust (your provider's console, for example):
 
 ```sh
 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
@@ -45,7 +47,9 @@ A key that does not match fails with `ssh.host_key_mismatch` (exit code 4). If t
 
 ## Connection strings
 
-A connection string is the base64 of a small JSON document: the server's address, user and host key fingerprint, and **the private key** (or, for servers that only accept passwords, the password). Base64 is an encoding, not encryption: anyone who has the string can log in to the server as the deploy user, which means root.
+A connection string is the base64 of a small JSON document. It holds the server's address, user and host key fingerprint, and **the private key** (or, for servers that only accept passwords, the password).
+
+Base64 is an encoding, not encryption. Anyone who has the string can log in to the server as the deploy user, which means root.
 
 - Store it as a CI secret, `<ENV>_CONNECTION` (`PRODUCTION_CONNECTION`), or in `.env.dockflow`, which must stay out of git. Never commit it or paste it in an issue.
 - Dockflow reads it like any other secret and masks it, and the key and password it holds, in its output.
@@ -61,7 +65,9 @@ If you would rather not keep the key in a secret, describe the server under `ser
 | The registry | `127.0.0.1:5959` only | Never reachable from outside, so it needs no authentication. The CLI pushes images to it through the SSH connection. |
 | Agents | Nothing | One container per run, started through the Docker API, gone when the run ends. Agents and the watchdog share `dockflow-system`, an internal bridge network with no route out. |
 
-Your own services listen where their Compose `ports:` say. Docker's published ports bypass host firewalls such as ufw and firewalld: without the port filter below, `5432:5432` is open to the internet. Publish internal ports on loopback, `127.0.0.1:5432:5432`, or not at all: services of one app reach each other by name on their Compose networks.
+Your own services listen where their Compose `ports:` say. Docker's published ports bypass host firewalls such as ufw and firewalld: without the port filter below, `5432:5432` is open to the internet.
+
+Publish internal ports on loopback, `127.0.0.1:5432:5432`, or not at all. Services of one app reach each other by name on their Compose networks.
 
 ## The port filter
 
@@ -73,17 +79,34 @@ Your own services listen where their Compose `ports:` say. Docker's published po
 
 It catches a `5432:5432` written out of habit: the port stays published, but only the server itself and its containers reach it. The plan warns about each port published on every interface that no app lists.
 
-The filter is an iptables chain, `DOCKFLOW-FILTER`, that Docker's `DOCKER-USER` chain jumps to. It matches the port a connection was sent to, before Docker translated it, and leaves alone the traffic of Docker's bridges, loopback, and the ports the host itself listens on (your own nginx or sshd). A deploy, a rollback or a `destroy` that changes the ports applies the new rules, through a short helper container on the host's network, and writes them to `/etc/dockflow/filter.rules` and `filter6.rules`. The `dockflow-filter` systemd unit loads them again at boot, before Docker.
+The filter applies to every container of the server, Dockflow's or not. If you need a port open that no app lists, publish it on loopback, or opt out of the filter.
 
-The helper container runs the host's own `iptables` (legacy or nft) with `NET_ADMIN`, `NET_RAW` and `SYS_CHROOT`; it replaces only the `DOCKFLOW-FILTER` chain, atomically, and leaves Docker's rules and your own alone. IPv6 failures are warnings.
+To opt out, run `server init --no-port-filter`. `server init --no-port-filter=false` turns the filter back on.
 
-With the `cloudflare` edge, Cloudflare's ranges are downloaded at `server init`, and again every week by the `dockflow-cloudflare.timer` unit. A list is refused unless every line is a range of its family, and a failed download keeps the previous ranges. With the `external` edge and your own nginx, the filter does not restrict the host's ports 80 and 443 to Cloudflare: use the [nginx plugin](/guides/plugins/#the-nginx-plugin)'s `cloudflare` input, which trusts the real-IP header from Cloudflare's ranges only, and your own firewall rules.
+### How the filter works
 
-To go without it, run `server init --no-port-filter`; `server init --no-port-filter=false` turns it back on. The filter applies to every container of the server, Dockflow's or not: publish ports you need open and that no app lists on loopback, or opt out.
+The filter is an iptables chain, `DOCKFLOW-FILTER`, that Docker's `DOCKER-USER` chain jumps to.
+
+- It matches the port a connection was sent to, before Docker translated it.
+- It leaves alone the traffic of Docker's bridges, loopback, and the ports the host itself listens on (your own nginx or sshd).
+- A deploy, a rollback or a `destroy` that changes the ports applies the new rules through a short helper container on the host's network. It writes them to `/etc/dockflow/filter.rules` and `filter6.rules`.
+- The `dockflow-filter` systemd unit loads the rules again at boot, before Docker.
+
+The helper container runs the host's own `iptables` (legacy or nft) with `NET_ADMIN`, `NET_RAW` and `SYS_CHROOT`. It replaces only the `DOCKFLOW-FILTER` chain, atomically, and leaves Docker's rules and your own alone. IPv6 failures are warnings.
+
+### Cloudflare's ranges
+
+With the `cloudflare` edge, Cloudflare's ranges are downloaded at `server init`, and again every week by the `dockflow-cloudflare.timer` unit. A list is refused unless every line is a range of its family. A failed download keeps the previous ranges.
+
+With the `external` edge and your own nginx, the filter does not restrict the host's ports 80 and 443 to Cloudflare. Use the [nginx plugin](/guides/plugins/#the-nginx-plugin)'s `cloudflare` input, which trusts the real-IP header from Cloudflare's ranges only, and your own firewall rules.
 
 ## Secrets
 
-Secrets come from your CI's variables (`PRODUCTION_*`, or `DOCKFLOW_SECRETS`) and from `.env.dockflow`. Dockflow reads only the variables with the environment's prefix, plus `DOCKFLOW_SECRETS`: `PATH`, `HOME` and the rest of your environment never become secrets. For `production`, the key `X` resolves to `PRODUCTION_X` when it exists, otherwise to `X`, so a production-only value never leaks into staging by its name.
+Secrets come from your CI's variables (`PRODUCTION_*`, or `DOCKFLOW_SECRETS`) and from `.env.dockflow`.
+
+Dockflow reads only the variables with the environment's prefix, plus `DOCKFLOW_SECRETS`. `PATH`, `HOME` and the rest of your environment never become secrets.
+
+For `production`, the key `X` resolves to `PRODUCTION_X` when it exists, otherwise to `X`. So a production-only value never leaks into staging by its name.
 
 **What Dockflow guarantees:**
 
@@ -94,32 +117,51 @@ Secrets come from your CI's variables (`PRODUCTION_*`, or `DOCKFLOW_SECRETS`) an
 
 **What you control:**
 
-- **Container environment.** A secret you interpolate into a service, `${DB_PASSWORD}` in `environment:`, is part of that container's configuration. Anyone with Docker access on the server sees it with `docker inspect`, and it is recorded in the release record under `/var/lib/dockflow`, readable by root only.
+- **Container environment.** A secret you interpolate into a service, `${DB_PASSWORD}` in `environment:`, is part of that container's configuration. Anyone with Docker access on the server sees it with `docker inspect`. It is also recorded in the release record under `/var/lib/dockflow`, readable by root only.
 - **Files.** A secret you render into a template or an upload is written into that file on the server.
 - **Interactive commands.** `dockflow exec`, `dockflow run` and `dockflow ssh` connect your terminal to the command. Their output is the command's own and is not masked.
-
-- **Secret files.** Compose `secrets:` are written to `/run/dockflow/secrets/<app>-<env>/`, on a tmpfs (Dockflow refuses to write them elsewhere), in a `0700` directory, and mounted read-only. They appear neither in `docker inspect` nor in release records, which keep only their hash. A copy of each is kept in `/var/lib/dockflow/apps/<app>-<env>/secrets/`, root's only, so the watchdog can write them again after a reboot; `secrets revoke` and `destroy` delete the copies with the files. See [Secrets and configs](/guides/secrets/).
-
-- **SOPS files.** Secrets can be kept in git in a SOPS file encrypted with age. The CLI decrypts it in memory and never writes it in clear, except for `secrets edit`, in a temporary file readable by you only, which it deletes. It checks the file's MAC on every read, so a value changed without the key is refused. The age key comes from `SOPS_AGE_KEY`, `SOPS_AGE_KEY_FILE`, or the `sops/age/keys.txt` of your user's configuration directory, as for the `sops` command; in CI, give it as a secret of its own, never in the repository.
+- **Secret files.** Compose `secrets:` are written to `/run/dockflow/secrets/<app>-<env>/`, in a `0700` directory, and mounted read-only. That directory is on a tmpfs: Dockflow refuses to write them elsewhere. They appear neither in `docker inspect` nor in release records, which keep only their hash. A copy of each is kept in `/var/lib/dockflow/apps/<app>-<env>/secrets/`, readable by root only, so the watchdog can write them again after a reboot. `secrets revoke` and `destroy` delete the copies with the files. See [Secrets and configs](/guides/secrets/).
+- **SOPS files.** Secrets can be kept in git, in a SOPS file encrypted with age.
+  - The CLI decrypts it in memory and never writes it in clear. The exception is `secrets edit`, which uses a temporary file readable by you only, and deletes it.
+  - It checks the file's MAC on every read, so a value changed without the key is refused.
+  - The age key comes from `SOPS_AGE_KEY`, `SOPS_AGE_KEY_FILE`, or the `sops/age/keys.txt` of your user's configuration directory, as for the `sops` command. In CI, give it as a secret of its own, never in the repository.
 
 ## State on the server
 
-Dockflow's state lives in `/var/lib/dockflow`, a `0700` directory owned by root, with `0600` files. Only the agent writes there. It holds the release records, which contain your services' full configuration, including interpolated values, and the copies of the Compose secret files. `dockflow server check` fails when the directory is not `0700`. The server's state, backed up with `dockflow backup run --server`, leaves out the backups' passwords. See [Server layout](/reference/server-layout/).
+Dockflow's state lives in `/var/lib/dockflow`, a `0700` directory owned by root, with `0600` files. Only the agent writes there.
+
+It holds:
+
+- the release records, which contain your services' full configuration, including interpolated values;
+- the copies of the Compose secret files.
+
+`dockflow server check` fails when the directory is not `0700`. A backup of the server's state (`dockflow backup run --server`) leaves out the backups' passwords. See [Server layout](/reference/server-layout/).
 
 ## Verified downloads
 
-- **The installer** downloads the binary from the GitHub release, checks it against the release's `SHA256SUMS`, and, when [cosign](https://docs.sigstore.dev/) is installed, checks the Sigstore signature of `SHA256SUMS`, bound to this repository's release workflow. Without cosign it says that it checked the checksum only. Install cosign to get the signature check.
-- **The installers.** `install.ps1` checks the binary as `install.sh` does. Homebrew checks it against the checksum in the formula, written by the release workflow from `SHA256SUMS`. The npm package `@dockflow-tools/cli` has no install script: it runs the binary of its per-platform optional dependency, built from the release's binaries and published with npm provenance by the release workflow.
-- **The agent binary.** When the CLI is not itself the Linux binary for the server's architecture, it downloads the agent binary over HTTPS from the release of its own version. A released CLI is built with the SHA-256 of that release's agent binaries, and checks the download against it, so the agent comes from the same build as the CLI: its origin is the CLI's, which the installer checked. Only then is it cached, in `dockflow/<version>/` under your user's cache directory, and sent to the server. A mismatch stops with `agent.checksum_mismatch` (exit code 4), and nothing is sent. A CLI built without these checksums (from source, with a version) checks against the release's `SHA256SUMS`. `DOCKFLOW_RELEASES_URL` points the download at a mirror; the check is the same, so a mirror cannot substitute another binary. A cached binary is not checked again: the cache directory is as sensitive as the CLI itself.
-- `DOCKFLOW_AGENT_BINARY` replaces the download with a binary you provide. Dockflow does not check it: use it only with binaries you built or verified yourself.
+- **The installer** (`install.sh`) downloads the binary from the GitHub release and checks it against the release's `SHA256SUMS`. When [cosign](https://docs.sigstore.dev/) is installed, it also checks the Sigstore signature of `SHA256SUMS`, bound to this repository's release workflow. Without cosign, it says that it checked the checksum only. Install cosign to get the signature check.
+- **The other installers.**
+  - `install.ps1` checks the binary as `install.sh` does.
+  - Homebrew checks it against the checksum in the formula, written by the release workflow from `SHA256SUMS`.
+  - The npm package `@dockflow-tools/cli` has no install script. It runs the binary of its per-platform optional dependency, built from the release's binaries and published with npm provenance by the release workflow.
+- **The agent binary.** When the CLI is not itself the Linux binary for the server's architecture, it downloads the agent binary over HTTPS, from the release of its own version.
+  - A released CLI is built with the SHA-256 of that release's agent binaries, and checks the download against it. So the agent comes from the same build as the CLI: its origin is the CLI's, which the installer checked.
+  - Only after the check is the binary cached, in `dockflow/<version>/` under your user's cache directory, and sent to the server.
+  - A mismatch stops with `agent.checksum_mismatch` (exit code 4), and nothing is sent.
+  - A CLI built without these checksums (from source, with a version) checks against the release's `SHA256SUMS`.
+  - `DOCKFLOW_RELEASES_URL` points the download at a mirror. The check is the same, so a mirror cannot substitute another binary.
+  - A cached binary is not checked again: the cache directory is as sensitive as the CLI itself.
+- **Your own agent binary.** `DOCKFLOW_AGENT_BINARY` replaces the download with a binary you provide. Dockflow does not check it: use it only with binaries you built or verified yourself.
 
 ## Remote builds
 
-With `build.builder: remote`, the build runs on the server's Docker. The CLI opens a local unix socket forwarded to the server's Docker socket, and points the build at it. Whoever can connect to that socket controls the server's Docker, so it lives in a temporary directory only your user can enter (`0700`), and is removed when the build ends.
+With `build.builder: remote`, the build runs on the server's Docker. The CLI opens a local unix socket forwarded to the server's Docker socket, and points the build at it.
+
+Whoever can connect to that socket controls the server's Docker. So the socket lives in a temporary directory only your user can enter (`0700`), and is removed when the build ends.
 
 ## Signed webhooks
 
-Webhooks under `notify:` can carry a secret. Dockflow then signs each request's body with HMAC-SHA256 and sends the signature in a header:
+Webhooks under `notify:` can carry a secret:
 
 ```yaml title="dockflow.yml"
 version: 1
@@ -131,37 +173,30 @@ environments:
   production: {}
 ```
 
-```http
-POST /dockflow HTTP/1.1
-Content-Type: application/json
-User-Agent: dockflow
-X-Dockflow-Event: run.finished
-X-Dockflow-Signature: sha256=5d0c1e9a7b3f…
-```
+Dockflow then signs each request's body with HMAC-SHA256, and sends the signature in the `X-Dockflow-Signature` header, as `sha256=<hex>`.
 
-Verify it on the receiving side by computing the HMAC of the raw body with the same secret, and comparing in constant time:
-
-```python
-import hashlib, hmac
-
-def verified(secret: bytes, body: bytes, header: str) -> bool:
-    expected = "sha256=" + hmac.new(secret, body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, header)
-```
-
-Reject requests whose signature does not match. Use an `https://` URL, so the payload and its signature are not readable on the way.
+- On the receiving side, compute the HMAC of the raw body with the same secret, and compare it with the header in constant time. Examples in Node.js, Python and Go are in [Notifications](/guides/notifications/#verifying-the-signature).
+- Reject requests whose signature does not match.
+- Use an `https://` URL, so the payload and its signature are not readable on the way.
 
 ## The deploy user and its key
 
 `dockflow server init` creates the deploy user `dockflow`, in the `docker` group, and gives it a key:
 
-- generated by the CLI (ed25519) and never written to disk: the private key exists only in the connection string printed at the end. With `server init <admin>@<host>`, it is generated on your machine and never reaches the server; with `sudo dockflow server init` on the server, it is generated there, in memory, and shown in that terminal only;
-- installed in `~dockflow/.ssh/authorized_keys` with `restrict,port-forwarding,pty`, which turns off agent and X11 forwarding and re-enables only what Dockflow uses;
-- one per run: running `server init` again adds a new key, so each environment or CI system can have its own. Remove a key you no longer use from `authorized_keys`.
+- **Generated by the CLI** (ed25519) and never written to disk: the private key exists only in the connection string printed at the end.
+  - With `server init <admin>@<host>`, it is generated on your machine and never reaches the server.
+  - With `sudo dockflow server init` on the server, it is generated there, in memory, and shown in that terminal only.
+- **Installed** in `~dockflow/.ssh/authorized_keys` with `restrict,port-forwarding,pty`. This turns off agent and X11 forwarding, and re-enables only what Dockflow uses.
+- **One per run.** Running `server init` again adds a new key, so each environment or CI system can have its own. Remove a key you no longer use from `authorized_keys`.
 
-The administrator's account is used for this run only, and its credentials are never stored. Provisioning runs as one shell script sent over the administrator's SSH session, built with a command builder that quotes every value: nothing is left on the server but what it installs.
+The administrator's account is used for this run only, and its credentials are never stored. Provisioning runs as one shell script, sent over the administrator's SSH session. The script is built with a command builder that quotes every value. Nothing is left on the server but what it installs.
 
-`dockflow server cloud-init` generates the deploy key and the server's ed25519 host key on your machine. The user-data holds the deploy key's public part only, and the server's **private host key**, so that the connection string can pin it before the server exists: keep the user-data as you would the server's disk. `-o user-data.yml` writes it with mode `600`.
+`dockflow server cloud-init` generates the deploy key and the server's ed25519 host key on your machine. The user-data holds:
+
+- the deploy key's public part only;
+- the server's **private host key**, so that the connection string can pin it before the server exists.
+
+Keep the user-data as you would the server's disk. `-o user-data.yml` writes it with mode `600`.
 
 ## What provisioning sets up
 
@@ -170,9 +205,12 @@ The administrator's account is used for this run only, and its credentials are n
 - add `/etc/ssh/sshd_config.d/50-dockflow.conf`: no password authentication, root by key only. While the administrator's account has no authorized key, passwords stay accepted, and the output says so: add your key, then run `server init` again;
 - rotate Docker's logs, when they install Docker.
 
-The rest of the server's administration stays yours: fail2ban, firewall rules outside Docker, automatic updates, time synchronisation. Ubuntu's and Debian's cloud images turn automatic security updates and time synchronisation on already.
+The rest of the server's administration stays yours: fail2ban, firewall rules outside Docker, automatic updates, time synchronisation. Ubuntu's and Debian's cloud images already turn on automatic security updates and time synchronisation.
 
-`--from 203.0.113.0/24` restricts the deploy key to source addresses, with `from=` in `authorized_keys`. With `--nginx`, the deploy user gets two sudo rules, `nginx -t` and `systemctl reload nginx`, for the [nginx plugin](/guides/plugins/#the-nginx-plugin): a convenience, not containment, since the deploy user can reach Docker.
+Two options of `server init` touch access:
+
+- `--from 203.0.113.0/24` restricts the deploy key to source addresses, with `from=` in `authorized_keys`.
+- `--nginx` gives the deploy user two sudo rules, `nginx -t` and `systemctl reload nginx`, for the [nginx plugin](/guides/plugins/#the-nginx-plugin). This is a convenience, not containment, since the deploy user can reach Docker.
 
 ## Checklist
 

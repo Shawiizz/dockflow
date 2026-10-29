@@ -3,7 +3,9 @@ title: AI agents (MCP)
 description: Let an AI assistant read an app's status, releases and logs, plan a deploy, and, when allowed, deploy the reviewed plan or roll back, through dockflow mcp.
 ---
 
-`dockflow mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server over stdio. An AI assistant that speaks MCP (Claude Code, Claude Desktop, Cursor, VS Code and others) starts it in the project's directory and calls its tools. Each tool runs the `dockflow` command of the same name with `--json`, so it does what the command does, with the same configuration, secrets and output masking.
+`dockflow mcp` lets an AI assistant read an app's status, releases and logs, and plan a deploy. It is a [Model Context Protocol](https://modelcontextprotocol.io) server over stdio.
+
+An assistant that speaks MCP (Claude Code, Claude Desktop, Cursor, VS Code and others) starts it in the project's directory and calls its tools. Each tool runs the `dockflow` command of the same name with `--json`. So it does what the command does, with the same configuration, secrets and output masking.
 
 ## Set it up
 
@@ -42,13 +44,16 @@ With a client configured by JSON (`.mcp.json`, `.cursor/mcp.json`, Claude Deskto
 
 ## Writes are off by default
 
-Without `--allow-apply`, the server offers the read tools and `plan` only: an assistant can look and plan, never change a server. With it, `deploy` and `rollback` are offered too:
+Without `--allow-apply`, the server offers only the read tools and `plan`: an assistant can look and plan, but never change a server. With `--allow-apply`, `deploy` and `rollback` are offered too:
 
 ```sh
 claude mcp add dockflow -- dockflow mcp --allow-apply
 ```
 
-Even then, an assistant cannot deploy what nobody saw: `deploy` takes only the fingerprint of a plan this session's `plan` tool returned, and applies exactly that plan or nothing. `rollback` takes the number of a release that `releases` lists.
+Even then, an assistant cannot deploy what nobody saw:
+
+- `deploy` takes only the fingerprint of a plan that this session's `plan` tool returned, and applies exactly that plan or nothing.
+- `rollback` takes the number of a release that `releases` lists.
 
 <Callout type="warn">
 With `--allow-apply`, an assistant can change production. Most clients ask before each tool call; keep that on for `deploy` and `rollback`.
@@ -56,6 +61,11 @@ With `--allow-apply`, an assistant can change production. Most clients ask befor
 
 ## Output
 
-A tool's result is the command's JSON output: its [events](/reference/events/) and its result document, with secrets masked. A command that fails returns its error and exit code, marked as an error. A result longer than 200,000 characters is cut from the start.
+A tool's result is the command's JSON output: its [events](/reference/events/) and its result document, with secrets masked.
 
-While a tool runs, each event's message goes to the client as a progress notification, when the client asks for them: a deploy shows its build, uploads, rollout and switch as they happen. Cancelling a call stops the command as Ctrl+C does: a deploy under way rolls back. The tools run one at a time.
+- A command that fails returns its error and exit code, marked as an error.
+- A result longer than 200,000 characters is cut from the start.
+
+While a tool runs, each event's message goes to the client as a progress notification, if the client asks for them. A deploy shows its build, uploads, rollout and switch as they happen.
+
+Cancelling a call stops the command as Ctrl+C does: a deploy under way rolls back. The tools run one at a time.
