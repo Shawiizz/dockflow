@@ -116,8 +116,9 @@ jobs:
           "$(brew --prefix)/bin/dockflow" version | grep -F "${TAG#v}"
       - name: commit it
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # the history carries the owner's name only
+          git config user.name "Shawiiz_z"
+          git config user.email "shaweereso@gmail.com"
           git add Formula/dockflow.rb
           git commit -m "chore(homebrew): dockflow ${TAG#v}"
           for i in 1 2 3; do
