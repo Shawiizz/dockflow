@@ -96,7 +96,7 @@ worker    shop/worker         1         start-first
 
 ## Service keys
 
-Each supported key is checked against Docker Compose itself: the end-to-end tests run the same Compose files with `docker compose up` and with `dockflow deploy` on one Docker Engine, and compare the containers, networks and volumes each creates, field by field, as well as the order in which services start. Keys Dockflow does not support are refused when the plan is made, never ignored.
+Each supported key is checked against Docker Compose itself: the end-to-end tests run the same Compose files with `docker compose up` and with `dockflow deploy` on one Docker Engine, and compare the containers, networks and volumes each creates, field by field, as well as the order in which services start. Keys Dockflow does not support are refused when the plan is made, at every level ( as well as ), never ignored. The few that docker compose ignores too on one server, such as , give a warning.
 
 | Key | Handling |
 |---|---|

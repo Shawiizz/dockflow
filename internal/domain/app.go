@@ -291,8 +291,9 @@ type Network struct {
 	Driver   string            `json:"driver,omitempty"`
 	Internal bool              `json:"internal,omitempty"`
 	Labels   map[string]string `json:"labels,omitempty"`
-	// DriverOpts, EnableIPv6 and IPAM are passed to Docker when the network is created.
+	// DriverOpts, EnableIPv4, EnableIPv6 and IPAM are passed to Docker when the network is created.
 	DriverOpts map[string]string `json:"driver_opts,omitempty"`
+	EnableIPv4 *bool             `json:"enable_ipv4,omitempty"`
 	EnableIPv6 *bool             `json:"enable_ipv6,omitempty"`
 	IPAM       *IPAM             `json:"ipam,omitempty"`
 }

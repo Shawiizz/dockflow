@@ -84,6 +84,9 @@ var conformance = []struct{ name, compose string }{
           pids: 50
         reservations:
           memory: 16m
+      replicas: 1
+      update_config:
+        order: start-first
       restart_policy:
         condition: on-failure
         max_attempts: 3
@@ -242,7 +245,9 @@ volumes:
     command: sleep infinity
     container_name: conformance-named
     devices:
-      - /dev/null:/dev/fake-null:rw
+      - source: /dev/null
+        target: /dev/fake-null
+        permissions: rw
     runtime: runc
     userns_mode: host
     cgroup: private
@@ -304,32 +309,116 @@ var inspected = []string{
 	"Mounts", "MountSpecs", "TmpfsMounts", "Networks",
 }
 
-// TestConformanceCoversSupportedKeys fails when a Compose key Dockflow supports is used by no
-// conformance file and has no reason to be untested.
+// untestedNested are the nested Compose keys Dockflow handles that no conformance file uses, and
+// why; an entry ending in a dot covers every key under it.
+var untestedNested = map[string]string{
+	"build.":     "Dockflow builds with buildx bake, and the images differ by name; the build tests cover it",
+	"secrets[].": "Dockflow mounts secrets from a tmpfs of the server, not from the project's directory",
+	"configs[].": "Dockflow mounts configs from a tmpfs of the server, not from the project's directory",
+	"gpus[].":    "the test server has no GPU",
+	"deploy.resources.reservations.devices[].": "the test server has no GPU",
+	"deploy.resources.reservations.cpus":       "ignored with a warning: Docker reserves no CPU outside Swarm",
+	"deploy.rollback_config":                   "ignored with a warning: Dockflow rolls back the whole app",
+	"deploy.placement":                         "ignored with a warning: there is one server",
+	"deploy.endpoint_mode":                     "ignored with a warning: there is one server",
+	"deploy.mode":                              "replicated is the default, and global runs one container, with a warning",
+	"ports[].":                                 "the long syntax of ports sets what the short one does; name, mode and app_protocol reach no container",
+	"volumes[].consistency":                    "Docker ignores it on Linux",
+	"volumes[].volume.subpath":                 "the directory must exist in the volume before the container starts",
+	"volumes[].bind.selinux":                   "refused: the Engine API cannot relabel a mount",
+	"networks.*.ipv6_address":                  "the test server's networks have no IPv6",
+	"networks.*.gw_priority":                   "Docker 28 and later: the tests also run on Docker 27",
+	"networks.*.interface_name":                "Docker 28.1 and later: the tests also run on Docker 27",
+	"networks.*.use_service_name_alias":        "Compose 2.33, Docker 27's, does not know it",
+	"networks.*.driver_opts":                   "a bridge endpoint has no option the test could observe",
+	"(networks).*.ipam.driver":                 "the test server has only the default IPAM driver",
+	"(networks).*.ipam.options":                "the default IPAM driver takes no option",
+	"(networks).*.ipam.config[].ip_range":      "covered by the planner's tests of a changed network",
+	"(networks).*.ipam.config[].gateway":       "covered by the planner's tests of a changed network",
+	"(networks).*.ipam.config[].aux_addresses": "covered by the planner's tests of a changed network",
+	"(networks).*.enable_ipv6":                 "the test server's networks have no IPv6",
+	"(networks).*.enable_ipv4":                 "Docker 28 and later: the tests also run on Docker 27",
+	"(networks).*.driver":                      "the test server has the bridge driver only",
+	"(networks).*.attachable":                  "Dockflow's networks are always attachable, for the switch",
+	"(networks).*.external":                    "an external network is the server's, which the shared-server tests cover",
+	"(networks).*.name":                        "a network's name is the project's in both tools",
+	"(volumes).*.driver":                       "the test server has the local driver only, the volume plugin tests cover others",
+	"(volumes).*.external":                     "an external volume is the server's, which the shared-server tests cover",
+	"ulimits.*.single":                         "the short form, nproc: 512, is a single value the files use as a number",
+	"(volumes).*.name":                         "a volume's name is the project's in both tools",
+}
+
+// TestConformanceCoversSupportedKeys fails when a Compose key Dockflow supports, at any level,
+// is used by no conformance file and has no reason to be untested: a key declared supported is a
+// promise that the container is the one docker compose would create.
 func TestConformanceCoversSupportedKeys(t *testing.T) {
+	paths := map[string]bool{}
+	for _, k := range compose.NestedKeys() {
+		paths[k[:strings.LastIndex(k, ".")]] = true
+	}
 	used := map[string]bool{}
+	var collect func(path string, v any)
+	collect = func(path string, v any) {
+		switch v := v.(type) {
+		case []any:
+			for _, e := range v {
+				collect(path+"[]", e)
+			}
+		case map[string]any:
+			if paths[path] {
+				for k, e := range v {
+					used[path+"."+k] = true
+					collect(path+"."+k, e)
+				}
+			} else if paths[path+".*"] {
+				for _, e := range v {
+					collect(path+".*", e)
+				}
+			}
+		}
+	}
 	for _, c := range append(slices.Clone(conformance), startOrder) {
 		var doc struct {
 			Services map[string]map[string]any `yaml:"services"`
+			Networks map[string]any            `yaml:"networks"`
+			Volumes  map[string]any            `yaml:"volumes"`
 		}
 		if err := yaml.Unmarshal([]byte(c.compose), &doc); err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}
 		for _, s := range doc.Services {
-			for k := range s {
+			for k, v := range s {
 				used[k] = true
+				collect(k, v)
+			}
+		}
+		for _, n := range doc.Networks {
+			collect("(networks).*", n)
+		}
+		for _, v := range doc.Volumes {
+			collect("(volumes).*", v)
+		}
+	}
+	exempt := func(k string, list map[string]string) bool {
+		for e := range list {
+			if k == e || (strings.HasSuffix(e, ".") && strings.HasPrefix(k, e)) {
+				return true
+			}
+		}
+		return false
+	}
+	check := func(keys []string, list map[string]string) {
+		for _, k := range keys {
+			switch ex := exempt(k, list); {
+			case used[k] && ex && list[k] != "":
+				t.Errorf("%s is tested now: remove it from the untested keys", k)
+			case !used[k] && !ex:
+				t.Errorf("the supported Compose key %s is used by no conformance file: add it to one, or say why it cannot be", k)
 			}
 		}
 	}
-	for _, k := range compose.SupportedKeys() {
-		_, exempt := untested[k]
-		switch {
-		case used[k] && exempt:
-			t.Errorf("%s is tested now: remove it from untested", k)
-		case !used[k] && !exempt:
-			t.Errorf("the supported Compose key %s is used by no conformance file: add it to one, or say in untested why it cannot be", k)
-		}
-	}
+	check(compose.SupportedKeys(), untested)
+	check(compose.NestedKeys(), untestedNested)
 }
 
 // startOrder checks depends_on: each service appends its name to a shared volume when it
@@ -352,6 +441,7 @@ var startOrder = struct{ name, compose string }{"order", `services:
     depends_on:
       first:
         condition: service_healthy
+        required: true
     restart: "no"
   last:
     image: ALPINE

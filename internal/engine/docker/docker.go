@@ -465,7 +465,7 @@ func (e *Engine) CreateNetwork(ctx context.Context, n domain.Network, project st
 	labels[domain.LabelManagedBy] = "true"
 	opts := client.NetworkCreateOptions{
 		Driver: n.Driver, Internal: n.Internal, Attachable: true, Labels: labels,
-		Options: n.DriverOpts, EnableIPv6: n.EnableIPv6,
+		Options: n.DriverOpts, EnableIPv4: n.EnableIPv4, EnableIPv6: n.EnableIPv6,
 	}
 	if n.IPAM != nil {
 		ipam, err := engineIPAM(n.IPAM)
@@ -554,10 +554,10 @@ func (e *Engine) NetworkSettings(ctx context.Context, project string) (map[strin
 			return nil, apiErr("inspect network "+item.Name, err)
 		}
 		n := in.Network
-		ipv6 := n.EnableIPv6
+		ipv4, ipv6 := n.EnableIPv4, n.EnableIPv6
 		got := domain.Network{
 			Key: n.Labels[domain.LabelNetwork], Name: n.Name, Driver: n.Driver, Internal: n.Internal,
-			Labels: n.Labels, DriverOpts: n.Options, EnableIPv6: &ipv6,
+			Labels: n.Labels, DriverOpts: n.Options, EnableIPv4: &ipv4, EnableIPv6: &ipv6,
 			IPAM: &domain.IPAM{Driver: n.IPAM.Driver, Options: n.IPAM.Options},
 		}
 		for _, c := range n.IPAM.Config {

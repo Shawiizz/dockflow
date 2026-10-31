@@ -116,6 +116,7 @@
   "Warnings": [
     "compose.yml: the top-level name is ignored: the project is always keys-production",
     "service cache: pull_policy daily pulls at every deploy",
+    "service gpu: depends_on.\u003cname\u003e.restart is ignored: Dockflow does not restart a service when one it depends on is replaced",
     "service gpu: deploy.resources.reservations.cpus is ignored: Docker reserves no CPU outside Swarm",
     "service gpu: deploy.mode global runs one container on one server"
   ]

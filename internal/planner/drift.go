@@ -24,6 +24,9 @@ func networkDrift(want, got domain.Network, prev *domain.Network) string {
 	if want.Internal != got.Internal {
 		differ("internal", want.Internal, got.Internal)
 	}
+	if want.EnableIPv4 != nil && got.EnableIPv4 != nil && *want.EnableIPv4 != *got.EnableIPv4 {
+		differ("enable_ipv4", *want.EnableIPv4, *got.EnableIPv4)
+	}
 	if want.EnableIPv6 != nil && got.EnableIPv6 != nil && *want.EnableIPv6 != *got.EnableIPv6 {
 		differ("enable_ipv6", *want.EnableIPv6, *got.EnableIPv6)
 	}

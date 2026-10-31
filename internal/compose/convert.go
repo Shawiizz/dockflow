@@ -1,7 +1,6 @@
 package compose
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/netip"
@@ -79,6 +78,12 @@ func Convert(p *types.Project, dir, app, env string) (*Result, error) {
 		}
 	}
 
+	keyWarnings, err := checkProjectKeys(p)
+	if err != nil {
+		return nil, err
+	}
+	r.Warnings = append(r.Warnings, keyWarnings...)
+
 	netKeys := sortedKeys(p.Networks)
 	for _, key := range netKeys {
 		n := p.Networks[key]
@@ -88,7 +93,7 @@ func Convert(p *types.Project, dir, app, env string) (*Result, error) {
 		}
 		r.App.Networks = append(r.App.Networks, domain.Network{
 			Key: key, Name: n.Name, External: bool(n.External), Driver: n.Driver,
-			Internal: n.Internal, Labels: n.Labels, DriverOpts: n.DriverOpts, EnableIPv6: n.EnableIPv6, IPAM: ipam,
+			Internal: n.Internal, Labels: n.Labels, DriverOpts: n.DriverOpts, EnableIPv4: n.EnableIPv4, EnableIPv6: n.EnableIPv6, IPAM: ipam,
 		})
 	}
 	for _, key := range sortedKeys(p.Volumes) {
@@ -376,9 +381,11 @@ func convertService(p *types.Project, dir, stack string, s types.ServiceConfig) 
 	if !domain.ServiceName.MatchString(s.Name) {
 		return nil, nil, errs.Config("%s: the name must match %s", at, domain.ServiceName)
 	}
-	if err := checkKeys(s); err != nil {
+	keyWarnings, err := checkKeys(s)
+	if err != nil {
 		return nil, nil, err
 	}
+	warnings = append(warnings, keyWarnings...)
 	if s.Image == "" && s.Build == nil {
 		return nil, nil, errs.Config("%s: `image` or `build` is required", at)
 	}
@@ -900,37 +907,6 @@ func deviceRequest(d types.DeviceRequest, gpu bool) domain.DeviceRequest {
 		r.Options = map[string]string(d.Options)
 	}
 	return r
-}
-
-func checkKeys(s types.ServiceConfig) error {
-	b, err := json.Marshal(s)
-	if err != nil {
-		return errs.Internal("encode service %s", s.Name).WithCause(err)
-	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
-		return errs.Internal("decode service %s", s.Name).WithCause(err)
-	}
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		v := strings.TrimSpace(string(m[k]))
-		if v == "null" || v == "" || v == "[]" || v == "{}" || v == `""` || v == "false" || v == "0" {
-			continue
-		}
-		if ms, ok := later[k]; ok {
-			return errs.Config("service %s: `%s` is not available yet in this version of Dockflow", s.Name, k).
-				WithHint("it arrives with milestone %s (docs/design/roadmap.md)", ms)
-		}
-		if !supported[k] {
-			return errs.Config("service %s: the Compose key `%s` is not supported yet", s.Name, k).
-				WithHint("supported keys are listed in docs/design/spec/config-v1.md#compose-support")
-		}
-	}
-	return nil
 }
 
 func checkDependencies(a *domain.App) error {
