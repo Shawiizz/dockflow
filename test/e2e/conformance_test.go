@@ -312,10 +312,11 @@ var inspected = []string{
 // untestedNested are the nested Compose keys Dockflow handles that no conformance file uses, and
 // why; an entry ending in a dot covers every key under it.
 var untestedNested = map[string]string{
-	"build.":     "Dockflow builds with buildx bake, and the images differ by name; the build tests cover it",
-	"secrets[].": "Dockflow mounts secrets from a tmpfs of the server, not from the project's directory",
-	"configs[].": "Dockflow mounts configs from a tmpfs of the server, not from the project's directory",
-	"gpus[].":    "the test server has no GPU",
+	"build.":                                "Dockflow builds with buildx bake, and the images differ by name; the build tests cover it",
+	"secrets[].":                            "Dockflow mounts secrets from a tmpfs of the server, not from the project's directory",
+	"configs[].":                            "Dockflow mounts configs from a tmpfs of the server, not from the project's directory",
+	"gpus[].":                               "the test server has no GPU",
+	"deploy.resources.reservations.devices": "the test server has no GPU",
 	"deploy.resources.reservations.devices[].": "the test server has no GPU",
 	"deploy.resources.reservations.cpus":       "ignored with a warning: Docker reserves no CPU outside Swarm",
 	"deploy.rollback_config":                   "ignored with a warning: Dockflow rolls back the whole app",
