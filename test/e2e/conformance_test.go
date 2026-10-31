@@ -172,6 +172,8 @@ networks:
         target: /host-tmp
         read_only: true
         bind:
+          # explicit: Compose 2.33, Docker 27's, reads it as false when absent, the specification as true
+          create_host_path: true
           propagation: private
           recursive: disabled
       - /srv:/srv-short:ro
