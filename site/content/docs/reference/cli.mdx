@@ -509,6 +509,25 @@ Hold an environment's lock by hand, for a maintenance window.
 | `--force` | `false` | Take over (`acquire`) or release (`release`) someone else's manual lock. |
 | `-m, --message string` | none | Why the environment is locked. |
 
+## maintenance
+
+```sh
+dockflow maintenance on|off [<env>] [flags]
+```
+
+Answer every route of an environment with a maintenance page, without stopping anything.
+
+- `on` makes the switch answer the environment's domains with `503 Service Unavailable` and a maintenance page. The services keep running, and a `deploy`, `rollback` or `restart` keeps the page up. Running `on` again replaces the page and the allowed addresses.
+- `off` sends the traffic back to the services at once, without a deploy.
+- `dockflow status` shows the maintenance mode, since when and who turned it on.
+
+It changes the switch's configuration, which is reloaded, and takes the server's lock rather than the environment's, so it works while a deploy hangs. The other apps of the server are not affected. An environment without routes cannot be put under maintenance.
+
+| Option | Default | Description |
+|---|---|---|
+| `--page file` | Dockflow's page | An HTML file to show instead, up to 256 KiB. Its assets must be inline or hosted elsewhere: every request of the environment's domains gets the page. |
+| `--allow address` | none | An address or CIDR range that still reaches the app, like `203.0.113.7` or `10.0.0.0/8`. Repeatable. Behind Cloudflare or an external proxy, it is the client's address the edge vouches for. |
+
 ## mcp
 
 ```sh

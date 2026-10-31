@@ -62,6 +62,7 @@ The command names, options and exit codes of Dockflow v2 ([ADR-0016](../adr/0016
 | `dockflow scale [<env>] <service> <replicas>` | Changes replicas until the next deploy, which restores Compose's count and says so in its plan |
 | `dockflow prune [<env>] [--images] [--containers] [--volumes] [--networks] [-a]` | Cleans unused Docker objects on the server. Without a kind: stopped containers, untagged images and networks. `-a` removes every unused image, not only untagged ones. Never removes what Dockflow manages, app volumes, or the images of releases in retention; `--volumes` removes unused anonymous volumes only |
 | `dockflow list envs\|services [<env>]\|images [<env>] [-a]` | Lists |
+| `dockflow maintenance on\|off [<env>] [--page <file>] [--allow <cidr>]…` | Answers every route of the environment with a 503 maintenance page, Dockflow's or `--page` (256 KiB at most), except to the `--allow` addresses, until `off`. Services keep running and deploys keep it. It takes the server's lock, not the environment's |
 | `dockflow lock status\|acquire\|release [<env>] [-m <message>] [--force]` | `acquire` holds the lock by hand (a maintenance window) until `release`; a manual lock never expires, and it refuses every run that changes the environment except `deploy --force`. `--force` releases or takes over someone else's |
 
 Commands that change services (`restart`, `stop`, `scale`, `rollback`, `destroy`, `backup restore`) take the environment's lock.

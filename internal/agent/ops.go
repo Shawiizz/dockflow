@@ -252,6 +252,13 @@ func (r *runner) status(ctx context.Context) events.RunFinishedData {
 	if st.Lock, err = r.app.ManualLock(); err != nil {
 		return failed(err)
 	}
+	table, err := r.Store.SwitchRoutes()
+	if err != nil {
+		return failed(err)
+	}
+	if rs := table[r.stack]; len(rs) > 0 {
+		st.Maintenance = rs[0].Maintenance
+	}
 	if wd, err := r.app.Watchdog(); err == nil {
 		st.Watchdog = wd.Restarts
 		if n := len(st.Watchdog); n > 5 {

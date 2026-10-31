@@ -1,0 +1,119 @@
+{
+  "admin": {
+    "listen": "unix//run/dockflow-switch/admin.sock"
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "http": {
+          "listen": [
+            ":80"
+          ],
+          "routes": [
+            {
+              "handle": [
+                {
+                  "abort": true,
+                  "handler": "static_response"
+                }
+              ]
+            }
+          ]
+        },
+        "https": {
+          "listen": [
+            ":443"
+          ],
+          "routes": [
+            {
+              "@id": "dockflow.shop-production.web.0",
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
+                    {
+                      "handle": [
+                        {
+                          "body": "\u003ch1\u003eBack soon\u003c/h1\u003e",
+                          "handler": "static_response",
+                          "headers": {
+                            "Cache-Control": [
+                              "no-store"
+                            ],
+                            "Content-Type": [
+                              "text/html; charset=utf-8"
+                            ]
+                          },
+                          "status_code": 503
+                        }
+                      ],
+                      "match": [
+                        {
+                          "not": [
+                            {
+                              "client_ip": {
+                                "ranges": [
+                                  "203.0.113.7"
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "handler": "authentication",
+                  "providers": {
+                    "http_basic": {
+                      "accounts": [
+                        {
+                          "password": "JDJhJDEwJGhhc2g=",
+                          "username": "admin"
+                        }
+                      ],
+                      "hash": {
+                        "algorithm": "bcrypt"
+                      }
+                    }
+                  }
+                },
+                {
+                  "handler": "reverse_proxy",
+                  "load_balancing": {
+                    "selection_policy": {
+                      "policy": "round_robin"
+                    },
+                    "try_duration": "2s"
+                  },
+                  "upstreams": [
+                    {
+                      "dial": "{file./run/dockflow-switch/up/shop-production.web.0/0}"
+                    }
+                  ]
+                }
+              ],
+              "match": [
+                {
+                  "host": [
+                    "shop.example.com"
+                  ]
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "abort": true,
+                  "handler": "static_response"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

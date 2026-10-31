@@ -143,3 +143,20 @@ dockflow lock release production
 - `dockflow deploy --force` deploys despite a manual lock.
 - `lock acquire --force` takes over someone else's manual lock.
 - `status` shows who holds the lock, since when, and why.
+
+## Put an environment under maintenance
+
+`dockflow maintenance on` takes an environment's site offline for visitors without stopping it: every route answers with a maintenance page and the `503` status, which tells search engines the outage is temporary. Use it to fix an incident, run a migration by hand, or close the site for any other reason.
+
+```sh
+dockflow maintenance on production
+dockflow maintenance on production --page maintenance.html --allow 203.0.113.7
+dockflow maintenance off production
+```
+
+- The services keep running: `exec`, `logs` and `run` work as usual.
+- `--allow` lets your own address through, to check the app before opening it again.
+- A deploy during the maintenance keeps the page up; only `off` takes it down.
+- `dockflow status` shows the maintenance mode.
+
+The manual lock and the maintenance mode are independent: the lock refuses deploys, the maintenance mode turns visitors away. Use both to freeze an environment entirely.

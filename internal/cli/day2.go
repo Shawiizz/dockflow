@@ -216,6 +216,9 @@ func renderStatus(w io.Writer, st agent.Status) {
 	if st.Lock != nil {
 		fmt.Fprintf(w, "  locked by %s since %s: %s\n", st.Lock.By, st.Lock.Since.Format("2006-01-02 15:04"), st.Lock.Message)
 	}
+	if m := st.Maintenance; m != nil {
+		fmt.Fprintf(w, "  UNDER MAINTENANCE since %s, by %s: visitors get the maintenance page\n", m.Since.Local().Format("2006-01-02 15:04"), m.By)
+	}
 	for _, r := range st.Watchdog {
 		what := "restarted, unhealthy"
 		if r.Reason == "boot" {

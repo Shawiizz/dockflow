@@ -216,6 +216,9 @@ func (b builder) route(r identified) obj {
 // proxy to its containers. pages adds its error pages to the proxy's answers.
 func (b builder) handlers(r identified, pages bool) []any {
 	var handle []any
+	if r.Maintenance != nil {
+		handle = append(handle, maintenance(r.Maintenance))
+	}
 	if r.AuthUser != "" {
 		handle = append(handle, obj{"handler": "authentication", "providers": obj{"http_basic": obj{
 			"hash":     obj{"algorithm": "bcrypt"},
@@ -321,6 +324,22 @@ func (b builder) handlers(r identified, pages bool) []any {
 		}
 	}
 	return append(handle, rp)
+}
+
+// maintenance answers 503 with the maintenance page, except to the allowed clients, who go on to
+// the route's other handlers. The client's address is the one the edge vouches for: Cloudflare's
+// or the external proxy's header, when the edge has one.
+func maintenance(m *proxy.Maintenance) obj {
+	page := m.Page
+	if page == "" {
+		page = proxy.MaintenancePage
+	}
+	route := obj{"handle": []any{obj{"handler": "static_response", "status_code": 503, "body": page,
+		"headers": obj{"Content-Type": []string{"text/html; charset=utf-8"}, "Cache-Control": []string{"no-store"}}}}}
+	if len(m.Allow) > 0 {
+		route["match"] = []any{obj{"not": []any{obj{"client_ip": obj{"ranges": m.Allow}}}}}
+	}
+	return obj{"handler": "subroute", "routes": []any{route}}
 }
 
 // errorRoutes answer for r when its containers cannot be reached: Caddy's errors of the server.

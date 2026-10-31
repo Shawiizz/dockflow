@@ -6,6 +6,7 @@ package agent
 import (
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/engine"
+	"github.com/Shawiizz/dockflow/internal/proxy"
 	"github.com/Shawiizz/dockflow/internal/state"
 	"github.com/Shawiizz/dockflow/internal/upload"
 )
@@ -59,6 +60,9 @@ const (
 	OpBackupList    = "backup.list"
 	OpBackupRestore = "backup.restore"
 	OpBackupPrune   = "backup.prune"
+	// The maintenance mode (ADR-0011).
+	OpMaintenanceOn  = "maintenance.on"
+	OpMaintenanceOff = "maintenance.off"
 )
 
 // BackupRequest is where an environment's backups go, and which service a backup operation is
@@ -154,6 +158,8 @@ type Request struct {
 
 	// Lock describes a manual lock (lock.acquire).
 	Lock *domain.LockInfo `json:"lock,omitempty"`
+	// Maintenance is the page and the allowed clients of maintenance.on.
+	Maintenance *proxy.Maintenance `json:"maintenance,omitempty"`
 
 	// PortFilter and Watchdog turn the published-port filter (ADR-0014) and the watchdog
 	// (ADR-0010) on or off; nil keeps what the server has, on for a new server. SSHPort is the
@@ -197,6 +203,8 @@ type Status struct {
 	Current  *ReleaseSummary   `json:"current,omitempty"`
 	Services []ServiceStatus   `json:"services"`
 	Lock     *domain.LockInfo  `json:"manual_lock,omitempty"`
+	// Maintenance is the environment's maintenance mode, when on.
+	Maintenance *proxy.Maintenance `json:"maintenance,omitempty"`
 	// DiskFree and DiskTotal are the bytes of the filesystem holding Dockflow's state.
 	DiskFree  uint64 `json:"disk_free,omitempty"`
 	DiskTotal uint64 `json:"disk_total,omitempty"`

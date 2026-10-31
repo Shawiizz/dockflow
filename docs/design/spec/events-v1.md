@@ -99,7 +99,7 @@ The stream is the only machine-readable output covered by this version. The docu
 
 | Group | `op` |
 |---|---|
-| An environment | `plan`, `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `prune`, `details`, `status`, `releases`, `upload.have`, `secrets.revoke` |
+| An environment | `plan`, `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `prune`, `details`, `status`, `releases`, `upload.have`, `secrets.revoke`, `maintenance.on`, `maintenance.off` |
 | Its lock | `lock.acquire`, `lock.release`, `lock.status` |
 | Backups | `backup.run`, `backup.list`, `backup.restore`, `backup.prune` |
 | The server | `server.init`, `server.status`, `server.check`, `server.uninstall`, `server.cloudflare.refresh`, `server.network.create`, `server.network.list`, `server.network.remove`, `server.plugin.install`, `server.plugin.list`, `server.plugin.remove` |

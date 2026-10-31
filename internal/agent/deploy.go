@@ -839,6 +839,12 @@ func (r *runner) applyRoutes(ctx context.Context, routes []proxy.Route) error {
 	if err := r.prepareRoutes(ctx, routes, table[r.stack]); err != nil {
 		return err
 	}
+	// deploys, rollbacks and recoveries keep the environment's maintenance mode
+	if prev := table[r.stack]; len(prev) > 0 {
+		for i := range routes {
+			routes[i].Maintenance = prev[0].Maintenance
+		}
+	}
 	if err := r.joinNetworks(ctx, routes); err != nil {
 		return err
 	}

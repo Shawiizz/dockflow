@@ -522,7 +522,7 @@ func execHooks(all []domain.Hook) []domain.Hook {
 // notifies are the operations that change an environment, which webhooks report.
 var notifies = map[string]bool{
 	agent.OpDeploy: true, agent.OpRollback: true, agent.OpRestart: true, agent.OpStop: true,
-	agent.OpScale: true, agent.OpDestroy: true,
+	agent.OpScale: true, agent.OpDestroy: true, agent.OpMaintenanceOn: true, agent.OpMaintenanceOff: true,
 }
 
 // notify sends the environment's webhooks for a run that changed something or failed.

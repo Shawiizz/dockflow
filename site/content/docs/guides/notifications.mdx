@@ -42,7 +42,7 @@ String values are interpolated like the rest of `dockflow.yml`, so `${WEBHOOK_SE
 
 ## When webhooks fire
 
-A webhook fires at the end of a run of the agent on the server, for these operations: `deploy`, `rollback`, `restart`, `stop`, `scale` and `destroy`. It does not fire:
+A webhook fires at the end of a run of the agent on the server, for these operations: `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, and `maintenance on` and `off`. It does not fire:
 
 - when the run changed nothing (a deploy whose plan is empty);
 - when the run could not start because another run holds the lock;
@@ -91,7 +91,7 @@ Your `headers` are added after these, and replace one of them when they share a 
 | `event` | Always `run.finished` |
 | `app`, `env` | The app and the environment |
 | `server` | The server's name (`main` unless the environment names it) |
-| `op` | `deploy`, `rollback`, `restart`, `stop`, `scale` or `destroy` |
+| `op` | `deploy`, `rollback`, `restart`, `stop`, `scale`, `destroy`, `maintenance.on` or `maintenance.off` |
 | `run` | The run's ID, for `dockflow attach <env> <run-id>` |
 | `version` | The version label the CLI computed for the run (`--version`, the CI tag, or the commit). For a deploy, the release's version. For other operations, the version of the local checkout, which is not necessarily what runs (`dockflow releases` shows what runs) |
 | `release` | The release number the run created; absent when it created none |

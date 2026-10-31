@@ -139,6 +139,8 @@ func (r *runner) dispatch(ctx context.Context) events.RunFinishedData {
 		return r.backupRestore(ctx)
 	case OpBackupPrune:
 		return r.backupPrune(ctx)
+	case OpMaintenanceOn, OpMaintenanceOff:
+		return r.maintenance(ctx)
 	}
 	return failed(errs.Usage("unknown operation %q", r.req.Op))
 }

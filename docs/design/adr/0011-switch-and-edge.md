@@ -34,6 +34,8 @@ The project owner asked how proxies should be handled. There are three options:
 
 **Replicas.** A route with several replicas spreads requests in turn (round robin) and retries another replica for up to 2 s when one refuses the connection. A replica that fails a connection is then skipped for 10 s (Caddy's passive health checks), so a container that crashed between two deploys stops taking its share of the requests while Docker restarts it. The app's own error answers (5xx) never take a replica out. A route with one replica has no such check: there is nothing to send its traffic to instead.
 
+**Maintenance mode.** `dockflow maintenance on` sets `maintenance` (the page, the allowed addresses, who and when) on every route of the environment in `switch/routes/<stack>.json`. The route's first handler is then a subroute answering `503` with the page, matched by `not client_ip` when addresses are allowed, so allowed clients go on to the route's other handlers, authentication included. Being in the routes, it survives deploys (the agent carries it over to the new routes), rollbacks, recoveries and the switch's reinstallation; `destroy` ends it with the routes. Turning it on or off reloads the configuration, a rare operation where the few connections a reload may drop do not matter. It takes the server's lock, which guards the routes, and not the environment's, so it works while a deploy hangs.
+
 **During a deploy** (`switch` strategy):
 1. The new containers become healthy.
 2. The agent points the route's upstream files at them. The next requests go to the new containers; nothing is reloaded.

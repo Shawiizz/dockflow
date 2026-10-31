@@ -24,6 +24,14 @@ Instead, each route's upstreams are small files that Caddy reads on every reques
 
 The configuration is reloaded only when routes themselves change: a domain, a path or a number of replicas. A deploy that only changes an image does not reload it.
 
+### Replicas
+
+A route with several replicas sends requests to each in turn. When a replica refuses a connection, the request is retried on another one, and that replica gets no requests for 10 seconds, so a container that crashed stops taking its share of the traffic while Docker restarts it. Errors the app answers itself, like a `500`, never take a replica out.
+
+### Maintenance mode
+
+`dockflow maintenance on` makes the switch answer an environment's routes with a maintenance page, while its services keep running. See [maintenance](/guides/day-2/#put-an-environment-under-maintenance).
+
 ## Routes
 
 ```yaml title="compose.yml"

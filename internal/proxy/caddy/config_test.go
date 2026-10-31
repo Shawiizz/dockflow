@@ -2,6 +2,7 @@ package caddy
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,6 +67,28 @@ func TestBuildAppRoutesAndErrorPages(t *testing.T) {
 	var v any
 	json.Unmarshal(b, &v)
 	testutil.Golden(t, "app-routes", v)
+}
+
+func TestBuildMaintenance(t *testing.T) {
+	routes := func(m *proxy.Maintenance) []proxy.Route {
+		return []proxy.Route{{Stack: "shop-production", Service: "web", Domains: []string{"shop.example.com"}, Path: "/", Port: 3000, TLS: true,
+			Upstreams: []string{"shop-production-web-4-1"}, AuthUser: "admin", AuthHash: "$2a$10$hash", Maintenance: m}}
+	}
+	b, err := Build(proxy.Config{Edge: proxy.EdgeBuiltin, Routes: routes(&proxy.Maintenance{Page: "<h1>Back soon</h1>", Allow: []string{"203.0.113.7"}})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v any
+	json.Unmarshal(b, &v)
+	testutil.Golden(t, "maintenance", v)
+
+	b, err = Build(proxy.Config{Edge: proxy.EdgeBuiltin, Routes: routes(&proxy.Maintenance{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "Under maintenance") || strings.Contains(string(b), "client_ip") {
+		t.Fatal("without a page or allowed addresses, everyone gets Dockflow's page")
+	}
 }
 
 func TestBuildCloudflare(t *testing.T) {
