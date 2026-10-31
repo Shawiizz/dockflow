@@ -290,6 +290,13 @@ func (b builder) handlers(r identified, pages bool) []any {
 		}
 		rp["upstreams"] = ups
 		rp["load_balancing"] = obj{"selection_policy": obj{"policy": "round_robin"}, "try_duration": "2s"}
+		if len(ups) > 1 {
+			// a replica that refuses a connection is skipped for 10 s, so a crashed container stops
+			// taking its share of the requests until Docker restarts it. Not with one replica: its
+			// slot would be unavailable for 10 s after a single failure, with nothing to take over.
+			// Only connection errors count, not the app's own 5xx answers.
+			rp["health_checks"] = obj{"passive": obj{"fail_duration": "10s", "max_fails": 1}}
+		}
 	}
 	if t := r.Timeouts; t != nil {
 		for k, d := range map[string]time.Duration{"read_timeout": t.Read.D(), "write_timeout": t.Write.D(), "dial_timeout": t.Dial.D()} {

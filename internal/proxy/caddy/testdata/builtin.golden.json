@@ -92,6 +92,12 @@
               "handle": [
                 {
                   "handler": "reverse_proxy",
+                  "health_checks": {
+                    "passive": {
+                      "fail_duration": "10s",
+                      "max_fails": 1
+                    }
+                  },
                   "load_balancing": {
                     "selection_policy": {
                       "policy": "round_robin"

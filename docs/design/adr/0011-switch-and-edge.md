@@ -32,6 +32,8 @@ The project owner asked how proxies should be handled. There are three options:
 
 **Moving traffic never reloads Caddy.** A reload starts new servers and shuts the old ones down, and Go's HTTP server closes, without an answer, a connection the old server accepted just before its shutdown began. Clients that do not retry (nginx in front of the switch, a browser on a fresh connection) then see an error, a few times per reload under load. So each route's upstreams are slots, `{file./run/dockflow-switch/up/<route>/<n>}`, which Caddy reads on every request; the agent moves traffic by rewriting these files atomically. The configuration is reloaded only when the routes themselves change (a domain, a path, a number of replicas), which ordinary deploys do not do.
 
+**Replicas.** A route with several replicas spreads requests in turn (round robin) and retries another replica for up to 2 s when one refuses the connection. A replica that fails a connection is then skipped for 10 s (Caddy's passive health checks), so a container that crashed between two deploys stops taking its share of the requests while Docker restarts it. The app's own error answers (5xx) never take a replica out. A route with one replica has no such check: there is nothing to send its traffic to instead.
+
 **During a deploy** (`switch` strategy):
 1. The new containers become healthy.
 2. The agent points the route's upstream files at them. The next requests go to the new containers; nothing is reloaded.
