@@ -387,6 +387,9 @@ func TestKeysAreOfferedOnce(t *testing.T) {
 	deployKey, deployPub := testKey(t)
 	deploySigner, _ := parseKey(deployKey)
 	keyring := agent.NewKeyring()
+	// the deploy key is in the agent too, first
+	raw, _ := ssh.ParseRawPrivateKey([]byte(deployKey))
+	keyring.Add(agent.AddedKey{PrivateKey: raw})
 	keyring.Add(agent.AddedKey{PrivateKey: mine})
 	os.MkdirAll(filepath.Join(home, ".ssh"), 0o700)
 	block, _ := ssh.MarshalPrivateKey(mine, "")
@@ -407,9 +410,6 @@ func TestKeysAreOfferedOnce(t *testing.T) {
 		}
 	}()
 	t.Setenv("SSH_AUTH_SOCK", sock)
-	// the deploy key is in the agent too
-	raw, _ := ssh.ParseRawPrivateKey([]byte(deployKey))
-	keyring.Add(agent.AddedKey{PrivateKey: raw})
 
 	// a bastion that takes no key sees every key offered
 	server := newTestServer(t, deployPub)
@@ -432,7 +432,7 @@ func TestKeysAreOfferedOnce(t *testing.T) {
 		}
 		seen[fp] = true
 	}
-	if len(seen) != 2 || !seen[ssh.FingerprintSHA256(deploySigner.PublicKey())] {
-		t.Fatalf("the agent's key and the deploy key, each once: %v", bastion.offered)
+	if len(seen) != 2 || bastion.offered[len(bastion.offered)-1] != ssh.FingerprintSHA256(deploySigner.PublicKey()) {
+		t.Fatalf("the agent's key, then the deploy key last, each once: %v", bastion.offered)
 	}
 }

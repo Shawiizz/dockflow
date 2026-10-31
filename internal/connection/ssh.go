@@ -188,7 +188,13 @@ func Dial(ctx context.Context, t *Target) (*ssh.Client, error) {
 	}
 	found, closeJumpAgent := discoverKeys(t.JumpIdentityFiles, t.JumpIdentitiesOnly)
 	defer closeJumpAgent()
-	jumpKeys = append(append(jumpKeys, found...), deployKey...)
+	for _, k := range found {
+		// the deploy key stays last, ssh-agent holding it too
+		if heldBy(deployKey, k.PublicKey()) == nil {
+			jumpKeys = append(jumpKeys, k)
+		}
+	}
+	jumpKeys = append(jumpKeys, deployKey...)
 	conn, err := dialTCP(ctx, j.Addr())
 	if err != nil {
 		return nil, err.WithHint("check the bastion's host and port, and that it accepts SSH from this machine")
