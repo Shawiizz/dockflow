@@ -118,6 +118,9 @@ func (a *app) connectProject(ctx context.Context, env, versionFlag string, confi
 		}
 	}
 	a.emitter.Masker().Add(t.PrivateKey, t.Password)
+	if t.Server.Jump != nil {
+		a.emitter.Masker().Add(t.Server.Jump.PrivateKey)
+	}
 	names := make([]string, 0, len(l.App.Services))
 	for _, svc := range l.App.Services {
 		names = append(names, svc.Name)

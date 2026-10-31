@@ -54,6 +54,8 @@ Secrets override the environment's `vars` of the same name. Their values are mas
 |---|---|
 | `DOCKFLOW_SSH_KEY_<ENV>` | The private key for one environment's server (`DOCKFLOW_SSH_KEY_PRODUCTION`), when the server is described under `server:` in `dockflow.yml` instead of a connection string. The value is the key itself or the path to a key file. |
 | `DOCKFLOW_SSH_KEY` | The same, for every environment without its own `DOCKFLOW_SSH_KEY_<ENV>`. Also the default key file of `dockflow server connection` when `-k` is not given. |
+| `DOCKFLOW_SSH_JUMP_KEY_<ENV>` | The private key of the [bastion](/reference/dockflow-yml/#through-a-bastion) of one environment, when the server's key does not open it. The key itself or the path to a key file. |
+| `DOCKFLOW_SSH_JUMP_KEY` | The same, for every environment without its own `DOCKFLOW_SSH_JUMP_KEY_<ENV>`. Also the default of `--jump-key`. |
 | `SSH_AUTH_SOCK` | The ssh-agent socket. Used when no key and no password were given in any other way. |
 
 When the server comes from `dockflow.yml`, Dockflow picks the private key in this order:

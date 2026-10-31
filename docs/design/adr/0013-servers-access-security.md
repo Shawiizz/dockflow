@@ -41,6 +41,7 @@ An environment's connection string is the base64 of a JSON document:
 - **Where it lives:** the `<ENV>_CONNECTION` secret (`PRODUCTION_CONNECTION`), read like any other secret ([ADR-0012](0012-secrets-sops.md)): a CI variable, `DOCKFLOW_SECRETS`, `.env.dockflow` or the SOPS file.
 - **Servers:** `servers` holds exactly one server in v1. The list leaves room for several later ([ADR-0023](0023-several-servers-later.md)).
 - **Host keys:** it carries the server's host key fingerprint, and every connection verifies it. Nothing is ever trusted on first use.
+- **Bastions:** a server without a public address is reached through one bastion, as OpenSSH's `ProxyJump` (`jump` in the string and under `server:`, or `ProxyJump` of `~/.ssh/config`). The bastion's host key is verified the same way. Such a string is version 3, which a CLI that does not know bastions refuses instead of connecting directly.
 - **Passwords:** a `password` field may replace `private_key` for servers that only accept password authentication, as 1.x allowed. `server init` warns that keys are safer.
 - **How it is produced:** `dockflow server init` prints it at the end, and `dockflow server connection` prints it again.
 - **The alternative:** the server can be described in `dockflow.yml` (`server:`), with the key from `ssh-agent`, `~/.ssh/config` or `DOCKFLOW_SSH_KEY`, for teams that prefer it. When both exist, the connection string wins.

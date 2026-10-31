@@ -87,3 +87,49 @@ func TestConnStringIgnoresUnknownFields(t *testing.T) {
 		t.Fatalf("got %+v, %v", c, err)
 	}
 }
+
+// A server behind a bastion is version 3, which a CLI that does not know jump refuses instead of
+// connecting directly; without a bastion, the string stays version 2.
+func TestJumpRoundTrip(t *testing.T) {
+	c := ConnString{
+		Servers:    []Server{{Name: "main", Host: "10.0.0.5", Port: 22, User: "deploy", Jump: &Jump{Host: "bastion.example.com", HostKey: "SHA256:b"}}},
+		PrivateKey: "k",
+	}
+	enc := c.Encode()
+	raw, _ := base64.StdEncoding.DecodeString(enc)
+	if !strings.Contains(string(raw), `"v":3`) {
+		t.Fatalf("a bastion makes version 3: %s", raw)
+	}
+	got, err := ParseConnString(enc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j := got.Servers[0].Jump; j == nil || j.Host != "bastion.example.com" || j.Port != 22 || j.User != "deploy" || j.HostKey != "SHA256:b" {
+		t.Fatalf("the bastion, with its defaults: %+v", j)
+	}
+	c.Servers[0].Jump = nil
+	raw, _ = base64.StdEncoding.DecodeString(c.Encode())
+	if !strings.Contains(string(raw), `"v":2`) {
+		t.Fatalf("without a bastion, version 2: %s", raw)
+	}
+}
+
+func TestParseJump(t *testing.T) {
+	cases := map[string]Jump{
+		"bastion.example.com":          {Host: "bastion.example.com"},
+		"admin@bastion.example.com":    {Host: "bastion.example.com", User: "admin"},
+		"admin@203.0.113.7:2222":       {Host: "203.0.113.7", User: "admin", Port: 2222},
+		"ssh://admin@[2001:db8::1]:22": {Host: "2001:db8::1", User: "admin", Port: 22},
+	}
+	for in, want := range cases {
+		got, err := ParseJump(in)
+		if err != nil || *got != want {
+			t.Fatalf("%s: %+v, %v", in, got, err)
+		}
+	}
+	for _, bad := range []string{"", "a@b,c@d", "@host", "host:x", "host:70000"} {
+		if _, err := ParseJump(bad); err == nil {
+			t.Fatalf("%q must be refused", bad)
+		}
+	}
+}

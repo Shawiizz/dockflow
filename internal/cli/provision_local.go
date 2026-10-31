@@ -33,8 +33,8 @@ var sshDir = "/etc/ssh"
 // over SSH, run locally. The address, the SSH port and the host key are read here, so nothing has
 // to be typed; the deploy user is then checked through the SSH server, as the CI will reach it.
 func (a *app) provisionHere(ctx context.Context, f provisionFlags, init func(*agent.Request)) error {
-	if f.key != "" || f.passwordFile != "" || f.hostKey != "" {
-		return errs.Usage("--key, --password-file and --host-key are for server init <admin>@<host>, from another machine")
+	if f.key != "" || f.passwordFile != "" || f.hostKey != "" || f.jump != (jumpFlags{}) {
+		return errs.Usage("--key, --password-file, --host-key and --jump are for server init <admin>@<host>, from another machine")
 	}
 	if runtime.GOOS != "linux" {
 		return errs.Usage("server init without an argument prepares the server it runs on, which must be Linux").

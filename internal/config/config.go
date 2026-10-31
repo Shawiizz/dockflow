@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -257,6 +258,39 @@ type Server struct {
 	Port    int    `yaml:"port" json:"port"`
 	User    string `yaml:"user" json:"user"`
 	HostKey string `yaml:"host_key" json:"host_key"`
+	Jump    *Jump  `yaml:"jump" json:"jump,omitempty"`
+}
+
+// Jump is the bastion the server is reached through, as OpenSSH's ProxyJump.
+type Jump struct {
+	Host    string `yaml:"host" json:"host"`
+	Port    int    `yaml:"port" json:"port,omitempty"`
+	User    string `yaml:"user" json:"user,omitempty"`
+	HostKey string `yaml:"host_key" json:"host_key,omitempty"`
+}
+
+// UnmarshalYAML reads admin@bastion.example.com:2222, or { host, port, user, host_key }.
+func (j *Jump) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		var s string
+		if err := n.Decode(&s); err != nil {
+			return err
+		}
+		if user, rest, ok := strings.Cut(s, "@"); ok {
+			j.User, s = user, rest
+		}
+		j.Host = s
+		if h, p, err := net.SplitHostPort(s); err == nil {
+			port, err := strconv.Atoi(p)
+			if err != nil {
+				return fmt.Errorf("jump %q: %q is not a port", n.Value, p)
+			}
+			j.Host, j.Port = h, port
+		}
+		return nil
+	}
+	type plain Jump
+	return n.Decode((*plain)(j))
 }
 
 // Deploy is the deploy block of an environment.
@@ -836,6 +870,14 @@ func (s *Server) validate(env string) error {
 	}
 	if !domain.ServerName.MatchString(s.Name) {
 		return errs.Config("%s.name %q must match %s", at, s.Name, domain.ServerName)
+	}
+	if j := s.Jump; j != nil {
+		if j.Host == "" || strings.ContainsAny(j.Host, "/ ,") {
+			return errs.Config("%s.jump: %q is not a host (one bastion: [user@]host[:port])", at, j.Host)
+		}
+		if j.Port < 0 || j.Port > 65535 {
+			return errs.Config("%s.jump.port %d is not a port", at, j.Port)
+		}
 	}
 	// port and user default once ~/.ssh/config is read (connection.Resolve)
 	return nil

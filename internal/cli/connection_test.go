@@ -13,7 +13,7 @@ func TestParseTarget(t *testing.T) {
 		"root@shop.example.com":    {"root", "shop.example.com", 22},
 	}
 	for in, want := range cases {
-		got, err := parseTarget(in, "dockflow")
+		got, err := parseTarget(in, "dockflow", "")
 		if err != nil {
 			t.Fatalf("%s: %v", in, err)
 		}
@@ -22,7 +22,7 @@ func TestParseTarget(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{"root@", "root@host:x", "host:70000"} {
-		if _, err := parseTarget(bad, "dockflow"); err == nil {
+		if _, err := parseTarget(bad, "dockflow", ""); err == nil {
 			t.Fatalf("%s must be refused", bad)
 		}
 	}

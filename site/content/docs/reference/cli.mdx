@@ -615,7 +615,7 @@ Prepare a server, or update one. The command has three forms, described below.
 
 On a terminal, without `--edge` or `--nginx`, it asks how traffic reaches the server's apps. Enter keeps the server's choice, or `builtin` for a new server. With `--yes` or `--json`, it never asks.
 
-The server's host key must be known: in your `~/.ssh/known_hosts`, or given with `--host-key`. Every step can be run again; a new run adds a new key. `<host>` may be a `Host` alias of your `~/.ssh/config`. Its `HostName`, `Port`, `User` and `IdentityFile` apply where the target sets none, and the connection string gets the real address.
+The server's host key must be known: in your `~/.ssh/known_hosts`, or given with `--host-key`. Every step can be run again; a new run adds a new key. `<host>` may be a `Host` alias of your `~/.ssh/config`. Its `HostName`, `Port`, `User`, `IdentityFile` and `ProxyJump` apply where the target sets none, and the connection string gets the real address. Behind a bastion, the CI goes through it with the deploy key, so add the deploy key's public half to the bastion, or give `--jump-key`. `--from` then sees the bastion's address.
 
 **Without an argument**, in a directory without `dockflow.yml`, it prepares the server it runs on, which must be Linux, as root. The steps are the same, with the key generated in memory and never written to disk. The connection string gives:
 
@@ -651,6 +651,9 @@ The deploy user is then checked through the SSH server on `127.0.0.1`, as the CI
 | `-k, --key string` | `ssh-agent`, `~/.ssh` | With `<admin>@<host>`: the administrator's private key. |
 | `--password-file string` | none | With `<admin>@<host>`: a file holding the administrator's password. |
 | `--host-key string` | `known_hosts` | With `<admin>@<host>`: the server's host key fingerprint (`SHA256:…`). |
+| `--jump string` | `ProxyJump` of `~/.ssh/config` | With `<admin>@<host>`: the [bastion](/reference/dockflow-yml/#through-a-bastion) the server is reached through, `[user@]host[:port]`. `<host>` is then the server's address as the bastion sees it, and the connection string holds the bastion. |
+| `--jump-host-key string` | `known_hosts` | The bastion's host key fingerprint. |
+| `--jump-key string` | `DOCKFLOW_SSH_JUMP_KEY` | The bastion's private key file, when the deploy key does not open it. The connection string holds it. |
 | `--user string` | `dockflow` | When preparing a server: the deploy user to create. |
 | `--deploy-key string` | a new key | When preparing a server: a private key to use for the deploy user instead of generating one. |
 | `--name string` | `main` | When preparing a server: its name in the connection string. |
@@ -811,6 +814,13 @@ dockflow server connection deploy@203.0.113.10 -k ~/.ssh/dockflow_ed25519
 | `--host-key string` | none | The server's host key fingerprint (`SHA256:…`), when `known_hosts` does not have it. |
 | `-k, --key string` | `DOCKFLOW_SSH_KEY` | The private key file the connection string holds. |
 | `--name string` | `main` | The server's name. |
+| `--jump string` | `ProxyJump` of `~/.ssh/config` | With a target: the [bastion](/reference/dockflow-yml/#through-a-bastion), `[user@]host[:port]`. The target is then the server's address as the bastion sees it. |
+| `--jump-host-key string` | `known_hosts` | The bastion's host key fingerprint. |
+| `--jump-key string` | `DOCKFLOW_SSH_JUMP_KEY` | The bastion's private key file, when the server's key does not open it. The connection string holds it. |
+
+```sh
+dockflow server connection deploy@10.0.1.20 -k ~/.ssh/dockflow_ed25519 --jump admin@bastion.example.com
+```
 
 <Callout type="warn">
 The connection string holds the private key. Store it as a CI secret, never in the repository.

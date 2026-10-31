@@ -169,8 +169,11 @@ environments:                       # required; at least one
     server:                         # optional when the connection string exists
       { name: main, host: 203.0.113.10, port: 22, user: dockflow, host_key: "SHA256:Xq…" }
                                     # host may be a Host alias of ~/.ssh/config: its HostName, and
-                                    # its Port, User and IdentityFile where server: sets none;
-                                    # then port 22 and user dockflow
+                                    # its Port, User, IdentityFile and ProxyJump where server: sets
+                                    # none; then port 22 and user dockflow
+                                    # jump: admin@bastion.example.com:2222, or
+                                    # { host, port, user, host_key }: one bastion, as ProxyJump;
+                                    # host is then the server's address as the bastion sees it
     compose: [compose.yml, compose.prod.yml]   # optional; replaces the top-level list
     profiles: [web]                 # optional Compose profiles
     vars:

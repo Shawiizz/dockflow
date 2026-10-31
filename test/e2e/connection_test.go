@@ -164,3 +164,63 @@ func TestServerInitOnTheServer(t *testing.T) {
 		t.Fatalf("deploy with the printed connection string: %v\n%s", err, out)
 	}
 }
+
+// Through a bastion: the server's own SSH server stands in for it, and the server is 127.0.0.1 as
+// the bastion sees it, which the CLI cannot reach directly. server connection pins both host
+// keys, and a deploy goes through the bastion with the string it prints.
+func TestThroughBastion(t *testing.T) {
+	raw, _ := base64.StdEncoding.DecodeString(connString)
+	var want struct {
+		Servers []struct {
+			HostKey string `json:"host_key"`
+		} `json:"servers"`
+		PrivateKey string `json:"private_key"`
+	}
+	json.Unmarshal(raw, &want)
+	key := filepath.Join(workDir, "bastion_key")
+	os.WriteFile(key, []byte(want.PrivateKey), 0o600)
+	fp := want.Servers[0].HostKey
+
+	run := func(args ...string) (string, int) {
+		cmd := exec.Command(binary, args...)
+		cmd.Env = append(os.Environ(), "HOME="+workDir)
+		out, _ := cmd.CombinedOutput()
+		return strings.TrimSpace(string(out)), cmd.ProcessState.ExitCode()
+	}
+	out, code := run("server", "connection", "root@127.0.0.1:2222", "-k", key, "--host-key", fp,
+		"--jump", "root@"+serverIP+":2222", "--jump-host-key", fp)
+	if code != 0 {
+		t.Fatalf("server connection through the bastion: exit %d: %s", code, out)
+	}
+	got, _ := base64.StdEncoding.DecodeString(out)
+	var cs struct {
+		V       int `json:"v"`
+		Servers []struct {
+			Host string `json:"host"`
+			Jump struct {
+				Host    string `json:"host"`
+				HostKey string `json:"host_key"`
+			} `json:"jump"`
+		} `json:"servers"`
+	}
+	json.Unmarshal(got, &cs)
+	if cs.V != 3 || cs.Servers[0].Host != "127.0.0.1" || cs.Servers[0].Jump.Host != serverIP || cs.Servers[0].Jump.HostKey != fp {
+		t.Fatalf("the string must hold the bastion and its verified host key: %s", got)
+	}
+
+	app := "journey44"
+	dir := filepath.Join(workDir, app)
+	writeProject(t, dir, app, webApp(app, "whoami-e2e:v1", ""))
+	deploy := exec.Command(binary, "--json", "-y", "-C", dir, "--connection", "-", "deploy")
+	deploy.Env = append(os.Environ(), "HOME="+workDir)
+	deploy.Stdin = strings.NewReader(out + "\n")
+	if b, err := deploy.CombinedOutput(); err != nil {
+		t.Fatalf("deploy through the bastion: %v: %s", err, b)
+	}
+
+	out, code = run("server", "connection", "root@127.0.0.1:2222", "-k", key, "--host-key", fp,
+		"--jump", "root@"+serverIP+":2222")
+	if code != 4 || !strings.Contains(out, "bastion") {
+		t.Fatalf("a bastion whose host key is not verified must be refused with exit 4, got %d: %s", code, out)
+	}
+}

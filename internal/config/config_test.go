@@ -156,3 +156,41 @@ func TestVersionErrors(t *testing.T) {
 		})
 	}
 }
+
+// server.jump is the bastion: OpenSSH's [user@]host[:port], interpolated, or a map with its host
+// key; one bastion, not a chain.
+func TestServerJump(t *testing.T) {
+	r := project(t, `version: 1
+app: shop
+environments:
+  production:
+    server: { host: 10.0.0.5, jump: "admin@${BASTION}:2222" }
+  staging:
+    server:
+      host: 10.0.0.6
+      jump: { host: bastion.example.com, host_key: "SHA256:b" }
+`)
+	res, err := r.Resolve("production", lookup(map[string]string{"BASTION": "203.0.113.7"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j := res.Server.Jump; j == nil || j.Host != "203.0.113.7" || j.Port != 2222 || j.User != "admin" {
+		t.Fatalf("production's bastion: %+v", j)
+	}
+	res, err = r.Resolve("staging", lookup(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j := res.Server.Jump; j == nil || j.Host != "bastion.example.com" || j.HostKey != "SHA256:b" {
+		t.Fatalf("staging's bastion: %+v", j)
+	}
+	_, err = project(t, `version: 1
+app: shop
+environments:
+  production:
+    server: { host: 10.0.0.5, jump: "a@one,b@two" }
+`).Resolve("production", lookup(nil))
+	if err == nil || !strings.Contains(err.Error(), "one bastion") {
+		t.Fatalf("a chain must be refused, got %v", err)
+	}
+}

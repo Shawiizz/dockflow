@@ -557,6 +557,7 @@ func (a *app) serverCmd() *cobra.Command {
 	f.StringVarP(&pf.key, "key", "k", "", "with <admin>@<host>: the administrator's private key (default: ssh-agent, ~/.ssh)")
 	f.StringVar(&pf.passwordFile, "password-file", "", "with <admin>@<host>: a file holding the administrator's password")
 	f.StringVar(&pf.hostKey, "host-key", "", "with <admin>@<host>: the server's host key fingerprint (SHA256:…), when known_hosts does not have it")
+	pf.jump.register(f, "with <admin>@<host>: ")
 	f.StringVar(&pf.user, "user", "", "when preparing a server: the deploy user to create (default dockflow)")
 	f.StringVar(&pf.deployKey, "deploy-key", "", "when preparing a server: use this private key for the deploy user instead of generating one")
 	f.StringVar(&pf.name, "name", "", "when preparing a server: its name in the connection string (default main)")

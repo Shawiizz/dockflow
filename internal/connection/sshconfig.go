@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/Shawiizz/dockflow/internal/errs"
 )
 
 // HostConfig is what ~/.ssh/config says about a host (ADR-0013): only the keywords Dockflow
@@ -15,6 +17,8 @@ type HostConfig struct {
 	Port          int
 	User          string
 	IdentityFiles []string
+	// ProxyJump is the bastion, [user@]host[:port], or none
+	ProxyJump string
 }
 
 // ReadSSHConfig reads the user's ~/.ssh/config for host, as OpenSSH does: the first value of
@@ -90,6 +94,10 @@ func readSSHConfig(path, dir, host string, c *HostConfig, depth int) {
 			if c.User == "" {
 				c.User = value
 			}
+		case "proxyjump":
+			if c.ProxyJump == "" {
+				c.ProxyJump = value
+			}
 		case "identityfile":
 			// every IdentityFile adds a key, in order
 			c.IdentityFiles = append(c.IdentityFiles, strings.Trim(value, `"`))
@@ -140,9 +148,11 @@ func globMatch(pattern, s string) bool {
 
 // UseSSHConfig completes t from ~/.ssh/config, where t.Server.Host may be an alias: its
 // HostName, and its Port and User unless the caller set them; its IdentityFiles are tried after
-// ssh-agent.
-func (t *Target) UseSSHConfig(portSet, userSet bool) {
-	c := ReadSSHConfig(t.Server.Host)
+// ssh-agent. Its ProxyJump is the bastion unless the caller set one, and the bastion, an alias
+// too, is completed the same way.
+func (t *Target) UseSSHConfig(portSet, userSet bool) error {
+	alias := t.Server.Host
+	c := ReadSSHConfig(alias)
 	if c.HostName != "" {
 		t.Server.Host = c.HostName
 	}
@@ -153,6 +163,32 @@ func (t *Target) UseSSHConfig(portSet, userSet bool) {
 		t.Server.User = c.User
 	}
 	t.IdentityFiles = c.IdentityFiles
+	if t.Server.Jump == nil && c.ProxyJump != "" && !strings.EqualFold(c.ProxyJump, "none") {
+		j, err := ParseJump(c.ProxyJump)
+		if err != nil {
+			return errs.Config("ProxyJump of %s in ~/.ssh/config: %s", alias, err.Error())
+		}
+		t.Server.Jump = j
+	}
+	j := t.Server.Jump
+	if j == nil {
+		return nil
+	}
+	jc := ReadSSHConfig(j.Host)
+	if jc.ProxyJump != "" && !strings.EqualFold(jc.ProxyJump, "none") {
+		return errs.Config("the bastion %s has its own ProxyJump in ~/.ssh/config; Dockflow goes through one bastion", j.Host)
+	}
+	if jc.HostName != "" {
+		j.Host = jc.HostName
+	}
+	if j.Port == 0 {
+		j.Port = jc.Port
+	}
+	if j.User == "" {
+		j.User = jc.User
+	}
+	t.JumpIdentityFiles = jc.IdentityFiles
+	return nil
 }
 
 func firstNonEmpty(values ...string) string {

@@ -34,6 +34,8 @@ type provisionFlags struct {
 	// on the server itself: the address and SSH port the connection string gives
 	host string
 	port int
+	// jump is the bastion, with <admin>@<host>
+	jump jumpFlags
 }
 
 // provisionServer prepares a server from an administrator's account (ADR-0013): Docker, the
@@ -41,7 +43,7 @@ type provisionFlags struct {
 // connection string, which holds the deploy key: the key is generated here and never stored on
 // the server.
 func (a *app) provisionServer(ctx context.Context, target string, f provisionFlags, init func(*agent.Request)) error {
-	admin, err := parseTarget(target, "root")
+	admin, err := parseTarget(target, "root", f.jump.jump)
 	if err != nil {
 		return err
 	}
@@ -61,11 +63,17 @@ func (a *app) provisionServer(ctx context.Context, target string, f provisionFla
 		}
 		admin.Password = strings.TrimRight(string(b), "\r\n")
 	}
+	if err := f.jump.apply(admin); err != nil {
+		return err
+	}
 	key, err := f.deployKeyFor(srv.Host)
 	if err != nil {
 		return err
 	}
 	a.emitter.Masker().Add(admin.PrivateKey, admin.Password, key.PrivatePEM)
+	if admin.Server.Jump != nil {
+		a.emitter.Masker().Add(admin.Server.Jump.PrivateKey)
+	}
 	script, err := provision.Script(f.options(key, srv.User))
 	if err != nil {
 		return err
@@ -92,6 +100,12 @@ func (a *app) provisionServer(ctx context.Context, target string, f provisionFla
 		return err
 	}
 	public := connection.Server{Name: srv.Name, Host: srv.Host, Port: srv.Port, User: f.user, HostKey: admin.Verified}
+	if j := admin.Server.Jump; j != nil {
+		// the bastion as the administrator reached it: the deploy key must open it too, or --jump-key
+		pinned := *j
+		pinned.HostKey = admin.JumpVerified
+		public.Jump = &pinned
+	}
 	// from here on, everything goes through the deploy user, as deploys will
 	return a.finishProvisioning(ctx, &connection.Target{Server: public, PrivateKey: key.PrivatePEM}, public, key, init)
 }
