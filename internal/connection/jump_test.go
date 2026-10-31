@@ -377,3 +377,62 @@ func TestIdentitiesOnly(t *testing.T) {
 		})
 	}
 }
+
+// A key both in ssh-agent and on the disk, and the deploy key when the agent holds it too, is
+// offered once.
+func TestKeysAreOfferedOnce(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	_, mine, _ := ed25519.GenerateKey(rand.Reader)
+	deployKey, deployPub := testKey(t)
+	deploySigner, _ := parseKey(deployKey)
+	keyring := agent.NewKeyring()
+	keyring.Add(agent.AddedKey{PrivateKey: mine})
+	os.MkdirAll(filepath.Join(home, ".ssh"), 0o700)
+	block, _ := ssh.MarshalPrivateKey(mine, "")
+	os.WriteFile(filepath.Join(home, ".ssh", "id_ed25519"), pemEncode(block), 0o600)
+	sock := filepath.Join(t.TempDir(), "agent.sock")
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go agent.ServeAgent(keyring, c)
+		}
+	}()
+	t.Setenv("SSH_AUTH_SOCK", sock)
+	// the deploy key is in the agent too
+	raw, _ := ssh.ParseRawPrivateKey([]byte(deployKey))
+	keyring.Add(agent.AddedKey{PrivateKey: raw})
+
+	// a bastion that takes no key sees every key offered
+	server := newTestServer(t, deployPub)
+	bastion := newTestServer(t)
+	sh, sp := server.hostPort(t)
+	bh, bp := bastion.hostPort(t)
+	tgt := &Target{
+		Server:     Server{Host: sh, Port: sp, User: "dockflow", HostKey: server.fingerprint, Jump: &Jump{Host: bh, Port: bp, User: "me", HostKey: bastion.fingerprint}},
+		PrivateKey: deployKey,
+	}
+	if _, err := Dial(context.Background(), tgt); err == nil {
+		t.Fatal("the bastion takes no key")
+	}
+	bastion.mu.Lock()
+	defer bastion.mu.Unlock()
+	seen := map[string]bool{}
+	for _, fp := range bastion.offered {
+		if seen[fp] {
+			t.Fatalf("a key was offered twice: %v", bastion.offered)
+		}
+		seen[fp] = true
+	}
+	if len(seen) != 2 || !seen[ssh.FingerprintSHA256(deploySigner.PublicKey())] {
+		t.Fatalf("the agent's key and the deploy key, each once: %v", bastion.offered)
+	}
+}

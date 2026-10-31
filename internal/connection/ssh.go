@@ -295,13 +295,20 @@ func parseKey(key string) (ssh.Signer, error) {
 	return signer, nil
 }
 
-// authMethods offers the keys, in order, then the password. The keys are one method: the SSH
-// library does not try a method again once the server refused it, so a method per key would
-// skip every key after the first refused one.
+// authMethods offers the keys, in order and each once, then the password. A key both in ssh-agent
+// and on the disk is offered once, as OpenSSH does: each offer uses one of the server's
+// MaxAuthTries. The keys are one method: the SSH library does not try a method again once the
+// server refused it, so a method per key would skip every key after the first refused one.
 func authMethods(keys []ssh.Signer, password string) []ssh.AuthMethod {
 	var methods []ssh.AuthMethod
-	if len(keys) > 0 {
-		methods = append(methods, ssh.PublicKeys(keys...))
+	var unique []ssh.Signer
+	for _, k := range keys {
+		if heldBy(unique, k.PublicKey()) == nil {
+			unique = append(unique, k)
+		}
+	}
+	if len(unique) > 0 {
+		methods = append(methods, ssh.PublicKeys(unique...))
 	}
 	if password != "" {
 		pw := password
