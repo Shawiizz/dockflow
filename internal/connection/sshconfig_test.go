@@ -3,6 +3,7 @@ package connection
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,6 +77,9 @@ Host direct
 Host chained
   ProxyJump a@one,b@two
 
+Host ssm
+  ProxyCommand aws ssm start-session --target %h
+
 Host bastion
   HostName 203.0.113.7
   Port 2222
@@ -109,5 +113,8 @@ Host bastion
 	}
 	if err := (&Target{Server: Server{Host: "chained"}}).UseSSHConfig(false, false); err == nil {
 		t.Fatal("a chain of bastions must be refused")
+	}
+	if err := (&Target{Server: Server{Host: "ssm"}}).UseSSHConfig(false, false); err == nil || !strings.Contains(err.Error(), "ProxyCommand") {
+		t.Fatalf("a ProxyCommand must be refused, not ignored: %v", err)
 	}
 }

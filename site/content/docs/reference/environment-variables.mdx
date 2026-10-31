@@ -65,7 +65,7 @@ When the server comes from `dockflow.yml`, Dockflow picks the private key in thi
 3. the keys of ssh-agent;
 4. the `IdentityFile` keys `~/.ssh/config` gives the host or, when it gives none, the files `~/.ssh/id_ed25519`, `~/.ssh/id_ecdsa` and `~/.ssh/id_rsa`.
 
-A key protected by a passphrase must be loaded in ssh-agent. The host key is checked against `host_key:` or `~/.ssh/known_hosts`.
+Steps 3 and 4 are one list, offered in order: a key the server refuses does not stop the next. A key protected by a passphrase must be loaded in ssh-agent. The host key is checked against `host_key:` or `~/.ssh/known_hosts`.
 
 ## The agent binary
 

@@ -134,19 +134,29 @@ var HostKeyAlgorithms = []string{
 	ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256,
 }
 
+// HandshakeTimeout bounds the SSH handshake, behind a bastion too, where the connection is an SSH
+// channel that has no deadline: a server that accepts the connection and never answers fails
+// instead of holding the deploy.
+var HandshakeTimeout = 20 * time.Second
+
 // Dial opens an SSH connection, verifying the server's host key. Through a bastion, the bastion's
 // host key is verified the same way, and the bastion's connection closes with the server's.
 func Dial(ctx context.Context, t *Target) (*ssh.Client, error) {
-	var signers []ssh.Signer
+	var deployKey []ssh.Signer
 	if t.PrivateKey != "" {
 		signer, err := parseKey(t.PrivateKey)
 		if err != nil {
 			return nil, err
 		}
-		signers = append(signers, signer)
+		deployKey = []ssh.Signer{signer}
 	}
-	auth, closeAuth := authMethods(signers, t.Password, t.IdentityFiles)
-	defer closeAuth()
+	keys := deployKey
+	if len(keys) == 0 && t.Password == "" {
+		found, closeAgent := discoverKeys(t.IdentityFiles)
+		defer closeAgent()
+		keys = found
+	}
+	auth := authMethods(keys, t.Password)
 	if len(auth) == 0 {
 		return nil, errs.Config("no SSH credentials for %s", t.Server.Host).
 			WithHint("use a connection string, set DOCKFLOW_SSH_KEY, or load a key in ssh-agent")
@@ -158,24 +168,27 @@ func Dial(ctx context.Context, t *Target) (*ssh.Client, error) {
 		if err != nil {
 			return nil, err
 		}
-		return handshake(conn, t.Addr(), t.Server.User, auth, serverKey)
+		return handshake(ctx, conn, t.Addr(), t.Server.User, auth, serverKey)
 	}
-	// the bastion's own key first, then the server's, as OpenSSH tries every key it has
-	var jumpSigners []ssh.Signer
+	// the bastion's own key, then ssh-agent's and its IdentityFile keys, as OpenSSH offers them,
+	// and the server's key last: it is not the bastion's, and each key offered uses one of the
+	// bastion's MaxAuthTries
+	var jumpKeys []ssh.Signer
 	if j.PrivateKey != "" {
 		signer, err := parseKey(j.PrivateKey)
 		if err != nil {
 			return nil, err
 		}
-		jumpSigners = append(jumpSigners, signer)
+		jumpKeys = append(jumpKeys, signer)
 	}
-	jumpAuth, closeJumpAuth := authMethods(append(jumpSigners, signers...), "", t.JumpIdentityFiles)
-	defer closeJumpAuth()
+	found, closeJumpAgent := discoverKeys(t.JumpIdentityFiles)
+	defer closeJumpAgent()
+	jumpKeys = append(append(jumpKeys, found...), deployKey...)
 	conn, err := dialTCP(ctx, j.Addr())
 	if err != nil {
 		return nil, err.WithHint("check the bastion's host and port, and that it accepts SSH from this machine")
 	}
-	bastion, herr := handshake(conn, j.Addr(), j.User, jumpAuth, hostKeyCallback(j.Addr(), j.HostKey, &t.JumpVerified, true))
+	bastion, herr := handshake(ctx, conn, j.Addr(), j.User, authMethods(jumpKeys, ""), hostKeyCallback(j.Addr(), j.HostKey, &t.JumpVerified, true))
 	if herr != nil {
 		return nil, herr
 	}
@@ -185,7 +198,7 @@ func Dial(ctx context.Context, t *Target) (*ssh.Client, error) {
 		return nil, errs.Connect("the bastion %s cannot reach %s", j.Addr(), t.Addr()).WithCause(derr).
 			WithHint("check the server's address as the bastion sees it, and that the bastion allows TCP forwarding (AllowTcpForwarding)")
 	}
-	c, herr := handshake(tunnel, t.Addr(), t.Server.User, auth, serverKey)
+	c, herr := handshake(ctx, tunnel, t.Addr(), t.Server.User, auth, serverKey)
 	if herr != nil {
 		bastion.Close()
 		return nil, herr
@@ -207,29 +220,50 @@ func dialTCP(ctx context.Context, addr string) (net.Conn, *errs.Error) {
 	return conn, nil
 }
 
-// handshake opens an SSH connection over conn, which it closes when it fails.
-func handshake(conn net.Conn, addr, user string, auth []ssh.AuthMethod, hostKey ssh.HostKeyCallback) (*ssh.Client, error) {
+// handshake opens an SSH connection over conn, within HandshakeTimeout and ctx, closing conn when
+// it fails. The handshake runs aside, as a channel through a bastion has no deadline: closing
+// conn ends it.
+func handshake(ctx context.Context, conn net.Conn, addr, user string, auth []ssh.AuthMethod, hostKey ssh.HostKeyCallback) (*ssh.Client, error) {
 	cfg := &ssh.ClientConfig{
 		User:              user,
 		Auth:              auth,
 		HostKeyCallback:   hostKey,
 		HostKeyAlgorithms: HostKeyAlgorithms,
-		Timeout:           20 * time.Second,
 	}
-	// ClientConfig.Timeout covers only the TCP dial, which a tunnel through a bastion has not
-	_ = conn.SetDeadline(time.Now().Add(cfg.Timeout))
-	c, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
-	if err != nil {
+	type result struct {
+		c     ssh.Conn
+		chans <-chan ssh.NewChannel
+		reqs  <-chan *ssh.Request
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		c, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
+		done <- result{c, chans, reqs, err}
+	}()
+	timer := time.NewTimer(HandshakeTimeout)
+	defer timer.Stop()
+	var r result
+	select {
+	case r = <-done:
+	case <-timer.C:
+		conn.Close()
+		return nil, errs.Connect("%s accepted the connection, but SSH did not answer within %s", addr, HandshakeTimeout).
+			WithHint("check that the SSH server of %s is running and not overloaded", addr)
+	case <-ctx.Done():
+		conn.Close()
+		return nil, errs.Connect("SSH to %s was cancelled", addr).WithCause(ctx.Err())
+	}
+	if r.err != nil {
 		conn.Close()
 		var hk *hostKeyError
-		if errors.As(err, &hk) {
+		if errors.As(r.err, &hk) {
 			return nil, hk.err
 		}
-		return nil, errs.Connect("SSH to %s@%s failed", user, addr).WithCause(err).
+		return nil, errs.Connect("SSH to %s@%s failed", user, addr).WithCause(r.err).
 			WithHint("check the user and the key, or print the connection string again with `dockflow server connection`")
 	}
-	_ = conn.SetDeadline(time.Time{})
-	return ssh.NewClient(c, chans, reqs), nil
+	return ssh.NewClient(r.c, r.chans, r.reqs), nil
 }
 
 // parseKey reads a private key, or the file it names.
@@ -252,13 +286,13 @@ func parseKey(key string) (ssh.Signer, error) {
 	return signer, nil
 }
 
-// authMethods are the keys and the password given; without any, ssh-agent's keys, then files, or
-// the default keys when files is empty.
-func authMethods(signers []ssh.Signer, password string, files []string) ([]ssh.AuthMethod, func()) {
+// authMethods offers the keys, in order, then the password. The keys are one method: the SSH
+// library does not try a method again once the server refused it, so a method per key would
+// skip every key after the first refused one.
+func authMethods(keys []ssh.Signer, password string) []ssh.AuthMethod {
 	var methods []ssh.AuthMethod
-	closeFn := func() {}
-	if len(signers) > 0 {
-		methods = append(methods, ssh.PublicKeys(signers...))
+	if len(keys) > 0 {
+		methods = append(methods, ssh.PublicKeys(keys...))
 	}
 	if password != "" {
 		pw := password
@@ -271,13 +305,20 @@ func authMethods(signers []ssh.Signer, password string, files []string) ([]ssh.A
 				return answers, nil
 			}))
 	}
-	if len(methods) > 0 {
-		return methods, closeFn
-	}
+	return methods
+}
+
+// discoverKeys returns ssh-agent's keys, then those of files, or of the default files when files
+// is empty, and closes the agent's connection when done.
+func discoverKeys(files []string) ([]ssh.Signer, func()) {
+	var keys []ssh.Signer
+	closeFn := func() {}
 	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
 		if conn, err := net.Dial("unix", sock); err == nil {
 			closeFn = func() { conn.Close() }
-			methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(conn).Signers))
+			if signers, err := agent.NewClient(conn).Signers(); err == nil {
+				keys = append(keys, signers...)
+			}
 		}
 	}
 	if len(files) == 0 {
@@ -292,10 +333,10 @@ func authMethods(signers []ssh.Signer, password string, files []string) ([]ssh.A
 			continue
 		}
 		if signer, err := ssh.ParsePrivateKey(b); err == nil {
-			methods = append(methods, ssh.PublicKeys(signer))
+			keys = append(keys, signer)
 		}
 	}
-	return methods, closeFn
+	return keys, closeFn
 }
 
 type hostKeyError struct{ err *errs.Error }

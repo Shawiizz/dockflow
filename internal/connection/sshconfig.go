@@ -19,6 +19,9 @@ type HostConfig struct {
 	IdentityFiles []string
 	// ProxyJump is the bastion, [user@]host[:port], or none
 	ProxyJump string
+	// ProxyCommand is not supported: Dockflow refuses a host that has one rather than connecting
+	// directly
+	ProxyCommand string
 }
 
 // ReadSSHConfig reads the user's ~/.ssh/config for host, as OpenSSH does: the first value of
@@ -98,6 +101,10 @@ func readSSHConfig(path, dir, host string, c *HostConfig, depth int) {
 			if c.ProxyJump == "" {
 				c.ProxyJump = value
 			}
+		case "proxycommand":
+			if c.ProxyCommand == "" {
+				c.ProxyCommand = value
+			}
 		case "identityfile":
 			// every IdentityFile adds a key, in order
 			c.IdentityFiles = append(c.IdentityFiles, strings.Trim(value, `"`))
@@ -153,6 +160,9 @@ func globMatch(pattern, s string) bool {
 func (t *Target) UseSSHConfig(portSet, userSet bool) error {
 	alias := t.Server.Host
 	c := ReadSSHConfig(alias)
+	if err := noProxyCommand(alias, c); err != nil {
+		return err
+	}
 	if c.HostName != "" {
 		t.Server.Host = c.HostName
 	}
@@ -175,6 +185,9 @@ func (t *Target) UseSSHConfig(portSet, userSet bool) error {
 		return nil
 	}
 	jc := ReadSSHConfig(j.Host)
+	if err := noProxyCommand(j.Host, jc); err != nil {
+		return err
+	}
 	if jc.ProxyJump != "" && !strings.EqualFold(jc.ProxyJump, "none") {
 		return errs.Config("the bastion %s has its own ProxyJump in ~/.ssh/config; Dockflow goes through one bastion", j.Host)
 	}
@@ -189,6 +202,16 @@ func (t *Target) UseSSHConfig(portSet, userSet bool) error {
 	}
 	t.JumpIdentityFiles = jc.IdentityFiles
 	return nil
+}
+
+// noProxyCommand refuses a host that ~/.ssh/config reaches through a ProxyCommand, which Dockflow
+// does not run: connecting directly would fail with a misleading error, or reach another host.
+func noProxyCommand(host string, c HostConfig) error {
+	if c.ProxyCommand == "" || strings.EqualFold(c.ProxyCommand, "none") {
+		return nil
+	}
+	return errs.Config("%s has a ProxyCommand in ~/.ssh/config, which Dockflow does not run", host).
+		WithHint("reach it through a bastion with ProxyJump, or server.jump in dockflow.yml")
 }
 
 func firstNonEmpty(values ...string) string {

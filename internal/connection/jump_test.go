@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/Shawiizz/dockflow/internal/errs"
 )
@@ -24,6 +27,8 @@ type testServer struct {
 	mu                sync.Mutex
 	forwarded         []string
 	users             []string
+	// offered are the keys clients offered, in order
+	offered []string
 }
 
 func newTestServer(t *testing.T, keys ...ssh.PublicKey) *testServer {
@@ -32,6 +37,9 @@ func newTestServer(t *testing.T, keys ...ssh.PublicKey) *testServer {
 	host, _ := ssh.NewSignerFromKey(hostPriv)
 	s := &testServer{fingerprint: ssh.FingerprintSHA256(host.PublicKey())}
 	cfg := &ssh.ServerConfig{PublicKeyCallback: func(meta ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+		s.mu.Lock()
+		s.offered = append(s.offered, ssh.FingerprintSHA256(key))
+		s.mu.Unlock()
 		for _, k := range keys {
 			if string(k.Marshal()) == string(key.Marshal()) {
 				s.mu.Lock()
@@ -182,5 +190,104 @@ func TestDialThroughBastion(t *testing.T) {
 	_, err = Dial(context.Background(), tgt)
 	if e, ok := errs.As(err); !ok || e.Code != "ssh.host_key_mismatch" || strings.Contains(e.Message, "bastion") {
 		t.Fatalf("a wrong server host key must be refused behind the bastion: %v", err)
+	}
+}
+
+// The bastion is offered ssh-agent's keys even when the server has its deploy key, which comes
+// last: in a company, the bastion takes the person's key and the server the deploy key.
+func TestBastionTakesTheAgentsKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	deployKey, deployPub := testKey(t)
+	_, personal, _ := ed25519.GenerateKey(rand.Reader)
+	keyring := agent.NewKeyring()
+	if err := keyring.Add(agent.AddedKey{PrivateKey: personal}); err != nil {
+		t.Fatal(err)
+	}
+	sock := filepath.Join(t.TempDir(), "agent.sock")
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go agent.ServeAgent(keyring, c)
+		}
+	}()
+	t.Setenv("SSH_AUTH_SOCK", sock)
+	personalSigner, _ := ssh.NewSignerFromKey(personal)
+
+	server := newTestServer(t, deployPub)
+	bastion := newTestServer(t, personalSigner.PublicKey())
+	sh, sp := server.hostPort(t)
+	bh, bp := bastion.hostPort(t)
+	tgt := &Target{
+		Server:     Server{Host: sh, Port: sp, User: "dockflow", HostKey: server.fingerprint, Jump: &Jump{Host: bh, Port: bp, User: "me", HostKey: bastion.fingerprint}},
+		PrivateKey: deployKey,
+	}
+	c, err := Dial(context.Background(), tgt)
+	if err != nil {
+		t.Fatalf("the bastion must be opened with the agent's key: %v", err)
+	}
+	c.Close()
+	bastion.mu.Lock()
+	defer bastion.mu.Unlock()
+	for _, fp := range bastion.offered {
+		if fp == ssh.FingerprintSHA256(deployPub) {
+			t.Fatalf("the deploy key comes after the agent's, which opened the bastion: %v", bastion.offered)
+		}
+	}
+}
+
+// A server behind the bastion that accepts the connection and never answers fails within
+// HandshakeTimeout instead of holding the deploy.
+func TestSilentServerBehindBastionTimesOut(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("SSH_AUTH_SOCK", "")
+	defer func(d time.Duration) { HandshakeTimeout = d }(HandshakeTimeout)
+	HandshakeTimeout = 300 * time.Millisecond
+	silent, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer silent.Close()
+	go func() {
+		for {
+			c, err := silent.Accept()
+			if err != nil {
+				return
+			}
+			defer c.Close()
+		}
+	}()
+	deployKey, deployPub := testKey(t)
+	bastion := newTestServer(t, deployPub)
+	bh, bp := bastion.hostPort(t)
+	h, p, _ := net.SplitHostPort(silent.Addr().String())
+	port, _ := strconv.Atoi(p)
+	tgt := &Target{
+		Server:     Server{Host: h, Port: port, User: "dockflow", HostKey: "SHA256:x", Jump: &Jump{Host: bh, Port: bp, User: "me", HostKey: bastion.fingerprint}},
+		PrivateKey: deployKey,
+	}
+	start := time.Now()
+	_, err = Dial(context.Background(), tgt)
+	if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		t.Fatalf("a silent server must fail, got %v", err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("it took %s", d)
+	}
+
+	// and a cancelled context ends it too
+	HandshakeTimeout = time.Minute
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start = time.Now()
+	if _, err = Dial(ctx, tgt); err == nil || time.Since(start) > 5*time.Second {
+		t.Fatalf("a cancelled context must end the handshake: %v after %s", err, time.Since(start))
 	}
 }
