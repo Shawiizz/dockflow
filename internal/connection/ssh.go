@@ -319,8 +319,10 @@ func authMethods(keys []ssh.Signer, password string) []ssh.AuthMethod {
 
 // discoverKeys returns ssh-agent's keys, then those of files, or of the default files when files
 // is empty, and closes the agent's connection when done. With only, as OpenSSH's IdentitiesOnly,
-// it returns the files' keys alone, taken from ssh-agent when it holds them: a key protected by a
-// passphrase is recognised by its .pub file.
+// it returns the files' keys alone, taken from ssh-agent when it holds them. The agent's key is
+// recognised by the file's public key: the file itself when it is a public key (as 1Password and
+// Secretive advise), else its .pub, which is all there is for a key protected by a passphrase or
+// kept off the disk.
 func discoverKeys(files []string, only bool) ([]ssh.Signer, func()) {
 	var agentKeys []ssh.Signer
 	closeFn := func() {}
@@ -343,22 +345,25 @@ func discoverKeys(files []string, only bool) ([]ssh.Signer, func()) {
 		keys = append(keys, agentKeys...)
 	}
 	for _, file := range files {
-		b, err := os.ReadFile(file)
-		if err != nil {
-			continue
+		var signer ssh.Signer
+		var pub ssh.PublicKey
+		if b, err := os.ReadFile(file); err == nil {
+			if signer, err = ssh.ParsePrivateKey(b); err == nil {
+				pub = signer.PublicKey()
+			} else {
+				pub, _, _, _, _ = ssh.ParseAuthorizedKey(b)
+			}
 		}
-		signer, err := ssh.ParsePrivateKey(b)
 		if !only {
-			if err == nil {
+			if signer != nil {
 				keys = append(keys, signer)
 			}
 			continue
 		}
-		var pub ssh.PublicKey
-		if err == nil {
-			pub = signer.PublicKey()
-		} else if pb, err := os.ReadFile(file + ".pub"); err == nil {
-			pub, _, _, _, _ = ssh.ParseAuthorizedKey(pb)
+		if pub == nil {
+			if b, err := os.ReadFile(file + ".pub"); err == nil {
+				pub, _, _, _, _ = ssh.ParseAuthorizedKey(b)
+			}
 		}
 		if held := heldBy(agentKeys, pub); held != nil {
 			keys = append(keys, held)
