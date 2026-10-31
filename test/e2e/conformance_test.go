@@ -125,6 +125,9 @@ var conformance = []struct{ name, compose string }{
     networks:
       front:
         aliases: [app-front, api]
+        priority: 10
+        mac_address: "de:ad:be:ef:00:01"
+        link_local_ips: [169.254.10.10]
       back:
         ipv4_address: 172.30.5.10
     restart: always
@@ -168,10 +171,15 @@ networks:
         source: /tmp
         target: /host-tmp
         read_only: true
+        bind:
+          propagation: private
+          recursive: disabled
+      - /srv:/srv-short:ro
       - type: tmpfs
         target: /scratch
         tmpfs:
           size: 1048576
+          mode: 1023
     restart: always
 volumes:
   data:
@@ -276,6 +284,7 @@ var untested = map[string]string{
 // inspected is what is compared of a container: its configuration, the names of the project's
 // networks and volumes made generic.
 var inspected = []string{
+	"Image",
 	"Config.Cmd", "Config.Entrypoint", "Config.Env", "Config.User", "Config.WorkingDir", "Config.Hostname", "Config.Domainname",
 	"Config.Labels", "Config.ExposedPorts", "Config.Healthcheck", "Config.StopSignal", "Config.StopTimeout", "Config.Tty", "Config.OpenStdin",
 	"HostConfig.Init", "HostConfig.ReadonlyRootfs", "HostConfig.Privileged", "HostConfig.RestartPolicy",
@@ -283,11 +292,14 @@ var inspected = []string{
 	"HostConfig.PidsLimit", "HostConfig.ShmSize", "HostConfig.OomScoreAdj", "HostConfig.Ulimits",
 	"HostConfig.CapAdd", "HostConfig.CapDrop", "HostConfig.SecurityOpt", "HostConfig.GroupAdd", "HostConfig.Sysctls",
 	"HostConfig.ExtraHosts", "HostConfig.Dns", "HostConfig.DnsSearch", "HostConfig.DnsOptions", "HostConfig.Tmpfs", "HostConfig.IpcMode",
-	"HostConfig.PortBindings", "HostConfig.NetworkMode", "HostConfig.LogConfig", "HostConfig.Mounts", "HostConfig.Binds",
+	"HostConfig.PortBindings", "HostConfig.NetworkMode", "HostConfig.LogConfig",
 	"HostConfig.Devices", "HostConfig.Runtime", "HostConfig.UsernsMode", "HostConfig.CgroupnsMode", "HostConfig.UTSMode",
 	"HostConfig.PidMode", "HostConfig.CpuPeriod", "HostConfig.CpuQuota", "HostConfig.CpusetCpus", "HostConfig.OomKillDisable",
 	"HostConfig.Annotations", "HostConfig.Links",
-	"Mounts", "Networks",
+	// Mounts is what the container got; MountSpecs how it was asked for, HostConfig's Binds and
+	// Mounts read as one list; TmpfsMounts the tmpfs mounts the container sees, with their size
+	// and mode, in /proc/mounts.
+	"Mounts", "MountSpecs", "TmpfsMounts", "Networks",
 }
 
 // TestConformanceCoversSupportedKeys fails when a Compose key Dockflow supports is used by no
@@ -498,6 +510,18 @@ func projectContainers(t *testing.T, project string) map[string]map[string]any {
 			continue
 		}
 		byService[service] = normalize(c, project)
+		mounts, err := inServer("docker exec " + fmt.Sprint(c["Id"]) + " cat /proc/mounts")
+		if err != nil {
+			mounts = "not running"
+		}
+		var tmpfs []string
+		for _, line := range strings.Split(mounts, "\n") {
+			if f := strings.Fields(line); len(f) >= 4 && f[2] == "tmpfs" {
+				tmpfs = append(tmpfs, strings.Join(f[1:4], " "))
+			}
+		}
+		sort.Strings(tmpfs)
+		byService[service]["TmpfsMounts"] = tmpfs
 	}
 	return byService
 }
@@ -529,7 +553,10 @@ func normalize(c map[string]any, project string) map[string]any {
 	out := map[string]any{}
 	for _, f := range inspected {
 		switch f {
-		case "Networks":
+		case "Networks", "TmpfsMounts":
+			continue
+		case "MountSpecs":
+			out[f] = mountSpecs(c, generic)
 			continue
 		case "Mounts":
 			var ms []string
@@ -554,11 +581,20 @@ func normalize(c map[string]any, project string) map[string]any {
 		case "Config.Env":
 			v = sorted(v)
 		case "Config.Labels":
+			// Compose's labels that docker compose ps and friends read are compared; the ones
+			// that describe each tool's run are not
 			labels := map[string]any{}
 			if m, ok := v.(map[string]any); ok {
 				for k, val := range m {
-					if !strings.HasPrefix(k, "com.docker.compose.") && !strings.HasPrefix(k, "dockflow.") {
+					switch k {
+					case "com.docker.compose.service", "com.docker.compose.oneoff", "com.docker.compose.container-number":
 						labels[k] = val
+					case "com.docker.compose.project":
+						labels[k] = "PROJECT"
+					default:
+						if !strings.HasPrefix(k, "com.docker.compose.") && !strings.HasPrefix(k, "dockflow.") {
+							labels[k] = val
+						}
 					}
 				}
 			}
@@ -569,9 +605,6 @@ func normalize(c map[string]any, project string) map[string]any {
 			}
 		case "HostConfig.NetworkMode":
 			v = generic(fmt.Sprint(v))
-		case "HostConfig.Mounts", "HostConfig.Binds":
-			// how the mounts were asked for differs; what the container got is Mounts
-			continue
 		case "HostConfig.Ulimits":
 			if l, ok := v.([]any); ok {
 				sort.Slice(l, func(i, j int) bool {
@@ -587,8 +620,9 @@ func normalize(c map[string]any, project string) map[string]any {
 			v = sorted(toAny(caps))
 		case "Config.ExposedPorts":
 			v = exposedPorts(v)
-		case "HostConfig.SecurityOpt", "HostConfig.GroupAdd",
-			"HostConfig.ExtraHosts", "HostConfig.Dns", "HostConfig.DnsSearch", "HostConfig.DnsOptions":
+		case "HostConfig.SecurityOpt", "HostConfig.GroupAdd", "HostConfig.ExtraHosts":
+			// lists whose order means nothing; the resolver's servers and search domains are
+			// tried in order, so dns and dns_search are compared as they are
 			v = sorted(v)
 		}
 		if m, ok := v.(map[string]any); ok && len(m) == 0 {
@@ -609,11 +643,85 @@ func normalize(c map[string]any, project string) map[string]any {
 			}
 			sort.Strings(aliases)
 			ipam, _ := cfg["IPAMConfig"].(map[string]any)
-			nets = append(nets, generic(fmt.Sprintf("%s aliases=%v ip=%v", net, aliases, ipam["IPv4Address"])))
+			// a MAC address Docker chose is random; the conformance files set theirs in de:ad:
+			mac := ""
+			if s := fmt.Sprint(cfg["MacAddress"]); strings.HasPrefix(s, "de:ad:") {
+				mac = s
+			}
+			nets = append(nets, generic(fmt.Sprintf("%s aliases=%v ip=%v ip6=%v link-local=%v mac=%s driver-opts=%v gw-priority=%v",
+				net, aliases, ipam["IPv4Address"], ipam["IPv6Address"], ipam["LinkLocalIPs"], mac, cfg["DriverOpts"], cfg["GwPriority"])))
 		}
 	}
 	sort.Strings(nets)
 	out["Networks"] = nets
+	return out
+}
+
+// mountSpecs reads how a container's mounts were asked for, by target: Docker's short form
+// (HostConfig.Binds, src:dst:options) and its long one (HostConfig.Mounts) say the same things
+// differently, and Compose and Dockflow need not use the same one.
+func mountSpecs(c map[string]any, generic func(string) string) []string {
+	var out []string
+	add := func(typ, src, target string, ro bool, propagation string, create, nocopy bool, subpath, recursive string, size, mode any) {
+		if typ == "bind" && propagation == "" {
+			propagation = "rprivate"
+		}
+		if typ == "volume" && (src == "" || anon.MatchString(src)) {
+			src = "ANONYMOUS"
+		}
+		if typ != "bind" {
+			create = false
+		}
+		out = append(out, generic(fmt.Sprintf("%s %s:%s ro=%v propagation=%s create=%v nocopy=%v subpath=%s recursive=%s tmpfs=%v/%v",
+			typ, src, target, ro, propagation, create, nocopy, subpath, recursive, size, mode)))
+	}
+	for _, b := range asStrings(at(c, "HostConfig.Binds")) {
+		parts := strings.Split(b, ":")
+		if len(parts) < 2 {
+			continue
+		}
+		typ := "volume"
+		if strings.HasPrefix(parts[0], "/") {
+			typ = "bind"
+		}
+		ro, nocopy, propagation := false, false, ""
+		if len(parts) > 2 {
+			for _, o := range strings.Split(parts[2], ",") {
+				switch o {
+				case "ro":
+					ro = true
+				case "nocopy":
+					nocopy = true
+				case "private", "rprivate", "shared", "rshared", "slave", "rslave":
+					propagation = o
+				}
+			}
+		}
+		// the short form creates a missing source directory
+		add(typ, parts[0], parts[1], ro, propagation, true, nocopy, "", "", nil, nil)
+	}
+	if list, ok := at(c, "HostConfig.Mounts").([]any); ok {
+		for _, m := range list {
+			m := m.(map[string]any)
+			ro, _ := m["ReadOnly"].(bool)
+			propagation, _ := at(m, "BindOptions.Propagation").(string)
+			create, _ := at(m, "BindOptions.CreateMountpoint").(bool)
+			nocopy, _ := at(m, "VolumeOptions.NoCopy").(bool)
+			subpath, _ := at(m, "VolumeOptions.Subpath").(string)
+			recursive := ""
+			switch {
+			case at(m, "BindOptions.NonRecursive") == true:
+				recursive = "disabled"
+			case at(m, "BindOptions.ReadOnlyNonRecursive") == true:
+				recursive = "writable"
+			case at(m, "BindOptions.ReadOnlyForceRecursive") == true:
+				recursive = "readonly"
+			}
+			add(fmt.Sprint(m["Type"]), fmt.Sprint(m["Source"]), fmt.Sprint(m["Target"]), ro, propagation, create, nocopy, subpath, recursive,
+				at(m, "TmpfsOptions.SizeBytes"), at(m, "TmpfsOptions.Mode"))
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 
@@ -671,4 +779,47 @@ func sorted(v any) any {
 	}
 	slices.Sort(s)
 	return s
+}
+
+// TestChangedNetworkOrVolumeIsRefused: Docker applies a network's or a volume's settings when it
+// creates it, as docker compose does, so a deploy that would leave the old ones in place is refused.
+func TestChangedNetworkOrVolumeIsRefused(t *testing.T) {
+	app := "confdrift"
+	dir := filepath.Join(workDir, app)
+	compose := func(subnet, size string) string {
+		return fmt.Sprintf(`services:
+  app:
+    image: %s
+    command: sleep infinity
+    networks: [back]
+    volumes: [cache:/cache]
+networks:
+  back:
+    ipam:
+      config:
+        - subnet: %s
+volumes:
+  cache:
+    driver_opts: {type: tmpfs, device: tmpfs, o: "size=%s"}
+`, alpineImage, subnet, size)
+	}
+	writeProject(t, dir, app, compose("172.31.7.0/24", "1m"))
+	mustSucceed(t, dockflow(t, dir, "deploy"), "first deploy")
+	defer dockflow(t, dir, "destroy", "production", "--volumes")
+	mustSucceed(t, dockflow(t, dir, "deploy"), "the same deploy again")
+
+	writeProject(t, dir, app, compose("172.31.8.0/24", "1m"))
+	if r := dockflow(t, dir, "deploy"); r.code == 0 || !strings.Contains(r.out, "plan.network_changed") {
+		t.Fatalf("a changed subnet: exit %d\n%s", r.code, r.out)
+	}
+	writeProject(t, dir, app, compose("172.31.7.0/24", "2m"))
+	if r := dockflow(t, dir, "deploy"); r.code == 0 || !strings.Contains(r.out, "plan.volume_changed") {
+		t.Fatalf("changed volume options: exit %d\n%s", r.code, r.out)
+	}
+	// a removal: the ipam block of the current release, gone from the file
+	noIPAM := strings.Replace(compose("172.31.7.0/24", "1m"), "    ipam:\n      config:\n        - subnet: 172.31.7.0/24\n", "    labels: {}\n", 1)
+	writeProject(t, dir, app, noIPAM)
+	if r := dockflow(t, dir, "deploy"); r.code == 0 || !strings.Contains(r.out, "ipam.config was removed") {
+		t.Fatalf("a removed ipam block: exit %d\n%s", r.code, r.out)
+	}
 }

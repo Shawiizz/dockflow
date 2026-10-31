@@ -91,6 +91,10 @@ type Mount struct {
 	// Subpath mounts a directory of the volume; Propagation is a bind's propagation.
 	Subpath     string `json:"subpath,omitempty"`
 	Propagation string `json:"propagation,omitempty"`
+	// Recursive is a bind's recursion: enabled (default), disabled, writable or readonly.
+	Recursive string `json:"recursive,omitempty"`
+	// TmpfsMode is a tmpfs mount's permission bits.
+	TmpfsMode uint32 `json:"tmpfs_mode,omitempty"`
 }
 
 // Attachment connects a container to a network.
@@ -99,6 +103,11 @@ type Attachment struct {
 	Aliases     []string `json:"aliases,omitempty"`
 	IPv4Address string   `json:"ipv4_address,omitempty"`
 	IPv6Address string   `json:"ipv6_address,omitempty"`
+	// The endpoint's other settings, as Compose's per-network keys give them.
+	MacAddress   string            `json:"mac_address,omitempty"`
+	LinkLocalIPs []string          `json:"link_local_ips,omitempty"`
+	DriverOpts   map[string]string `json:"driver_opts,omitempty"`
+	GwPriority   int               `json:"gw_priority,omitempty"`
 }
 
 // Healthcheck is a container healthcheck.

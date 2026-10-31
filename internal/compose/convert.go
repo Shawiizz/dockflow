@@ -507,6 +507,12 @@ func convertService(p *types.Project, dir, stack string, s types.ServiceConfig) 
 			if v.Bind != nil {
 				m.CreateHostPath = bool(v.Bind.CreateHostPath)
 				m.Propagation = v.Bind.Propagation
+				switch v.Bind.Recursive {
+				case "", "enabled", "disabled", "writable", "readonly":
+					m.Recursive = v.Bind.Recursive
+				default:
+					return nil, nil, errs.Config("%s: the bind option recursive is enabled, disabled, writable or readonly, not %q", at, v.Bind.Recursive)
+				}
 				if v.Bind.SELinux != "" {
 					// the Engine API's mounts have no SELinux relabelling
 					return nil, nil, errs.Config("%s: the bind option selinux is refused: the Engine API cannot relabel a mount", at).
@@ -518,6 +524,7 @@ func convertService(p *types.Project, dir, stack string, s types.ServiceConfig) 
 		case types.VolumeTypeTmpfs:
 			if v.Tmpfs != nil {
 				m.TmpfsSize = int64(v.Tmpfs.Size)
+				m.TmpfsMode = v.Tmpfs.Mode
 			}
 		default:
 			return nil, nil, errs.Config("%s: volume type %q is not supported", at, v.Type)
@@ -532,18 +539,40 @@ func convertService(p *types.Project, dir, stack string, s types.ServiceConfig) 
 		}
 	}
 
-	// networks, with the service name as an alias on each, as Compose does
+	// networks, with the service name as an alias on each, as Compose does, in Compose's order:
+	// by priority, then by name. The first one is the container's at creation.
 	if spec.NetworkMode == "" {
-		for _, key := range sortedKeys(s.Networks) {
+		keys := sortedKeys(s.Networks)
+		priority := func(key string) int {
+			if cfg := s.Networks[key]; cfg != nil {
+				return cfg.Priority
+			}
+			return 0
+		}
+		sort.SliceStable(keys, func(i, j int) bool { return priority(keys[i]) > priority(keys[j]) })
+		for _, key := range keys {
 			n, ok := p.Networks[key]
 			if !ok {
 				return nil, nil, errs.Config("%s: network %q is not declared under networks", at, key)
 			}
 			a := domain.Attachment{Network: n.Name, Aliases: []string{s.Name}}
 			if cfg := s.Networks[key]; cfg != nil {
+				if cfg.UseServiceNameAlias != nil && !*cfg.UseServiceNameAlias {
+					a.Aliases = nil
+				}
 				a.Aliases = append(a.Aliases, cfg.Aliases...)
-				a.IPv4Address = cfg.Ipv4Address
-				a.IPv6Address = cfg.Ipv6Address
+				a.IPv4Address, a.IPv6Address = cfg.Ipv4Address, cfg.Ipv6Address
+				a.MacAddress, a.LinkLocalIPs, a.GwPriority = cfg.MacAddress, cfg.LinkLocalIPs, cfg.GatewayPriority
+				if len(cfg.DriverOpts) > 0 {
+					a.DriverOpts = map[string]string(cfg.DriverOpts)
+				}
+				if cfg.InterfaceName != "" {
+					// as Compose passes it: Docker 28.1 names the interface from this option
+					if a.DriverOpts == nil {
+						a.DriverOpts = map[string]string{}
+					}
+					a.DriverOpts["com.docker.network.endpoint.ifname"] = cfg.InterfaceName
+				}
 			}
 			a.Aliases = dedupe(a.Aliases)
 			spec.Networks = append(spec.Networks, a)
@@ -551,6 +580,9 @@ func convertService(p *types.Project, dir, stack string, s types.ServiceConfig) 
 	}
 
 	if hc := s.HealthCheck; hc != nil {
+		if hc.StartInterval != nil && *hc.StartInterval > 0 && (hc.StartPeriod == nil || *hc.StartPeriod == 0) {
+			warnings = append(warnings, fmt.Sprintf("%s.healthcheck: start_interval without start_period does nothing, and docker compose refuses it", at))
+		}
 		spec.Healthcheck = &domain.Healthcheck{
 			Test: hc.Test, Disable: hc.Disable, Retries: hc.Retries,
 			Interval: dur(hc.Interval), Timeout: dur(hc.Timeout),

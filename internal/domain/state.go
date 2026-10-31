@@ -10,6 +10,14 @@ type Actual struct {
 	// belongs to (LabelProject), empty for a network of no project.
 	Networks map[string]string `json:"networks"`
 	Volumes  map[string]bool   `json:"volumes"`
+	// NetworkSettings and VolumeSettings are the app environment's own networks and volumes, as
+	// Docker reports them, by Docker name.
+	NetworkSettings map[string]Network `json:"network_settings,omitempty"`
+	VolumeSettings  map[string]Volume  `json:"volume_settings,omitempty"`
+	// ReleasedNetworks and ReleasedVolumes are the networks and volumes as the current release's
+	// Compose file gave them: what was declared, and may have been removed from the file since.
+	ReleasedNetworks []Network `json:"released_networks,omitempty"`
+	ReleasedVolumes  []Volume  `json:"released_volumes,omitempty"`
 	// Env is the environment's record; nil when the app was never deployed.
 	Env *EnvRecord `json:"env,omitempty"`
 	// Uploads maps each upload destination to the manifest it holds.

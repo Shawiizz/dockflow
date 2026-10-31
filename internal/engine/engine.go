@@ -90,6 +90,11 @@ type Engine interface {
 	// PruneNetworks removes the unused networks Dockflow does not manage.
 	PruneNetworks(ctx context.Context) ([]string, error)
 
+	// NetworkSettings and VolumeSettings return the networks and volumes of a Compose project,
+	// by Docker name, with the settings Docker reports for them.
+	NetworkSettings(ctx context.Context, project string) (map[string]domain.Network, error)
+	VolumeSettings(ctx context.Context, project string) (map[string]domain.Volume, error)
+
 	Volumes(ctx context.Context) (map[string]bool, error)
 	CreateVolume(ctx context.Context, v domain.Volume, project string) error
 	RemoveVolume(ctx context.Context, name string) error

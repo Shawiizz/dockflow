@@ -331,6 +331,24 @@ func (e *fakeEngine) Networks(context.Context) (map[string]string, error) {
 	return out, nil
 }
 
+func (e *fakeEngine) NetworkSettings(_ context.Context, project string) (map[string]domain.Network, error) {
+	e.p.look()
+	e.w.mu.Lock()
+	defer e.w.mu.Unlock()
+	out := map[string]domain.Network{}
+	for name, p := range e.w.networks {
+		if p == project {
+			out[name] = domain.Network{Name: name, Driver: "bridge"}
+		}
+	}
+	return out, nil
+}
+
+func (e *fakeEngine) VolumeSettings(context.Context, string) (map[string]domain.Volume, error) {
+	e.p.look()
+	return nil, nil
+}
+
 func (e *fakeEngine) CreateNetwork(_ context.Context, n domain.Network, project string) error {
 	return e.p.change("create network "+n.Name, func() error {
 		e.w.mu.Lock()

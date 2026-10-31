@@ -83,6 +83,8 @@ func observe(ctx context.Context, eng engine.Engine, app *state.App, stack strin
 	if o.current != nil {
 		o.actual.PublicPorts = o.current.Desired.PublicPorts
 		o.actual.Routes = o.current.Desired.Routes
+		o.actual.ReleasedNetworks = o.current.Desired.Networks
+		o.actual.ReleasedVolumes = o.current.Desired.Volumes
 	}
 	if o.current != nil && len(o.current.Desired.Uploads) > 0 {
 		o.actual.Uploads = map[string]string{}
@@ -107,6 +109,12 @@ func observe(ctx context.Context, eng engine.Engine, app *state.App, stack strin
 		}
 	}
 	if o.actual.Volumes, err = eng.Volumes(ctx); err != nil {
+		return nil, err
+	}
+	if o.actual.NetworkSettings, err = eng.NetworkSettings(ctx, stack); err != nil {
+		return nil, err
+	}
+	if o.actual.VolumeSettings, err = eng.VolumeSettings(ctx, stack); err != nil {
 		return nil, err
 	}
 	return o, nil

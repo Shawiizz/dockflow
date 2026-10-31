@@ -39,6 +39,12 @@ func Plan(desired domain.App, actual domain.Actual, restart ...string) (*domain.
 				return nil, errs.Plan("plan.network_foreign", "the network %s exists on the server and does not belong to %s", n.Name, stack).
 					WithHint("remove it once nothing uses it (a Swarm stack: docker stack rm), or give the network another name in compose.yml")
 			}
+			if got, ok := actual.NetworkSettings[n.Name]; ok && !n.External {
+				if diff := networkDrift(n, got, released(actual.ReleasedNetworks, n.Name, func(n domain.Network) string { return n.Name })); diff != "" {
+					return nil, errs.Plan("plan.network_changed", "the network %s exists with other settings than compose.yml gives: %s", n.Key, diff).
+						WithHint("a network's settings apply when it is created: undo the change, or stop the services on it (dockflow stop), remove %s on the server, and deploy", n.Name)
+				}
+			}
 			continue
 		}
 		if n.External {
@@ -49,6 +55,12 @@ func Plan(desired domain.App, actual domain.Actual, restart ...string) (*domain.
 	}
 	for _, v := range desired.Volumes {
 		if actual.Volumes[v.Name] {
+			if got, ok := actual.VolumeSettings[v.Name]; ok && !v.External {
+				if diff := volumeDrift(v, got, released(actual.ReleasedVolumes, v.Name, func(v domain.Volume) string { return v.Name })); diff != "" {
+					return nil, errs.Plan("plan.volume_changed", "the volume %s exists with other settings than compose.yml gives: %s", v.Key, diff).
+						WithHint("a volume's settings apply when it is created, and recreating it deletes its data: undo the change, or back it up, remove %s on the server, deploy, and restore", v.Name)
+				}
+			}
 			continue
 		}
 		if v.External {

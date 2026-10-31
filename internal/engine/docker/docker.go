@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -541,6 +542,60 @@ func (e *Engine) RemoveNetwork(ctx context.Context, name string) error {
 	return nil
 }
 
+func (e *Engine) NetworkSettings(ctx context.Context, project string) (map[string]domain.Network, error) {
+	r, err := e.c.NetworkList(ctx, client.NetworkListOptions{Filters: labelFilter(map[string]string{domain.LabelProject: project})})
+	if err != nil {
+		return nil, apiErr("list networks", err)
+	}
+	out := map[string]domain.Network{}
+	for _, item := range r.Items {
+		in, err := e.c.NetworkInspect(ctx, item.ID, client.NetworkInspectOptions{})
+		if err != nil {
+			return nil, apiErr("inspect network "+item.Name, err)
+		}
+		n := in.Network
+		ipv6 := n.EnableIPv6
+		got := domain.Network{
+			Key: n.Labels[domain.LabelNetwork], Name: n.Name, Driver: n.Driver, Internal: n.Internal,
+			Labels: n.Labels, DriverOpts: n.Options, EnableIPv6: &ipv6,
+			IPAM: &domain.IPAM{Driver: n.IPAM.Driver, Options: n.IPAM.Options},
+		}
+		for _, c := range n.IPAM.Config {
+			pool := domain.IPAMPool{}
+			if c.Subnet.IsValid() {
+				pool.Subnet = c.Subnet.String()
+			}
+			if c.IPRange.IsValid() {
+				pool.IPRange = c.IPRange.String()
+			}
+			if c.Gateway.IsValid() {
+				pool.Gateway = c.Gateway.String()
+			}
+			for k, a := range c.AuxAddress {
+				if pool.AuxAddresses == nil {
+					pool.AuxAddresses = map[string]string{}
+				}
+				pool.AuxAddresses[k] = a.String()
+			}
+			got.IPAM.Pools = append(got.IPAM.Pools, pool)
+		}
+		out[n.Name] = got
+	}
+	return out, nil
+}
+
+func (e *Engine) VolumeSettings(ctx context.Context, project string) (map[string]domain.Volume, error) {
+	r, err := e.c.VolumeList(ctx, client.VolumeListOptions{Filters: labelFilter(map[string]string{domain.LabelProject: project})})
+	if err != nil {
+		return nil, apiErr("list volumes", err)
+	}
+	out := map[string]domain.Volume{}
+	for _, v := range r.Items {
+		out[v.Name] = domain.Volume{Key: v.Labels[domain.LabelVolume], Name: v.Name, Driver: v.Driver, DriverOpts: v.Options, Labels: v.Labels}
+	}
+	return out, nil
+}
+
 func (e *Engine) LabeledNetworks(ctx context.Context, label string) ([]engine.NetworkInfo, error) {
 	f := client.Filters{}
 	f.Add("label", label)
@@ -984,13 +1039,22 @@ func toDocker(s domain.ContainerSpec, labels map[string]string) (*container.Conf
 		switch m.Type {
 		case "bind":
 			dm.BindOptions = &mount.BindOptions{CreateMountpoint: m.CreateHostPath, Propagation: mount.Propagation(m.Propagation)}
+			// as Compose does: a read-only mount is recursively read-only unless told otherwise
+			switch m.Recursive {
+			case "disabled":
+				dm.BindOptions.NonRecursive = true
+			case "writable":
+				dm.BindOptions.ReadOnlyNonRecursive = true
+			case "readonly":
+				dm.BindOptions.ReadOnlyForceRecursive = true
+			}
 		case "volume":
 			if m.NoCopy || m.Subpath != "" {
 				dm.VolumeOptions = &mount.VolumeOptions{NoCopy: m.NoCopy, Subpath: m.Subpath}
 			}
 		case "tmpfs":
-			if m.TmpfsSize > 0 {
-				dm.TmpfsOptions = &mount.TmpfsOptions{SizeBytes: m.TmpfsSize}
+			if m.TmpfsSize > 0 || m.TmpfsMode != 0 {
+				dm.TmpfsOptions = &mount.TmpfsOptions{SizeBytes: m.TmpfsSize, Mode: os.FileMode(m.TmpfsMode)}
 			}
 		}
 		host.Mounts = append(host.Mounts, dm)
@@ -1002,9 +1066,23 @@ func toDocker(s domain.ContainerSpec, labels map[string]string) (*container.Conf
 		host.NetworkMode = container.NetworkMode(s.Networks[0].Network)
 		nc = &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{}}
 		for _, a := range s.Networks {
-			es := &network.EndpointSettings{Aliases: a.Aliases}
-			if a.IPv4Address != "" || a.IPv6Address != "" {
+			es := &network.EndpointSettings{Aliases: a.Aliases, DriverOpts: a.DriverOpts, GwPriority: a.GwPriority}
+			if a.MacAddress != "" {
+				mac, err := net.ParseMAC(a.MacAddress)
+				if err != nil {
+					return nil, nil, nil, nil, errs.Config("mac_address %q is not valid", a.MacAddress)
+				}
+				es.MacAddress = network.HardwareAddr(mac)
+			}
+			if a.IPv4Address != "" || a.IPv6Address != "" || len(a.LinkLocalIPs) > 0 {
 				es.IPAMConfig = &network.EndpointIPAMConfig{}
+				for _, l := range a.LinkLocalIPs {
+					ip, err := netip.ParseAddr(l)
+					if err != nil {
+						return nil, nil, nil, nil, errs.Config("link_local_ips: %q is not an address", l)
+					}
+					es.IPAMConfig.LinkLocalIPs = append(es.IPAMConfig.LinkLocalIPs, ip)
+				}
 				if a.IPv4Address != "" {
 					ip, err := netip.ParseAddr(a.IPv4Address)
 					if err != nil {
