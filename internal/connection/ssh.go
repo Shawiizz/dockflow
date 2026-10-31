@@ -191,7 +191,7 @@ func Dial(ctx context.Context, t *Target) (*ssh.Client, error) {
 		return nil, herr
 	}
 	go func() {
-		c.Wait()
+		_ = c.Wait()
 		bastion.Close()
 	}()
 	return c, nil
@@ -217,7 +217,7 @@ func handshake(conn net.Conn, addr, user string, auth []ssh.AuthMethod, hostKey 
 		Timeout:           20 * time.Second,
 	}
 	// ClientConfig.Timeout covers only the TCP dial, which a tunnel through a bastion has not
-	conn.SetDeadline(time.Now().Add(cfg.Timeout))
+	_ = conn.SetDeadline(time.Now().Add(cfg.Timeout))
 	c, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
 	if err != nil {
 		conn.Close()
@@ -228,7 +228,7 @@ func handshake(conn net.Conn, addr, user string, auth []ssh.AuthMethod, hostKey 
 		return nil, errs.Connect("SSH to %s@%s failed", user, addr).WithCause(err).
 			WithHint("check the user and the key, or print the connection string again with `dockflow server connection`")
 	}
-	conn.SetDeadline(time.Time{})
+	_ = conn.SetDeadline(time.Time{})
 	return ssh.NewClient(c, chans, reqs), nil
 }
 
