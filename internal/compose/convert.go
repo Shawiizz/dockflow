@@ -551,11 +551,6 @@ func convertService(p *types.Project, dir, stack string, s types.ServiceConfig) 
 	}
 
 	if hc := s.HealthCheck; hc != nil {
-		if hc.StartInterval != nil && *hc.StartInterval > 0 && (hc.StartPeriod == nil || *hc.StartPeriod == 0) {
-			// Docker refuses it only when the container is created, in the middle of a deploy
-			return nil, nil, errs.Config("%s.healthcheck: start_interval needs start_period", at).
-				WithHint("start_interval is how often the check runs during start_period; set both")
-		}
 		spec.Healthcheck = &domain.Healthcheck{
 			Test: hc.Test, Disable: hc.Disable, Retries: hc.Retries,
 			Interval: dur(hc.Interval), Timeout: dur(hc.Timeout),

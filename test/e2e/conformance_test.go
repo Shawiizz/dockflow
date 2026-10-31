@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -577,9 +578,22 @@ func normalize(c map[string]any, project string) map[string]any {
 					return fmt.Sprint(l[i].(map[string]any)["Name"]) < fmt.Sprint(l[j].(map[string]any)["Name"])
 				})
 			}
-		case "HostConfig.CapAdd", "HostConfig.CapDrop", "HostConfig.SecurityOpt", "HostConfig.GroupAdd",
+		case "HostConfig.CapAdd", "HostConfig.CapDrop":
+			// Docker 27 keeps capabilities as given: CAP_NET_ADMIN and NET_ADMIN are one
+			var caps []string
+			for _, c := range asStrings(v) {
+				caps = append(caps, strings.TrimPrefix(c, "CAP_"))
+			}
+			v = sorted(toAny(caps))
+		case "Config.ExposedPorts":
+			v = exposedPorts(v)
+		case "HostConfig.SecurityOpt", "HostConfig.GroupAdd",
 			"HostConfig.ExtraHosts", "HostConfig.Dns", "HostConfig.DnsSearch", "HostConfig.DnsOptions":
 			v = sorted(v)
+		}
+		if m, ok := v.(map[string]any); ok && len(m) == 0 {
+			// an empty map is no map, as Docker reports either
+			v = nil
 		}
 		out[f] = v
 	}
@@ -600,6 +614,40 @@ func normalize(c map[string]any, project string) map[string]any {
 	}
 	sort.Strings(nets)
 	out["Networks"] = nets
+	return out
+}
+
+// exposedPorts are the exposed ports as a set of port/protocol: Docker 27 keeps what it was given
+// (8080, 9000-9001/udp), where later versions expand ranges and add the protocol.
+func exposedPorts(v any) any {
+	m, ok := v.(map[string]any)
+	if !ok || len(m) == 0 {
+		return nil
+	}
+	set := map[string]any{}
+	for k := range m {
+		port, proto, _ := strings.Cut(k, "/")
+		if proto == "" {
+			proto = "tcp"
+		}
+		first, last, isRange := strings.Cut(port, "-")
+		lo, _ := strconv.Atoi(first)
+		hi := lo
+		if isRange {
+			hi, _ = strconv.Atoi(last)
+		}
+		for p := lo; p <= hi; p++ {
+			set[fmt.Sprintf("%d/%s", p, proto)] = map[string]any{}
+		}
+	}
+	return set
+}
+
+func toAny(s []string) []any {
+	out := make([]any, len(s))
+	for i, v := range s {
+		out[i] = v
+	}
 	return out
 }
 

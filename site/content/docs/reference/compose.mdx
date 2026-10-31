@@ -111,7 +111,7 @@ Each supported key is checked against Docker Compose itself: the end-to-end test
 | `deploy.placement`, `deploy.endpoint_mode`, `deploy.rollback_config` | Ignored with a warning: there is one server, and Dockflow rolls back the whole app. |
 | `restart` | Honoured. A service without `restart` or `deploy.restart_policy` gets `unless-stopped`. A job always gets `no`. |
 | `depends_on` | Honoured with its conditions (`service_started`, `service_healthy`, `service_completed_successfully`): it orders the services, and a service that another one waits for with `service_completed_successfully` becomes a [job](#run). A cycle is an error. |
-| `healthcheck` | Every key (`test`, `interval`, `timeout`, `retries`, `start_period`, `start_interval`, `disable`). It gates every rollout strategy. `start_interval` needs `start_period`, as Docker requires. |
+| `healthcheck` | Every key (`test`, `interval`, `timeout`, `retries`, `start_period`, `start_interval`, `disable`). It gates every rollout strategy. |
 | `container_name` | Honoured. Forces `stop-first` and a single container. |
 | `ports` | Honoured, host IP included (`127.0.0.1:5432:5432`). Reachable from outside only when listed under [`firewall.public_ports`](/reference/dockflow-yml/#firewall). A service that publishes a fixed host port uses `stop-first`, since two containers cannot hold the same port. |
 | `expose` | Honoured, ranges included (`9000-9001/udp`). |
