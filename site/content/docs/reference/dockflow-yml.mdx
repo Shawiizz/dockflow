@@ -264,7 +264,7 @@ How Dockflow finds the server of an environment, first match wins:
 2. the `<ENV>_CONNECTION` secret (`PRODUCTION_CONNECTION`), printed by [`dockflow server connection`](/reference/cli/#server-connection);
 3. the `server` block, with the private key from `DOCKFLOW_SSH_KEY_<ENV>`, `DOCKFLOW_SSH_KEY` (the key itself, or a path to it), ssh-agent, or the `IdentityFile` your `~/.ssh/config` gives the host.
 
-Dockflow reads `HostName`, `Port`, `User`, `IdentityFile` and `ProxyJump` from `~/.ssh/config` as OpenSSH does: `Host` patterns (with `*`, `?` and `!`), `Include`, and the first value of each keyword. `Match` blocks are skipped. What `server:` sets wins over the file. A host with a `ProxyCommand` is refused, since Dockflow does not run it: use `ProxyJump` or `jump`.
+Dockflow reads `HostName`, `Port`, `User`, `IdentityFile`, `IdentitiesOnly` and `ProxyJump` from `~/.ssh/config` as OpenSSH does: `Host` patterns (with `*`, `?` and `!`), `Include`, and the first value of each keyword. `Match` blocks are skipped. What `server:` sets wins over the file. A host with a `ProxyCommand` is refused, since Dockflow does not run it: use `ProxyJump` or `jump`.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -286,7 +286,7 @@ Dockflow reads `HostName`, `Port`, `User`, `IdentityFile` and `ProxyJump` from `
 | `jump.user` | string | `User` of `~/.ssh/config`, else the server's user | Its SSH user. |
 | `jump.host_key` | string | none | Its host key fingerprint, `SHA256:…`. |
 
-The bastion is offered, in order: `DOCKFLOW_SSH_JUMP_KEY_<ENV>` or `DOCKFLOW_SSH_JUMP_KEY` when set, the keys of ssh-agent, the `IdentityFile` keys of its `Host` block (or `~/.ssh/id_*`), then the server's key, last. Your own key in ssh-agent opens the bastion while the deploy key opens the server.
+The bastion is offered, in order: `DOCKFLOW_SSH_JUMP_KEY_<ENV>` or `DOCKFLOW_SSH_JUMP_KEY` when set, the keys of ssh-agent, the `IdentityFile` keys of its `Host` block (or `~/.ssh/id_*`), then the server's key, last. Your own key in ssh-agent opens the bastion while the deploy key opens the server. With more keys in ssh-agent than the bastion's `MaxAuthTries` (6 by default), set `IdentitiesOnly yes` for it in `~/.ssh/config`: only its `IdentityFile` keys are offered, from ssh-agent when it holds them.
 
 ```yaml title="dockflow.yml"
 environments:

@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -33,9 +34,13 @@ type Target struct {
 	// IdentityFiles are the keys ~/.ssh/config names for the host, tried after ssh-agent in
 	// place of the default ones.
 	IdentityFiles []string
-	// JumpVerified and JumpIdentityFiles are the same for the bastion, when there is one.
-	JumpVerified      string
-	JumpIdentityFiles []string
+	// IdentitiesOnly is IdentitiesOnly of ~/.ssh/config: only the IdentityFile keys are offered.
+	IdentitiesOnly bool
+	// JumpVerified, JumpIdentityFiles and JumpIdentitiesOnly are the same for the bastion, when
+	// there is one.
+	JumpVerified       string
+	JumpIdentityFiles  []string
+	JumpIdentitiesOnly bool
 }
 
 // Lookup reads a secret of the environment (PRODUCTION_X, then X).
@@ -152,7 +157,7 @@ func Dial(ctx context.Context, t *Target) (*ssh.Client, error) {
 	}
 	keys := deployKey
 	if len(keys) == 0 && t.Password == "" {
-		found, closeAgent := discoverKeys(t.IdentityFiles)
+		found, closeAgent := discoverKeys(t.IdentityFiles, t.IdentitiesOnly)
 		defer closeAgent()
 		keys = found
 	}
@@ -181,7 +186,7 @@ func Dial(ctx context.Context, t *Target) (*ssh.Client, error) {
 		}
 		jumpKeys = append(jumpKeys, signer)
 	}
-	found, closeJumpAgent := discoverKeys(t.JumpIdentityFiles)
+	found, closeJumpAgent := discoverKeys(t.JumpIdentityFiles, t.JumpIdentitiesOnly)
 	defer closeJumpAgent()
 	jumpKeys = append(append(jumpKeys, found...), deployKey...)
 	conn, err := dialTCP(ctx, j.Addr())
@@ -260,8 +265,12 @@ func handshake(ctx context.Context, conn net.Conn, addr, user string, auth []ssh
 		if errors.As(r.err, &hk) {
 			return nil, hk.err
 		}
-		return nil, errs.Connect("SSH to %s@%s failed", user, addr).WithCause(r.err).
-			WithHint("check the user and the key, or print the connection string again with `dockflow server connection`")
+		e := errs.Connect("SSH to %s@%s failed", user, addr).WithCause(r.err)
+		if strings.Contains(strings.ToLower(r.err.Error()), "too many authentication failures") {
+			// more keys in ssh-agent than the server's MaxAuthTries
+			return nil, e.WithHint("the server stopped before the right key: set IdentitiesOnly yes for %s in ~/.ssh/config, or give the key (DOCKFLOW_SSH_KEY, DOCKFLOW_SSH_JUMP_KEY for a bastion)", addr)
+		}
+		return nil, e.WithHint("check the user and the key, or print the connection string again with `dockflow server connection`")
 	}
 	return ssh.NewClient(r.c, r.chans, r.reqs), nil
 }
@@ -309,15 +318,17 @@ func authMethods(keys []ssh.Signer, password string) []ssh.AuthMethod {
 }
 
 // discoverKeys returns ssh-agent's keys, then those of files, or of the default files when files
-// is empty, and closes the agent's connection when done.
-func discoverKeys(files []string) ([]ssh.Signer, func()) {
-	var keys []ssh.Signer
+// is empty, and closes the agent's connection when done. With only, as OpenSSH's IdentitiesOnly,
+// it returns the files' keys alone, taken from ssh-agent when it holds them: a key protected by a
+// passphrase is recognised by its .pub file.
+func discoverKeys(files []string, only bool) ([]ssh.Signer, func()) {
+	var agentKeys []ssh.Signer
 	closeFn := func() {}
 	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
 		if conn, err := net.Dial("unix", sock); err == nil {
 			closeFn = func() { conn.Close() }
 			if signers, err := agent.NewClient(conn).Signers(); err == nil {
-				keys = append(keys, signers...)
+				agentKeys = signers
 			}
 		}
 	}
@@ -327,16 +338,48 @@ func discoverKeys(files []string) ([]ssh.Signer, func()) {
 			files = append(files, filepath.Join(home, ".ssh", name))
 		}
 	}
+	var keys []ssh.Signer
+	if !only {
+		keys = append(keys, agentKeys...)
+	}
 	for _, file := range files {
 		b, err := os.ReadFile(file)
 		if err != nil {
 			continue
 		}
-		if signer, err := ssh.ParsePrivateKey(b); err == nil {
+		signer, err := ssh.ParsePrivateKey(b)
+		if !only {
+			if err == nil {
+				keys = append(keys, signer)
+			}
+			continue
+		}
+		var pub ssh.PublicKey
+		if err == nil {
+			pub = signer.PublicKey()
+		} else if pb, err := os.ReadFile(file + ".pub"); err == nil {
+			pub, _, _, _, _ = ssh.ParseAuthorizedKey(pb)
+		}
+		if held := heldBy(agentKeys, pub); held != nil {
+			keys = append(keys, held)
+		} else if signer != nil {
 			keys = append(keys, signer)
 		}
 	}
 	return keys, closeFn
+}
+
+// heldBy returns the key of signers whose public key is pub.
+func heldBy(signers []ssh.Signer, pub ssh.PublicKey) ssh.Signer {
+	if pub == nil {
+		return nil
+	}
+	for _, s := range signers {
+		if bytes.Equal(s.PublicKey().Marshal(), pub.Marshal()) {
+			return s
+		}
+	}
+	return nil
 }
 
 type hostKeyError struct{ err *errs.Error }

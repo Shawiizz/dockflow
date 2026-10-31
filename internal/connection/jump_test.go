@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -289,5 +290,70 @@ func TestSilentServerBehindBastionTimesOut(t *testing.T) {
 	start = time.Now()
 	if _, err = Dial(ctx, tgt); err == nil || time.Since(start) > 5*time.Second {
 		t.Fatalf("a cancelled context must end the handshake: %v after %s", err, time.Since(start))
+	}
+}
+
+// With IdentitiesOnly, the bastion is offered only its IdentityFile key, from ssh-agent when the
+// agent holds it, and none of the agent's other keys.
+func TestIdentitiesOnly(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	keyring := agent.NewKeyring()
+	var others []string
+	for i := 0; i < 3; i++ {
+		_, k, _ := ed25519.GenerateKey(rand.Reader)
+		keyring.Add(agent.AddedKey{PrivateKey: k})
+		s, _ := ssh.NewSignerFromKey(k)
+		others = append(others, ssh.FingerprintSHA256(s.PublicKey()))
+	}
+	_, mine, _ := ed25519.GenerateKey(rand.Reader)
+	keyring.Add(agent.AddedKey{PrivateKey: mine})
+	mineSigner, _ := ssh.NewSignerFromKey(mine)
+	// the file is protected by a passphrase: only its .pub tells the agent's key
+	os.MkdirAll(filepath.Join(home, ".ssh"), 0o700)
+	block, _ := ssh.MarshalPrivateKeyWithPassphrase(mine, "", []byte("secret"))
+	os.WriteFile(filepath.Join(home, ".ssh", "bastion_key"), pemEncode(block), 0o600)
+	os.WriteFile(filepath.Join(home, ".ssh", "bastion_key.pub"), ssh.MarshalAuthorizedKey(mineSigner.PublicKey()), 0o644)
+	sock := filepath.Join(t.TempDir(), "agent.sock")
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go agent.ServeAgent(keyring, c)
+		}
+	}()
+	t.Setenv("SSH_AUTH_SOCK", sock)
+
+	deployKey, deployPub := testKey(t)
+	server := newTestServer(t, deployPub)
+	bastion := newTestServer(t, mineSigner.PublicKey())
+	sh, sp := server.hostPort(t)
+	bh, bp := bastion.hostPort(t)
+	tgt := &Target{
+		Server:             Server{Host: sh, Port: sp, User: "dockflow", HostKey: server.fingerprint, Jump: &Jump{Host: bh, Port: bp, User: "me", HostKey: bastion.fingerprint}},
+		PrivateKey:         deployKey,
+		JumpIdentityFiles:  []string{filepath.Join(home, ".ssh", "bastion_key")},
+		JumpIdentitiesOnly: true,
+	}
+	c, err := Dial(context.Background(), tgt)
+	if err != nil {
+		t.Fatalf("the agent's copy of the IdentityFile key must open the bastion: %v", err)
+	}
+	c.Close()
+	bastion.mu.Lock()
+	defer bastion.mu.Unlock()
+	for _, fp := range bastion.offered {
+		for _, other := range others {
+			if fp == other {
+				t.Fatalf("IdentitiesOnly offers no other agent key: %v", bastion.offered)
+			}
+		}
 	}
 }

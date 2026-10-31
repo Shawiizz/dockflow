@@ -19,9 +19,13 @@ type HostConfig struct {
 	IdentityFiles []string
 	// ProxyJump is the bastion, [user@]host[:port], or none
 	ProxyJump string
+	// IdentitiesOnly offers only the IdentityFile keys, from ssh-agent when it holds them
+	IdentitiesOnly bool
 	// ProxyCommand is not supported: Dockflow refuses a host that has one rather than connecting
 	// directly
 	ProxyCommand string
+
+	identitiesOnlySet bool
 }
 
 // ReadSSHConfig reads the user's ~/.ssh/config for host, as OpenSSH does: the first value of
@@ -101,6 +105,10 @@ func readSSHConfig(path, dir, host string, c *HostConfig, depth int) {
 			if c.ProxyJump == "" {
 				c.ProxyJump = value
 			}
+		case "identitiesonly":
+			if !c.identitiesOnlySet {
+				c.IdentitiesOnly, c.identitiesOnlySet = strings.EqualFold(value, "yes"), true
+			}
 		case "proxycommand":
 			if c.ProxyCommand == "" {
 				c.ProxyCommand = value
@@ -172,7 +180,7 @@ func (t *Target) UseSSHConfig(portSet, userSet bool) error {
 	if !userSet && c.User != "" {
 		t.Server.User = c.User
 	}
-	t.IdentityFiles = c.IdentityFiles
+	t.IdentityFiles, t.IdentitiesOnly = c.IdentityFiles, c.IdentitiesOnly
 	if t.Server.Jump == nil && c.ProxyJump != "" && !strings.EqualFold(c.ProxyJump, "none") {
 		j, err := ParseJump(c.ProxyJump)
 		if err != nil {
@@ -200,7 +208,7 @@ func (t *Target) UseSSHConfig(portSet, userSet bool) error {
 	if j.User == "" {
 		j.User = jc.User
 	}
-	t.JumpIdentityFiles = jc.IdentityFiles
+	t.JumpIdentityFiles, t.JumpIdentitiesOnly = jc.IdentityFiles, jc.IdentitiesOnly
 	return nil
 }
 

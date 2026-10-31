@@ -81,6 +81,7 @@ Host ssm
   ProxyCommand aws ssm start-session --target %h
 
 Host bastion
+  IdentitiesOnly yes
   HostName 203.0.113.7
   Port 2222
   User admin
@@ -98,6 +99,9 @@ Host bastion
 	}
 	if len(tgt.JumpIdentityFiles) != 1 || tgt.JumpIdentityFiles[0] != filepath.Join(home, ".ssh", "bastion_key") {
 		t.Fatalf("the bastion's keys: %v", tgt.JumpIdentityFiles)
+	}
+	if !tgt.JumpIdentitiesOnly || tgt.IdentitiesOnly {
+		t.Fatalf("IdentitiesOnly is the bastion's: %v %v", tgt.JumpIdentitiesOnly, tgt.IdentitiesOnly)
 	}
 
 	// a bastion given by the caller wins, and is completed from ~/.ssh/config too
