@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"sort"
@@ -52,6 +53,16 @@ var supported = map[string]bool{
 	"memswap_limit": true, "mem_swappiness": true, "links": true, "develop": true,
 }
 
+// SupportedKeys returns the Compose service keys Dockflow supports, sorted.
+func SupportedKeys() []string {
+	keys := make([]string, 0, len(supported))
+	for k := range supported {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // later are keys that arrive in a later milestone.
 var later = map[string]string{}
 
@@ -71,9 +82,13 @@ func Convert(p *types.Project, dir, app, env string) (*Result, error) {
 	netKeys := sortedKeys(p.Networks)
 	for _, key := range netKeys {
 		n := p.Networks[key]
+		ipam, err := convertIPAM(key, n.Ipam)
+		if err != nil {
+			return nil, err
+		}
 		r.App.Networks = append(r.App.Networks, domain.Network{
 			Key: key, Name: n.Name, External: bool(n.External), Driver: n.Driver,
-			Internal: n.Internal, Labels: n.Labels,
+			Internal: n.Internal, Labels: n.Labels, DriverOpts: n.DriverOpts, EnableIPv6: n.EnableIPv6, IPAM: ipam,
 		})
 	}
 	for _, key := range sortedKeys(p.Volumes) {
@@ -291,6 +306,70 @@ func convertBuild(p *types.Project, s types.ServiceConfig, r *Result) (*image.Bu
 	return out, warnings, nil
 }
 
+// convertIPAM checks a network's ipam block: Docker refuses a malformed address only when the
+// network is created, in the middle of a deploy.
+func convertIPAM(key string, c types.IPAMConfig) (*domain.IPAM, error) {
+	if c.Driver == "" && len(c.Options) == 0 && len(c.Config) == 0 {
+		return nil, nil
+	}
+	at := "networks." + key + ".ipam"
+	ipam := &domain.IPAM{Driver: c.Driver, Options: c.Options}
+	for i, p := range c.Config {
+		if p == nil {
+			continue
+		}
+		pool := domain.IPAMPool{Subnet: p.Subnet, IPRange: p.IPRange, Gateway: p.Gateway, AuxAddresses: p.AuxiliaryAddresses}
+		for what, v := range map[string]string{"subnet": p.Subnet, "ip_range": p.IPRange} {
+			if _, err := netip.ParsePrefix(v); v != "" && err != nil {
+				return nil, errs.Config("%s.config[%d].%s: %q is not a CIDR range", at, i, what, v)
+			}
+		}
+		addrs := map[string]string{"gateway": p.Gateway}
+		for name, v := range p.AuxiliaryAddresses {
+			addrs["aux_addresses."+name] = v
+		}
+		for what, v := range addrs {
+			if _, err := netip.ParseAddr(v); v != "" && err != nil {
+				return nil, errs.Config("%s.config[%d].%s: %q is not an address", at, i, what, v)
+			}
+		}
+		ipam.Pools = append(ipam.Pools, pool)
+	}
+	return ipam, nil
+}
+
+// exposed reads an expose entry: a port, or a range of ports (9000-9001), with an optional
+// protocol. A range becomes its ports, which the Engine API takes one by one.
+func exposed(e string) ([]string, error) {
+	port, proto, _ := strings.Cut(e, "/")
+	switch proto {
+	case "", "tcp", "udp", "sctp":
+	default:
+		return nil, fmt.Errorf("%q: the protocol is tcp, udp or sctp", e)
+	}
+	first, last, isRange := strings.Cut(port, "-")
+	lo, err1 := strconv.Atoi(first)
+	hi, err2 := lo, error(nil)
+	if isRange {
+		hi, err2 = strconv.Atoi(last)
+	}
+	if err1 != nil || err2 != nil || lo < 1 || hi > 65535 || hi < lo {
+		return nil, fmt.Errorf("%q is not a port or a range of ports", e)
+	}
+	if !isRange {
+		return []string{e}, nil
+	}
+	suffix := ""
+	if proto != "" {
+		suffix = "/" + proto
+	}
+	out := make([]string, 0, hi-lo+1)
+	for p := lo; p <= hi; p++ {
+		out = append(out, strconv.Itoa(p)+suffix)
+	}
+	return out, nil
+}
+
 func convertService(p *types.Project, dir, stack string, s types.ServiceConfig) (*domain.Service, []string, error) {
 	at := "service " + s.Name
 	var warnings []string
@@ -343,6 +422,10 @@ func convertService(p *types.Project, dir, stack string, s types.ServiceConfig) 
 	for k, v := range s.Environment {
 		if v != nil {
 			spec.Env = append(spec.Env, k+"="+*v)
+		} else {
+			// a variable without a value, set nowhere: as docker compose does, its name alone,
+			// which removes the image's value from the container
+			spec.Env = append(spec.Env, k)
 		}
 	}
 	sort.Strings(spec.Env)
@@ -351,7 +434,11 @@ func convertService(p *types.Project, dir, stack string, s types.ServiceConfig) 
 		spec.StopGrace = &d
 	}
 	for _, e := range s.Expose {
-		spec.Expose = append(spec.Expose, e)
+		ports, err := exposed(e)
+		if err != nil {
+			return nil, nil, errs.Config("%s.expose: %v", at, err)
+		}
+		spec.Expose = append(spec.Expose, ports...)
 	}
 
 	switch {
@@ -464,6 +551,11 @@ func convertService(p *types.Project, dir, stack string, s types.ServiceConfig) 
 	}
 
 	if hc := s.HealthCheck; hc != nil {
+		if hc.StartInterval != nil && *hc.StartInterval > 0 && (hc.StartPeriod == nil || *hc.StartPeriod == 0) {
+			// Docker refuses it only when the container is created, in the middle of a deploy
+			return nil, nil, errs.Config("%s.healthcheck: start_interval needs start_period", at).
+				WithHint("start_interval is how often the check runs during start_period; set both")
+		}
 		spec.Healthcheck = &domain.Healthcheck{
 			Test: hc.Test, Disable: hc.Disable, Retries: hc.Retries,
 			Interval: dur(hc.Interval), Timeout: dur(hc.Timeout),

@@ -462,13 +462,58 @@ func (e *Engine) CreateNetwork(ctx context.Context, n domain.Network, project st
 		labels[domain.LabelNetwork] = n.Key
 	}
 	labels[domain.LabelManagedBy] = "true"
-	_, err := e.c.NetworkCreate(ctx, n.Name, client.NetworkCreateOptions{
+	opts := client.NetworkCreateOptions{
 		Driver: n.Driver, Internal: n.Internal, Attachable: true, Labels: labels,
-	})
+		Options: n.DriverOpts, EnableIPv6: n.EnableIPv6,
+	}
+	if n.IPAM != nil {
+		ipam, err := engineIPAM(n.IPAM)
+		if err != nil {
+			return errs.Config("network %s: %v", n.Key, err)
+		}
+		opts.IPAM = ipam
+	}
+	_, err := e.c.NetworkCreate(ctx, n.Name, opts)
 	if err != nil && !cerrdefs.IsConflict(err) && !cerrdefs.IsAlreadyExists(err) {
 		return apiErr("create network "+n.Name, err)
 	}
 	return nil
+}
+
+// engineIPAM is the Engine API's form of a network's ipam block, whose addresses it parses.
+func engineIPAM(i *domain.IPAM) (*network.IPAM, error) {
+	out := &network.IPAM{Driver: i.Driver, Options: i.Options}
+	for _, p := range i.Pools {
+		var c network.IPAMConfig
+		var err error
+		if p.Subnet != "" {
+			if c.Subnet, err = netip.ParsePrefix(p.Subnet); err != nil {
+				return nil, err
+			}
+		}
+		if p.IPRange != "" {
+			if c.IPRange, err = netip.ParsePrefix(p.IPRange); err != nil {
+				return nil, err
+			}
+		}
+		if p.Gateway != "" {
+			if c.Gateway, err = netip.ParseAddr(p.Gateway); err != nil {
+				return nil, err
+			}
+		}
+		for name, a := range p.AuxAddresses {
+			addr, err := netip.ParseAddr(a)
+			if err != nil {
+				return nil, err
+			}
+			if c.AuxAddress == nil {
+				c.AuxAddress = map[string]netip.Addr{}
+			}
+			c.AuxAddress[name] = addr
+		}
+		out.Config = append(out.Config, c)
+	}
+	return out, nil
 }
 
 func (e *Engine) Connect(ctx context.Context, net, ctr string, aliases []string) error {

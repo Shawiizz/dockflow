@@ -291,6 +291,27 @@ type Network struct {
 	Driver   string            `json:"driver,omitempty"`
 	Internal bool              `json:"internal,omitempty"`
 	Labels   map[string]string `json:"labels,omitempty"`
+	// DriverOpts, EnableIPv6 and IPAM are passed to Docker when the network is created.
+	DriverOpts map[string]string `json:"driver_opts,omitempty"`
+	EnableIPv6 *bool             `json:"enable_ipv6,omitempty"`
+	IPAM       *IPAM             `json:"ipam,omitempty"`
+}
+
+// IPAM is a network's address management: its driver, and the address pools it takes the
+// addresses of its containers from.
+type IPAM struct {
+	Driver  string            `json:"driver,omitempty"`
+	Options map[string]string `json:"options,omitempty"`
+	Pools   []IPAMPool        `json:"pools,omitempty"`
+}
+
+// IPAMPool is an address pool: a subnet, the range of it containers get addresses from, its
+// gateway, and addresses the driver must not give out.
+type IPAMPool struct {
+	Subnet       string            `json:"subnet,omitempty"`
+	IPRange      string            `json:"ip_range,omitempty"`
+	Gateway      string            `json:"gateway,omitempty"`
+	AuxAddresses map[string]string `json:"aux_addresses,omitempty"`
 }
 
 // Volume is a named volume of the app.
