@@ -20,12 +20,12 @@ var values = Values{
 
 // expansion is what golden files hold: the uploads, their bundles' files, and the hooks.
 type expansion struct {
-	Uploads []upload      `json:"uploads"`
+	Uploads []uploadEntry `json:"uploads"`
 	Files   []string      `json:"files"`
 	Hooks   []domain.Hook `json:"hooks"`
 }
 
-type upload struct {
+type uploadEntry struct {
 	Src, Dest, Mode, Plugin string
 }
 
@@ -38,7 +38,7 @@ func expand(t *testing.T, uses ...config.PluginUse) (*Expanded, expansion) {
 	var x expansion
 	seen := map[string]bool{}
 	for _, u := range e.Uploads {
-		x.Uploads = append(x.Uploads, upload{u.Src, u.Dest, u.Mode, u.Plugin})
+		x.Uploads = append(x.Uploads, uploadEntry{u.Src, u.Dest, u.Mode, u.Plugin})
 		if seen[u.Bundle.Name] {
 			continue
 		}

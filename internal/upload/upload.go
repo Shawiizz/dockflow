@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 
 	"github.com/Shawiizz/dockflow/internal/ignore"
@@ -21,6 +22,16 @@ type File struct {
 	SHA256 string      `json:"sha256"`
 	Mode   fs.FileMode `json:"mode"`
 	Size   int64       `json:"size"`
+}
+
+// LocalMode is the mode a local file gets on the server. Windows has no Unix permissions: Go
+// reports its files as 0666, which would leave them writable by anyone on the server, so a file
+// read on Windows gets 0644, or 0444 when it is read-only.
+func LocalMode(fi fs.FileInfo) fs.FileMode {
+	if runtime.GOOS == "windows" {
+		return fi.Mode().Perm() & 0o644
+	}
+	return fi.Mode().Perm()
 }
 
 // Manifest describes a source: a single file (key ""), or a tree of files and directories,
@@ -84,7 +95,7 @@ func Scan(src string, exclude *ignore.Patterns) (*Manifest, map[string]string, e
 			return nil, nil, err
 		}
 		m.Single = true
-		m.Files[""] = File{SHA256: sum, Mode: st.Mode().Perm(), Size: size}
+		m.Files[""] = File{SHA256: sum, Mode: LocalMode(st), Size: size}
 		paths[sum] = src
 		return m, paths, nil
 	}
@@ -115,7 +126,7 @@ func Scan(src string, exclude *ignore.Patterns) (*Manifest, map[string]string, e
 			if err != nil {
 				return err
 			}
-			m.Files[rel] = File{SHA256: sum, Mode: info.Mode().Perm(), Size: size}
+			m.Files[rel] = File{SHA256: sum, Mode: LocalMode(info), Size: size}
 			paths[sum] = p
 		}
 		return nil

@@ -22,6 +22,7 @@ import (
 	"github.com/Shawiizz/dockflow/internal/domain"
 	"github.com/Shawiizz/dockflow/internal/errs"
 	"github.com/Shawiizz/dockflow/internal/render"
+	"github.com/Shawiizz/dockflow/internal/upload"
 )
 
 // ManifestName is the file that makes a directory a plugin.
@@ -202,7 +203,7 @@ func read(fsys fs.FS, name, source string, isBuiltin bool) (*Plugin, error) {
 		}
 		mode := fs.FileMode(0o644)
 		if st, err := fs.Stat(fsys, p2); err == nil && !isBuiltin {
-			mode = st.Mode().Perm()
+			mode = upload.LocalMode(st)
 		}
 		p.files[p2] = render.BundleFile{Data: data, Mode: mode}
 		return nil
@@ -401,7 +402,7 @@ func (p *Plugin) inputs(dir, at string, with map[string]any, bundle *render.Bund
 			}
 			mode := fs.FileMode(0o644)
 			if st, err := os.Stat(filepath.Join(dir, filepath.FromSlash(clean))); err == nil {
-				mode = st.Mode().Perm()
+				mode = upload.LocalMode(st)
 			}
 			where := "inputs/" + in.Name + "/" + path.Base(clean)
 			bundle.Files[where] = render.BundleFile{Data: data, Mode: mode}
