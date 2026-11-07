@@ -55,6 +55,10 @@ jobs:
           go-version-file: go.mod
       - name: go test
         shell: bash
+        env:
+          # the runner's Docker runs Windows containers: the contract tests, which need Linux ones,
+          # skip as without Docker here, and run in the job above
+          DOCKER_HOST: tcp://127.0.0.1:9
         # the agent runs on the Linux server only
         run: go test -count=1 $(go list ./... | grep -v '/internal/agent$')
 
