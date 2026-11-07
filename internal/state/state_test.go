@@ -3,6 +3,7 @@ package state
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/Shawiizz/dockflow/internal/domain"
@@ -10,6 +11,9 @@ import (
 )
 
 func TestLockIsExclusive(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the state lives on the Linux server: its lock and modes are Unix ones")
+	}
 	s, err := Open(t.TempDir(), "r1")
 	if err != nil {
 		t.Fatal(err)
@@ -79,6 +83,9 @@ func TestReleasesAndPrune(t *testing.T) {
 
 // The state is root's only, even when Docker created the directory as a bind source.
 func TestRootIsPrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the state lives on the Linux server: its lock and modes are Unix ones")
+	}
 	root := filepath.Join(t.TempDir(), "dockflow")
 	if err := os.Mkdir(root, 0o755); err != nil {
 		t.Fatal(err)
@@ -94,6 +101,9 @@ func TestRootIsPrivate(t *testing.T) {
 // A file with fields this Dockflow does not know was written by a newer one: the state of its
 // scope can be read, not changed, so that nothing a newer Dockflow recorded is lost.
 func TestNewerStateIsReadOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the state lives on the Linux server: its lock and modes are Unix ones")
+	}
 	root := t.TempDir()
 	s, _ := Open(root, "r1")
 	shop, _ := s.App("shop-production")

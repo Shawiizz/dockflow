@@ -34,6 +34,12 @@ func TestBuildAndPush(t *testing.T) {
 		}
 		t.Skip("no docker buildx")
 	}
+	if out, err := exec.Command("docker", "info", "--format", "{{.OSType}}").Output(); err != nil || strings.TrimSpace(string(out)) != "linux" {
+		if os.Getenv("DOCKFLOW_CONTRACT") != "" {
+			t.Fatal("a Docker engine running Linux containers is required")
+		}
+		t.Skip("no Docker engine running Linux containers")
+	}
 	name := fmt.Sprintf("dockflow-registry-test-%d", time.Now().UnixNano()%100000)
 	docker(t, "run", "-d", "--name", name, "-p", "127.0.0.1::5000", "mirror.gcr.io/library/registry:3")
 	t.Cleanup(func() { exec.Command("docker", "rm", "-f", "-v", name).Run() })

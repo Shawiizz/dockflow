@@ -24,7 +24,7 @@ func TestBuildArgs(t *testing.T) {
 	got := podman.BuildArgs(b, "linux/arm64", "/tmp/web.iid", "")
 	want := []string{
 		"build", "--platform", "linux/arm64", "--iidfile", "/tmp/web.iid", "-t", "localhost/dockflow-build/web",
-		"-f", "/src/web/docker/Dockerfile", "--build-arg", "A=1", "--build-arg", "B=2", "--label", "team=shop",
+		"-f", filepath.FromSlash("/src/web/docker/Dockerfile"), "--build-arg", "A=1", "--build-arg", "B=2", "--label", "team=shop",
 		"--build-context", "base=/src/base", "--target", "prod", "--no-cache", "--add-host", "db:10.0.0.2",
 		"--shm-size", "1048576b", "/src/web",
 	}

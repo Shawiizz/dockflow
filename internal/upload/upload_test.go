@@ -3,6 +3,7 @@ package upload
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -80,6 +81,9 @@ func TestApplyMirrorAndRestore(t *testing.T) {
 }
 
 func TestSingleFileAndDigest(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Apply runs on the Linux server")
+	}
 	src, dir, blobs := t.TempDir(), t.TempDir(), t.TempDir()
 	write(t, filepath.Join(src, "app.service"), "[Unit]")
 	m, paths, err := Scan(filepath.Join(src, "app.service"), nil)
@@ -104,6 +108,9 @@ func TestSingleFileAndDigest(t *testing.T) {
 // A container that writes to a destination can swap a directory of it for a symbolic link to
 // anywhere: Apply writes, saves and deletes inside the destination only.
 func TestApplyDoesNotFollowSymlinksOut(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Apply runs on the Linux server")
+	}
 	src, dest, blobs, outside := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
 	store := Store(blobs)
 	write(t, filepath.Join(src, "conf", "app.conf"), "new")

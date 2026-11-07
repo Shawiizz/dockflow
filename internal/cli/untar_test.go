@@ -46,6 +46,9 @@ func empty(t *testing.T, dir string) {
 // cp from a container extracts what the container sends inside the destination only: symlinks
 // that leave it are not created, and nothing is written through a symlink.
 func TestUntarStaysInTheDestination(t *testing.T) {
+	if err := os.Symlink("target", filepath.Join(t.TempDir(), "link")); err != nil {
+		t.Skipf("this system cannot create symlinks: %v", err)
+	}
 	outside := t.TempDir()
 	dest := filepath.Join(t.TempDir(), "d")
 	skipped, err := untarTo(archive(t,

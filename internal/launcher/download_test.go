@@ -64,7 +64,9 @@ func TestCachedAgentCheckedAgain(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	cache := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cache)
+	t.Setenv("LocalAppData", cache)
 	t.Setenv("DOCKFLOW_AGENT_BINARY", "")
 	t.Setenv("DOCKFLOW_RELEASES_URL", srv.URL)
 	var c events.Collector
@@ -102,7 +104,8 @@ func TestDownload(t *testing.T) {
 	if err != nil || string(got) != bin {
 		t.Fatalf("cached %q, %v", got, err)
 	}
-	if fi, _ := os.Stat(path); fi.Mode().Perm()&0o100 == 0 {
+	// Windows has no executable bit
+	if fi, _ := os.Stat(path); runtime.GOOS != "windows" && fi.Mode().Perm()&0o100 == 0 {
 		t.Fatalf("the binary must be executable: %v", fi.Mode())
 	}
 }
@@ -147,7 +150,7 @@ func TestStatic(t *testing.T) {
 	for name, cgo := range map[string]string{"static": "0", "dynamic": "1"} {
 		out := filepath.Join(dir, name)
 		cmd := exec.Command("go", "build", "-o", out, "./testdata/hello")
-		cmd.Env = append(os.Environ(), "CGO_ENABLED="+cgo)
+		cmd.Env = append(os.Environ(), "CGO_ENABLED="+cgo, "GOOS=linux")
 		if b, err := cmd.CombinedOutput(); err != nil {
 			if cgo == "1" {
 				t.Logf("no cgo build here: %s", b)

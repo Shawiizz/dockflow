@@ -129,7 +129,7 @@ func testKey(t *testing.T) (string, ssh.PublicKey) {
 // Through a bastion, both host keys are verified, the bastion opens the connection to the server,
 // and its own key opens it when the server's does not.
 func TestDialThroughBastion(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	t.Setenv("SSH_AUTH_SOCK", "")
 	deployKey, deployPub := testKey(t)
 	jumpKey, jumpPub := testKey(t)
@@ -197,7 +197,7 @@ func TestDialThroughBastion(t *testing.T) {
 // The bastion is offered ssh-agent's keys even when the server has its deploy key, which comes
 // last: in a company, the bastion takes the person's key and the server the deploy key.
 func TestBastionTakesTheAgentsKey(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	deployKey, deployPub := testKey(t)
 	_, personal, _ := ed25519.GenerateKey(rand.Reader)
 	keyring := agent.NewKeyring()
@@ -247,7 +247,7 @@ func TestBastionTakesTheAgentsKey(t *testing.T) {
 // A server behind the bastion that accepts the connection and never answers fails within
 // HandshakeTimeout instead of holding the deploy.
 func TestSilentServerBehindBastionTimesOut(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	t.Setenv("SSH_AUTH_SOCK", "")
 	defer func(d time.Duration) { HandshakeTimeout = d }(HandshakeTimeout)
 	HandshakeTimeout = 300 * time.Millisecond
@@ -317,7 +317,7 @@ func TestIdentitiesOnly(t *testing.T) {
 	for name, identityFile := range cases {
 		t.Run(name, func(t *testing.T) {
 			home := t.TempDir()
-			t.Setenv("HOME", home)
+			setHome(t, home)
 			keyring := agent.NewKeyring()
 			var others []string
 			for i := 0; i < 3; i++ {
@@ -382,7 +382,7 @@ func TestIdentitiesOnly(t *testing.T) {
 // offered once.
 func TestKeysAreOfferedOnce(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	_, mine, _ := ed25519.GenerateKey(rand.Reader)
 	deployKey, deployPub := testKey(t)
 	deploySigner, _ := parseKey(deployKey)

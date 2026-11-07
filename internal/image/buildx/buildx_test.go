@@ -23,6 +23,12 @@ func TestLoad(t *testing.T) {
 		}
 		t.Skip("no docker buildx")
 	}
+	if out, err := exec.Command("docker", "info", "--format", "{{.OSType}}").Output(); err != nil || strings.TrimSpace(string(out)) != "linux" {
+		if os.Getenv("DOCKFLOW_CONTRACT") != "" {
+			t.Fatal("a Docker engine running Linux containers is required")
+		}
+		t.Skip("no Docker engine running Linux containers")
+	}
 	host := os.Getenv("DOCKER_HOST")
 	if host == "" {
 		host = "unix:///var/run/docker.sock"

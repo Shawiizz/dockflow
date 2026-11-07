@@ -7,9 +7,16 @@ import (
 	"testing"
 )
 
+// setHome makes dir the home directory, as os.UserHomeDir reads it: HOME, or USERPROFILE on Windows.
+func setHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+}
+
 func TestReadSSHConfig(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	os.MkdirAll(filepath.Join(home, ".ssh", "conf.d"), 0o700)
 	os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(`
 # the first value of each keyword wins
@@ -63,7 +70,7 @@ Host *
 // ProxyJump none, is not one.
 func TestProxyJumpFromSSHConfig(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	os.MkdirAll(filepath.Join(home, ".ssh"), 0o700)
 	os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(`
 Host prod
