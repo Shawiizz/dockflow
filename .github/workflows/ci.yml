@@ -44,6 +44,20 @@ jobs:
           DOCKFLOW_CONTRACT: "1"
         run: go test -count=1 ./...
 
+  test-windows:
+    name: unit tests on Windows
+    # the CLI runs on Windows too: the local OS's paths and file modes must not reach the server
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: go test
+        shell: bash
+        # the agent runs on the Linux server only
+        run: go test -count=1 $(go list ./... | grep -v '/internal/agent$')
+
   e2e:
     name: e2e (${{ matrix.docker }})
     runs-on: ubuntu-latest
