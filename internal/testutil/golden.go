@@ -2,6 +2,7 @@
 package testutil
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"os"
@@ -43,6 +44,8 @@ func compare(t *testing.T, path string, got []byte) {
 	if err != nil {
 		t.Fatalf("%v (run the tests with -update to create it)", err)
 	}
+	// a Windows checkout with core.autocrlf turns the golden files' line endings into CRLF
+	want = bytes.ReplaceAll(want, []byte("\r\n"), []byte("\n"))
 	if string(got) != string(want) {
 		t.Errorf("%s differs from the golden file; run with -update after checking the diff\n--- got\n%s", path, got)
 	}

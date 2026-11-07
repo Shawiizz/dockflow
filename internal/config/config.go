@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -653,7 +654,8 @@ func CheckUploads(entries []UploadEntry) error {
 			if key := strings.TrimPrefix(u.Dest, "volume:"); key == "" || strings.ContainsAny(key, "/:") {
 				return errs.Config("%s.dest %q: volume:<name>, a volume of the Compose file", at, u.Dest)
 			}
-		case filepath.IsAbs(u.Dest) && !strings.Contains(u.Dest, ".."):
+		// a path of the Linux server: path, not filepath, which follows the local OS
+		case path.IsAbs(u.Dest) && !strings.Contains(u.Dest, ".."):
 		default:
 			return errs.Config("%s.dest %q must be volume:<name> or an absolute path on the server", at, u.Dest)
 		}

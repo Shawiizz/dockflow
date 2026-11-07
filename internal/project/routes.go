@@ -3,7 +3,7 @@ package project
 import (
 	"fmt"
 	"net/url"
-	"path/filepath"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -160,7 +160,8 @@ func fileServer(at string, i int, e config.RouteEntry, rt domain.Route, app *dom
 	var mount domain.Mount
 	switch {
 	case f.HostPath != "" && f.Volume == "":
-		if !filepath.IsAbs(f.HostPath) || strings.Contains(f.HostPath, "..") {
+		// a path of the Linux server: path, not filepath, which follows the local OS
+		if !path.IsAbs(f.HostPath) || strings.Contains(f.HostPath, "..") {
 			return nil, errs.Config("%s: files.host_path %q must be an absolute path on the server", at, f.HostPath)
 		}
 		mount = domain.Mount{Type: "bind", Source: f.HostPath, Target: "/srv", ReadOnly: true}
