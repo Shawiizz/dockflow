@@ -12,9 +12,9 @@ import (
 // release of its major version; the CI then runs the e2e suite on them.
 const (
 	// DefaultSwitchImage is the official Caddy image: the switch, and the server of files routes.
-	DefaultSwitchImage = "caddy:2.11.7@sha256:5e5286cb37d44086d651a5363f05f43a692ce4d649d88fb1bd844579f45fa9e8"
+	DefaultSwitchImage = "caddy:2.11.9@sha256:4e2425f6009577e7c651010f16679c28f7d12df3e7b1914f941a7a3370746b3c"
 	// DefaultRegistryImage is the CNCF distribution registry: the server-local registry.
-	DefaultRegistryImage = "registry:3.1.2@sha256:d4032d4cc323c1731c707931ecada07a53076eac38e3b61ae57533f170f2c6c3"
+	DefaultRegistryImage = "registry:3.1.2@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c"
 	// DefaultResticImage is restic's official image, which backups run.
 	DefaultResticImage = "restic/restic:0.19.1@sha256:136600b6ff6843d61d355f7f71f460a166429f35de6fd11b568fece3c9a4d510"
 )
